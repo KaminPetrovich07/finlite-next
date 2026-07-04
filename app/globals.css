@@ -2,22 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Base ──────────────────────────────────────────────────────────────── */
+
 :root {
   color-scheme: dark;
 }
 
-body {
-  background: #14110D;
-  background-image: radial-gradient(circle at 20% -10%, rgba(201, 162, 39, 0.08), transparent 45%);
-  color: #F2EDE4;
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* visible keyboard focus everywhere, not just on form fields */
+body {
+  background: #14110D;
+  background-image:
+    radial-gradient(circle at 15% -5%, rgba(201,162,39,0.07) 0%, transparent 42%),
+    radial-gradient(circle at 85% 100%, rgba(79,121,66,0.04) 0%, transparent 38%);
+  color: #F2EDE4;
+  min-height: 100dvh;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display), serif;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+/* Tight uppercase section labels */
+.label-caps {
+  font-family: var(--font-display), serif;
+  font-size: 0.6875rem;       /* 11px */
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(242, 237, 228, 0.45);
+}
+
+/* Mono tabular numbers — use everywhere currency appears */
+.num {
+  font-family: var(--font-mono), monospace;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+
+/* Suppress native number spinner arrows */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+input[type="number"] { -moz-appearance: textfield; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(201,162,39,0.25); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(201,162,39,0.4); }
+
+/* ── Focus ──────────────────────────────────────────────────────────────── */
+
 :focus-visible {
   outline: 2px solid #E8C547;
   outline-offset: 2px;
+  border-radius: 4px;
 }
 
+/* ── Range slider accent ────────────────────────────────────────────────── */
+input[type="range"] { accent-color: #C9A227; }
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

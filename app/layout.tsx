@@ -24,27 +24,36 @@ export const metadata: Metadata = {
 };
 
 const NAV_LINKS = [
-  { href: "/", label: "🧮 Калькулятор" },
-  { href: "/compare", label: "💡 Режимы" },
-  { href: "/balance", label: "🏦 Баланс" },
-  { href: "/cashflow", label: "💸 ОДДС" },
-  { href: "/equity", label: "📈 Капитал" },
-  { href: "/executive", label: "🎯 Big 4" },
-  { href: "/leanops", label: "🏭 LeanOps" },
-  { href: "/transactions", label: "🏧 Выписки" },
+  { href: "/",            label: "Калькулятор" },
+  { href: "/compare",     label: "Режимы" },
+  { href: "/balance",     label: "Баланс" },
+  { href: "/cashflow",    label: "ОДДС" },
+  { href: "/equity",      label: "Капитал" },
+  { href: "/executive",   label: "Big 4" },
+  { href: "/leanops",     label: "LeanOps" },
+  { href: "/transactions",label: "Выписки" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body className="font-body min-h-screen">
-        <nav className="border-b border-fl-gold/10 bg-fl-charcoal-2/60 px-4 py-3 sm:px-6">
-          <div className="mx-auto flex max-w-5xl flex-wrap gap-x-5 gap-y-1 text-sm">
-            {NAV_LINKS.map((link) => (
-              <a key={link.href} href={link.href} className="font-medium text-fl-cream/70 hover:text-fl-gold-bright hover:underline">
-                {link.label}
-              </a>
-            ))}
+        <nav className="sticky top-0 z-30 border-b border-fl-gold/10 bg-fl-charcoal/90 backdrop-blur-md px-4 sm:px-6">
+          <div className="mx-auto flex max-w-5xl items-center justify-between py-3">
+            <span className="font-display text-sm font-bold tracking-tight text-fl-gold">
+              FinLite KG
+            </span>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {NAV_LINKS.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="label-caps text-fl-cream/50 hover:text-fl-gold-bright transition-colors"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
           </div>
         </nav>
         {children}
