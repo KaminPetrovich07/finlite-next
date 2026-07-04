@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: #14110D;
+  background-image: radial-gradient(circle at 20% -10%, rgba(201, 162, 39, 0.08), transparent 45%);
+  color: #F2EDE4;
+}
+
+/* visible keyboard focus everywhere, not just on form fields */
+:focus-visible {
+  outline: 2px solid #E8C547;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

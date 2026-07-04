@@ -1,0 +1,129 @@
+// ════════════════════════════════════════════════════════════════════════
+// FinLite KG — Prisma schema (PostgreSQL)
+//
+// Phase 1 scope: replaces the single SQLite `reports` table from app.py
+// (see _init_db / save_to_history / load_history) AND, unlike the current
+// app, actually persists the data that today only lives in st.session_state
+// and is lost on refresh: balance sheet (bsv), cash flow (cfv), ФОСАМК
+// form data, and LeanOps module results.
+//
+// Design choice: balanceSheet / cashFlow / fosamk / leanResults are stored
+// as Postgres JSONB rather than fully normalized tables. The line-item
+// structures (BALANCE_ROWS, OPU_ROWS in app.py) are large, change rarely,
+// and are always read/written as a whole document per report — JSONB is
+// the pragmatic fit here and is still fully queryable in Postgres if
+// needed later (e.g. `balanceSheet -> '299'`). If per-line-item reporting
+// across companies becomes a real need, this is the first thing to
+// normalize into proper child tables.
+// ════════════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Multi-user / multi-company foundation ─────────────────────────────────
+// Minimal for Phase 1: enough structure that real auth (NextAuth/Clerk) can
+// be dropped in during Phase 2 without a schema rewrite. Not wired up yet.
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  companies Company[] @relation("CompanyMembers")
+  createdAt DateTime  @default(now())
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  defaultRegime String? // last-used regime_key, convenience default
+  members     User[]   @relation("CompanyMembers")
+  reports     Report[]
+  bankTransactions BankTransaction[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+}
+
+// ── Core report: one calculation period for one company ───────────────────
+// Field names intentionally mirror the `fr` dict returned by calculate()
+// in app.py so porting/validation against the Python output is mechanical.
+model Report {
+  id          String   @id @default(cuid())
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+
+  periodLabel String   // calc_period_label()
+  periodFrom  DateTime
+  periodTo    DateTime
+  regimeKey   String   // e.g. "general", "unified_trade_l"
+  regimeName  String
+
+  // raw inputs (so a saved report can be re-opened and edited, unlike today)
+  revenue       Float
+  otherIncome   Float
+  cogs          Float
+  salaries      Float
+  rent          Float
+  sellingExp    Float
+  adminExp      Float
+  otherOpExp    Float
+  interestExp   Float
+  otherNonOp    Float
+  investInc     Float
+  cashPct       Float    @default(70)
+  patentAmount  Float    @default(0)
+
+  // computed outputs (from calculate())
+  totalRevenue  Float
+  grossProfit   Float
+  ebit          Float
+  ebt           Float
+  netProfit     Float
+  profitability Float
+  social        Float
+  vat           Float
+  salesTax      Float
+  incomeTax     Float
+  totalDirect   Float
+  totalIndirect Float
+
+  // structured / nested data — see header comment
+  balanceSheet  Json?    // BALANCE_ROWS values keyed by code, e.g. {"110": 12000, ...}
+  cashFlow      Json?    // CF rows, same pattern
+  equityStatement Json?  // EQUITY_ROWS x EQUITY_COLUMNS, keyed "code:colIndex" (Ф.№4)
+  fosamkForms   Json?    // Ф.№1–4 raw form payloads
+  leanResults   Json?    // {raw, muda, unitEconomics, swot, transport, medOrCon, ...}
+  details       Json?    // tax breakdown dict from calculate()["details"]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([companyId, periodFrom])
+}
+
+// ── Bank statement import (new feature, see roadmap) ──────────────────────
+model BankTransaction {
+  id          String   @id @default(cuid())
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+
+  bank        String   // "mbank" | "bakai" | "eldik"
+  txDate      DateTime
+  amount      Float    // positive = income, negative = expense
+  description String
+  category    String?  // assigned by rules or LLM
+  categorySource String? // "rule" | "llm" | "manual"
+  rawRow      Json?    // original parsed row, for audit/debugging
+
+  importBatch String   // groups transactions from one uploaded file
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, txDate])
+  @@index([importBatch])
+}
