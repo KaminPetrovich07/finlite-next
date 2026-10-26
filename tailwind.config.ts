@@ -12,6 +12,7 @@ const config: Config = {
         "fl-cream": "#F2EDE4",
         "fl-red": "#B23B3B",
         "fl-green": "#4F7942",
+        "fl-amber": "#E07A3F",
       },
       fontFamily: {
         display: ["var(--font-display)"],

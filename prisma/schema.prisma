@@ -41,9 +41,11 @@ model Company {
   id          String   @id @default(cuid())
   name        String
   defaultRegime String? // last-used regime_key, convenience default
+  patentAmount  Float    @default(0) // monthly patent fee, used when regime = "patent"
   members     User[]   @relation("CompanyMembers")
   reports     Report[]
   bankTransactions BankTransaction[]
+  journalEntries   JournalEntry[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -122,8 +124,49 @@ model BankTransaction {
   rawRow      Json?    // original parsed row, for audit/debugging
 
   importBatch String   // groups transactions from one uploaded file
+  journalEntry JournalEntry? // the posting generated from this transaction
   createdAt   DateTime @default(now())
 
   @@index([companyId, txDate])
   @@index([importBatch])
+}
+
+// ── General ledger: single source of truth for every statement ────────────
+// Every report (ОСВ, баланс, ОПиУ, ОДДС, отчёт о капитале, налоги) is DERIVED
+// from these rows by lib/ledger/engine.ts — nothing is typed into a report
+// directly, so the statements cannot disagree with each other.
+//
+// source:
+//   "opening" — начальные остатки; counted only as balances, never as turnover
+//   "manual"  — ручная проводка
+//   "bank"    — сгенерирована из BankTransaction (bankTransactionId set)
+//   "tax"     — начисление налогов за период (sourceRef = "YYYY-MM-DD..YYYY-MM-DD")
+model JournalEntry {
+  id          String   @id @default(cuid())
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  date        DateTime
+  description String
+  source      String   @default("manual")
+  sourceRef   String?
+  bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  bankTransactionId String?          @unique
+  lines       JournalLine[]
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, date])
+  @@index([companyId, source, sourceRef])
+}
+
+model JournalLine {
+  id          String       @id @default(cuid())
+  entry       JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryId     String
+  accountCode String       // see lib/ledger/accounts.ts
+  debit       Decimal      @default(0) @db.Decimal(18, 2)
+  credit      Decimal      @default(0) @db.Decimal(18, 2)
+  memo        String?
+
+  @@index([entryId])
+  @@index([accountCode])
 }

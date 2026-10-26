@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseStatementFile } from "@/lib/bank-parser";
 import { categorizeTransactions } from "@/lib/categorize";
+import { postBankTransactions } from "@/lib/ledger/repo";
 
 export const runtime = "nodejs"; // xlsx parsing needs Node, not Edge
 
@@ -47,6 +48,10 @@ export async function POST(req: NextRequest) {
     })),
   });
 
+  // every imported operation goes straight into the journal, so all
+  // statements pick it up without any manual re-entry
+  const posted = await postBankTransactions(companyId, importBatch);
+
   const summary = categorized.reduce<Record<string, number>>((acc, tx) => {
     acc[tx.category] = (acc[tx.category] ?? 0) + tx.amount;
     return acc;
@@ -55,6 +60,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     importBatch,
     count: categorized.length,
+    posted,
     warnings: parsed.warnings,
     detectedColumns: parsed.detectedColumns,
     summary,

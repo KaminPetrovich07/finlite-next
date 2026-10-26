@@ -23,15 +23,17 @@ export const metadata: Metadata = {
   description: "Финансовая аналитика и налоговые режимы НК КР",
 };
 
+// Баланс / ОДДС / Капитал as separate hand-filled forms (/balance, /cashflow,
+// /equity) are superseded by /reports, where they are derived from the
+// journal. The routes still exist; they are just no longer in the menu.
 const NAV_LINKS = [
+  { href: "/reports",     label: "Отчётность" },
+  { href: "/ledger",      label: "Журнал" },
+  { href: "/transactions",label: "Выписки" },
   { href: "/",            label: "Калькулятор" },
   { href: "/compare",     label: "Режимы" },
-  { href: "/balance",     label: "Баланс" },
-  { href: "/cashflow",    label: "ОДДС" },
-  { href: "/equity",      label: "Капитал" },
   { href: "/executive",   label: "Big 4" },
   { href: "/leanops",     label: "LeanOps" },
-  { href: "/transactions",label: "Выписки" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

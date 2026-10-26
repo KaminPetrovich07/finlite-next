@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const companies = await prisma.company.findMany({
       orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, defaultRegime: true, createdAt: true },
+      select: { id: true, name: true, defaultRegime: true, patentAmount: true, createdAt: true },
     });
     return NextResponse.json(companies);
   } catch {

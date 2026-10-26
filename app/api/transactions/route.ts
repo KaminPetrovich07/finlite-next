@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ALL_CATEGORIES } from "@/lib/categories";
+import { repostBankTransaction } from "@/lib/ledger/repo";
 
 export async function GET(req: NextRequest) {
   const companyId = req.nextUrl.searchParams.get("companyId");
@@ -29,5 +30,7 @@ export async function PATCH(req: NextRequest) {
     where: { id: parsed.data.id },
     data: { category: parsed.data.category, categorySource: "manual" },
   });
+  // the journal entry follows the category, so every statement updates too
+  await repostBankTransaction(updated.id);
   return NextResponse.json(updated);
 }

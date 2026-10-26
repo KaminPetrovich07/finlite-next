@@ -117,6 +117,10 @@ export default function TransactionsPage() {
         {uploadResult && (
           <div className="mt-4 rounded-lg border border-fl-gold/10 bg-fl-charcoal p-3 text-sm">
             <p className="text-fl-cream">✅ Загружено транзакций: {uploadResult.count}</p>
+            <p className="mt-1 text-fl-cream/70">
+              Проведено в журнал: {uploadResult.posted ?? 0}.{" "}
+              <a href="/reports" className="text-fl-gold underline-offset-4 hover:underline">Посмотреть в отчётности</a>
+            </p>
             {uploadResult.warnings?.length > 0 && (
               <ul className="mt-2 list-inside list-disc text-fl-gold-bright/90">
                 {uploadResult.warnings.map((w: string) => <li key={w}>{w}</li>)}
