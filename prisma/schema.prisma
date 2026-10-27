@@ -46,6 +46,7 @@ model Company {
   reports     Report[]
   bankTransactions BankTransaction[]
   journalEntries   JournalEntry[]
+  esgReports       EsgReport[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -169,4 +170,19 @@ model JournalLine {
 
   @@index([entryId])
   @@index([accountCode])
+}
+
+// ── ESG: non-financial inputs per company and period ──────────────────────
+// Financial ESG metrics (energy cost, payroll, taxes, fines …) are computed
+// from the journal by lib/esg.ts; only what money can't tell is stored here.
+model EsgReport {
+  id         String   @id @default(cuid())
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId  String
+  periodFrom DateTime
+  periodTo   DateTime
+  data       Json     // EsgInput
+  updatedAt  DateTime @updatedAt
+
+  @@unique([companyId, periodFrom, periodTo])
 }

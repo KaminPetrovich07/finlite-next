@@ -47,7 +47,7 @@ function periodDates(ptype: PeriodType, year: number, monthIdx: number, quarter:
 
 function FieldRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="flex items-start justify-between gap-2 py-2.5 border-t border-fl-gold/8 first:border-0">
+    <div className="flex items-start justify-between gap-2 py-2.5 border-t border-fl-line first:border-0">
       <span className="text-sm text-fl-cream/60 flex-1">{label}</span>
       <div className="text-right">
         <span className="num text-sm text-fl-cream tabular-nums">{value}</span>
@@ -181,19 +181,19 @@ export default function CalculatorPage() {
           <h1 className="font-display text-2xl font-bold text-fl-cream sm:text-3xl">
             Налоговый калькулятор
           </h1>
-          <p className="mt-1 text-sm text-fl-cream/40">НК КР 2022–2026 · все режимы</p>
+          <p className="mt-1 text-sm text-fl-cream/40">Ставки по НК КР в редакции от 06.08.2026</p>
         </header>
 
         <div className="space-y-4">
 
           {/* ── Компания ────────────────────────────────────────────────── */}
-          <div className="rounded-xl border border-fl-gold/15 bg-fl-charcoal-2 p-4 sm:p-5">
+          <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
             <p className="label-caps mb-3">Организация</p>
             <div className="flex flex-wrap gap-2">
               <select
                 value={companyId}
                 onChange={(e) => setCompanyId(e.target.value)}
-                className="flex-1 min-w-[180px] rounded-lg border border-fl-gold/20 bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
+                className="flex-1 min-w-[180px] rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
               >
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -206,7 +206,7 @@ export default function CalculatorPage() {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && createCompany()}
                 placeholder="Новая компания..."
-                className="flex-1 min-w-[180px] rounded-lg border border-fl-gold/20 bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream placeholder:text-fl-cream/25 focus:border-fl-gold focus:outline-none"
+                className="flex-1 min-w-[180px] rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream placeholder:text-fl-cream/25 focus:border-fl-gold focus:outline-none"
               />
               <button
                 onClick={createCompany}
@@ -218,7 +218,7 @@ export default function CalculatorPage() {
           </div>
 
           {/* ── Период и режим ──────────────────────────────────────────── */}
-          <div className="rounded-xl border border-fl-gold/15 bg-fl-charcoal-2 p-4 sm:p-5">
+          <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
             <p className="label-caps mb-3">Период и налоговый режим</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <label className="block">
@@ -226,7 +226,7 @@ export default function CalculatorPage() {
                 <select
                   value={ptype}
                   onChange={(e) => setPtype(e.target.value as PeriodType)}
-                  className="mt-1 w-full rounded-lg border border-fl-gold/20 bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
                 >
                   {(["Месяц","Квартал","Год"] as PeriodType[]).map(p => <option key={p}>{p}</option>)}
                 </select>
@@ -237,7 +237,7 @@ export default function CalculatorPage() {
                 <select
                   value={year}
                   onChange={(e) => setYear(+e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-fl-gold/20 bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
                 >
                   {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
                 </select>
@@ -249,7 +249,7 @@ export default function CalculatorPage() {
                   <select
                     value={monthIdx}
                     onChange={(e) => setMonthIdx(+e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-fl-gold/20 bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
                   >
                     {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
                   </select>
@@ -262,7 +262,7 @@ export default function CalculatorPage() {
                   <select
                     value={quarter}
                     onChange={(e) => setQuarter(+e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-fl-gold/20 bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
                   >
                     {[1,2,3,4].map(q => <option key={q} value={q}>Q{q}</option>)}
                   </select>
@@ -274,7 +274,7 @@ export default function CalculatorPage() {
                 <select
                   value={regimeKey}
                   onChange={(e) => setRegimeKey(e.target.value as RegimeKey)}
-                  className="mt-1 w-full rounded-lg border border-fl-gold/20 bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
                 >
                   {Object.entries(REGIMES).map(([k, v]) => (
                     <option key={k} value={k}>{v}</option>
@@ -297,7 +297,7 @@ export default function CalculatorPage() {
             <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
               <MoneyInput label="Себестоимость (материалы, производство)" value={inputs.cogs} onChange={set("cogs")} />
               <MoneyInput label="Фонд оплаты труда (до налогов)" value={inputs.salaries} onChange={set("salaries")}
-                hint="Соцфонд 12,25% начисляется автоматически" />
+                hint="Страховые взносы работодателя 2,25% начисляются автоматически; 10% взносов и 10% подоходного налога удерживаются из зарплаты" />
               <MoneyInput label="Аренда" value={inputs.rent} onChange={set("rent")} />
             </div>
           </Collapsible>
@@ -329,7 +329,7 @@ export default function CalculatorPage() {
           </Collapsible>
 
           {/* ── Спец. параметры ─────────────────────────────────────────── */}
-          {(regimeKey.startsWith("unified_") || regimeKey === "simplified") && (
+          {(regimeKey.startsWith("unified_") || regimeKey === "patent") && (
             <Collapsible title="Параметры режима">
               <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
                 {regimeKey.startsWith("unified_") && (
@@ -364,8 +364,8 @@ export default function CalculatorPage() {
           {/* ── Кнопка расчёта ──────────────────────────────────────────── */}
           <button
             onClick={handleCalculate}
-            className="w-full rounded-xl bg-fl-gold py-4 font-display text-base font-bold
-                       tracking-wide text-fl-charcoal hover:bg-fl-gold-bright
+            className="w-full rounded-xl bg-fl-accent py-4 font-display text-base font-bold
+                       tracking-wide text-fl-on-accent hover:bg-fl-accent-hover
                        active:scale-[0.99] transition-all duration-150"
           >
             Рассчитать налоги
@@ -398,7 +398,7 @@ export default function CalculatorPage() {
               </div>
 
               {/* Детализация налогов */}
-              <div className="rounded-xl border border-fl-gold/15 bg-fl-charcoal-2 p-4 sm:p-5">
+              <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <p className="label-caps">Налоговая нагрузка</p>
                   <Badge
@@ -406,12 +406,22 @@ export default function CalculatorPage() {
                     variant="neutral"
                   />
                 </div>
-                <FieldRow label="Соцфонд (работодатель 12,25%)" value={`${formatNumber(result.social)} сом`} />
-                {result.incomeTax > 0 && <FieldRow label="Налог на прибыль (10%)" value={`${formatNumber(result.incomeTax)} сом`} />}
-                {result.salesTax > 0 && <FieldRow label="Налог с продаж (2%)" value={`${formatNumber(result.salesTax)} сом`} />}
-                {result.vat > 0 && <FieldRow label="НДС (12%) — косвенный" value={`${formatNumber(result.vat)} сом`} sub="не уменьшает прибыль (IAS 1)" />}
-                {(result.details?.patentFixed ?? 0) > 0 && <FieldRow label="Патентный сбор (фикс.)" value={`${formatNumber(result.details.patentFixed ?? 0)} сом`} />}
-                <div className="mt-3 flex items-center justify-between border-t border-fl-gold/15 pt-3">
+                {Object.entries(result.details).map(([label, amount]) => (
+                  <FieldRow
+                    key={label}
+                    label={label}
+                    value={`${formatNumber(amount)} сом`}
+                    sub={label.startsWith("НДС") ? "косвенный налог, не уменьшает прибыль" : undefined}
+                  />
+                ))}
+                {result.salaries > 0 && (
+                  <FieldRow
+                    label="Удерживается из зарплаты (не расход компании)"
+                    value={`${formatNumber(result.withheld.socialEmployee + result.withheld.pit)} сом`}
+                    sub={`взносы работника 10% — ${formatNumber(result.withheld.socialEmployee)}, подоходный налог 10% — ${formatNumber(result.withheld.pit)}`}
+                  />
+                )}
+                <div className="mt-3 flex items-center justify-between border-t border-fl-line pt-3">
                   <span className="text-sm font-semibold text-fl-cream">Прямые налоги итого</span>
                   <div className="flex items-center gap-2">
                     <span className="num text-sm font-bold text-fl-cream">{formatNumber(result.totalDirect)} сом</span>
@@ -424,7 +434,7 @@ export default function CalculatorPage() {
               </div>
 
               {/* ОПУ */}
-              <div className="rounded-xl border border-fl-gold/15 bg-fl-charcoal-2 p-4 sm:p-5">
+              <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
                 <p className="label-caps mb-3">Отчёт о прибылях и убытках (сокр.)</p>
                 <FieldRow label="Выручка" value={`${formatNumber(result.totalRevenue)} сом`} />
                 <FieldRow label="Себестоимость" value={`(${formatNumber(result.cogs)}) сом`} />
@@ -443,7 +453,7 @@ export default function CalculatorPage() {
               </div>
 
               {/* CVP-метрики */}
-              <div className="rounded-xl border border-fl-gold/15 bg-fl-charcoal-2 p-4 sm:p-5">
+              <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
                 <p className="label-caps mb-3">CVP-анализ</p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <KpiCard label="Точка безубыточности" value={`${formatNumber(be!)} сом`} />
@@ -480,11 +490,11 @@ export default function CalculatorPage() {
 
               {/* История */}
               {history.length > 0 && (
-                <div className="rounded-xl border border-fl-gold/10 bg-fl-charcoal-2 p-4 sm:p-5">
+                <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
                   <p className="label-caps mb-3">История отчётов</p>
                   <div className="space-y-0">
                     {history.map((r: any) => (
-                      <div key={r.id} className="flex items-center justify-between py-2.5 border-t border-fl-gold/8 first:border-0">
+                      <div key={r.id} className="flex items-center justify-between py-2.5 border-t border-fl-line first:border-0">
                         <span className="text-sm text-fl-cream/60">{r.periodLabel}</span>
                         <span className={`num text-sm font-medium ${r.netProfit >= 0 ? "text-fl-green" : "text-fl-red"}`}>
                           {formatNumber(r.netProfit)} сом

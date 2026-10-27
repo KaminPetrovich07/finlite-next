@@ -54,7 +54,7 @@ const td = "px-3 py-2 align-top";
 const tdNum = "px-3 py-2 text-right num whitespace-nowrap";
 
 function rowClass(clickable: boolean, kind: "line" | "sub" | "total" | "subtotal" | "section") {
-  const base = "border-t border-fl-gold/10";
+  const base = "border-t border-fl-line";
   const tone =
     kind === "total" ? "bg-fl-gold/10 font-semibold text-fl-gold-bright" :
     kind === "subtotal" ? "font-medium text-fl-cream" :
@@ -76,9 +76,9 @@ function clickProps(enabled: boolean, fn: () => void) {
 
 function Frame({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-fl-gold/15 bg-fl-charcoal-2">
+    <div className="overflow-hidden rounded-xl border border-fl-line bg-fl-charcoal-2">
       <div className="overflow-x-auto">{children}</div>
-      {footer && <div className="border-t border-fl-gold/10 px-4 py-3 text-xs text-fl-cream/45">{footer}</div>}
+      {footer && <div className="border-t border-fl-line px-4 py-3 text-xs text-fl-cream/45">{footer}</div>}
     </div>
   );
 }
@@ -94,13 +94,13 @@ export function TrialBalanceTable({ s, onDrill }: StatementProps) {
         <thead>
           <tr>
             <th className={th} rowSpan={2}>Счёт</th>
-            <th className={`${thNum} border-l border-fl-gold/10`} colSpan={2}>Сальдо на начало</th>
-            <th className={`${thNum} border-l border-fl-gold/10`} colSpan={2}>Обороты за период</th>
-            <th className={`${thNum} border-l border-fl-gold/10`} colSpan={2}>Сальдо на конец</th>
+            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>Сальдо на начало</th>
+            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>Обороты за период</th>
+            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>Сальдо на конец</th>
           </tr>
           <tr>
             {["Дт", "Кт", "Дт", "Кт", "Дт", "Кт"].map((h, i) => (
-              <th key={i} className={`${thNum} ${i % 2 === 0 ? "border-l border-fl-gold/10" : ""}`}>{h}</th>
+              <th key={i} className={`${thNum} ${i % 2 === 0 ? "border-l border-fl-line" : ""}`}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -184,7 +184,7 @@ export function BalanceSheetTable({ s, onDrill, onGoto }: StatementProps) {
   return (
     <div className="space-y-3">
       <div className="flex justify-end"><Toggle on={showEmpty} set={setShowEmpty} label="Показать пустые строки" /></div>
-      <Frame footer="Прибыль текущего периода показана в стр. 530 без закрывающих проводок — счета 6xxx/7xxx закрываются виртуально.">
+      <Frame footer="Прибыль текущего периода показана в стр. 530 без закрывающих проводок — счета 6000–9900 закрываются на неё виртуально, пока период не закрыт проводкой через 5999.">
         <table className="w-full min-w-[620px] text-sm">
           <thead>
             <tr><th className={th}>Код</th><th className={th}>Статья</th><th className={thNum}>На начало</th><th className={thNum}>На конец</th></tr>
@@ -283,7 +283,7 @@ export function CashFlowTable({ s, onDrill, onGoto }: StatementProps) {
 export function EquityTable({ s, onDrill, onGoto }: StatementProps) {
   const v = s.equity.values;
   return (
-    <Frame footer="Уставный капитал — счёт 5130; прочий капитал — 5210, 5220, 5410; нераспределённая прибыль — 5310 плюс незакрытая прибыль.">
+    <Frame footer="Уставный капитал — счета 5100; прочий капитал — 5200 и резервный 5400; нераспределённая прибыль — 5300, 5999 и незакрытая прибыль периода.">
       <table className="w-full min-w-[720px] text-sm">
         <thead>
           <tr>
@@ -373,7 +373,7 @@ export function TaxPanel({ s, onDrill, onGoto, canPost, posting, onPost }: State
           <button
             onClick={onPost}
             disabled={posting}
-            className="rounded-md bg-fl-gold px-4 py-2.5 text-sm font-semibold text-fl-charcoal hover:bg-fl-gold-bright disabled:opacity-50"
+            className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50"
           >
             {posting ? "Начисляю…" : t.postedEntryIds.length ? "Пересчитать начисление" : "Начислить налоги за период"}
           </button>
@@ -397,16 +397,16 @@ export function ChecksStrip({ checks, onSelect }: { checks: Check[]; onSelect?: 
   const ok = checks.filter((c) => c.status === "ok").length;
   const bad = checks.filter((c) => c.status === "error").length;
   return (
-    <section aria-label="Сверки между формами" className="rounded-xl border border-fl-gold/15 bg-fl-charcoal-2">
-      <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-fl-gold/10 px-4 py-3 sm:px-5">
+    <section aria-label="Сверки между формами" className="rounded-xl border border-fl-line bg-fl-charcoal-2">
+      <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-fl-line px-4 py-3 sm:px-5">
         <h2 className="font-display text-base font-semibold text-fl-cream">Сверки между формами</h2>
         <p className={`text-sm ${bad ? "text-fl-red" : ok === checks.length ? "text-fl-green" : "text-fl-amber"}`}>
           {ok} из {checks.length} сходятся
         </p>
       </header>
-      <ul className="grid grid-cols-1 divide-y divide-fl-gold/10 md:grid-cols-2 md:divide-y-0">
+      <ul className="grid grid-cols-1 divide-y divide-fl-line md:grid-cols-2 md:divide-y-0">
         {checks.map((c) => (
-          <li key={c.id} className="md:border-b md:border-fl-gold/10 md:odd:border-r">
+          <li key={c.id} className="md:border-b md:border-fl-line md:odd:border-r">
             <button
               onClick={() => onSelect?.(c)}
               className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-fl-gold/5 sm:px-5"
@@ -435,7 +435,7 @@ export function ChecksStrip({ checks, onSelect }: { checks: Check[]; onSelect?: 
 }
 
 export function Notice({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border border-fl-gold/15 bg-fl-gold/5 px-4 py-3 text-sm text-fl-cream/70">{children}</div>;
+  return <div className="rounded-lg border border-fl-line bg-fl-gold/5 px-4 py-3 text-sm text-fl-cream/70">{children}</div>;
 }
 
 function Empty() {

@@ -14,7 +14,7 @@ export function Collapsible({ title, subtitle, defaultOpen = false, children, ba
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="rounded-xl border border-fl-gold/15 bg-fl-charcoal-2 overflow-hidden">
+    <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -22,7 +22,7 @@ export function Collapsible({ title, subtitle, defaultOpen = false, children, ba
                    hover:bg-fl-gold/5 transition-colors focus-visible:ring-1 focus-visible:ring-fl-gold/50"
       >
         <div>
-          <span className="font-display text-sm font-semibold uppercase tracking-widest text-fl-cream/70">
+          <span className="font-display text-[15px] font-semibold text-fl-cream">
             {title}
           </span>
           {subtitle && <p className="text-xs text-fl-cream/40 mt-0.5">{subtitle}</p>}
@@ -40,7 +40,7 @@ export function Collapsible({ title, subtitle, defaultOpen = false, children, ba
         </div>
       </button>
       <div className={`transition-all duration-200 ${open ? "max-h-[9999px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
-        <div className="px-4 pb-4 pt-1 sm:px-5 sm:pb-5 border-t border-fl-gold/10">
+        <div className="px-4 pb-4 pt-1 sm:px-5 sm:pb-5 border-t border-fl-line">
           {children}
         </div>
       </div>

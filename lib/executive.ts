@@ -5,7 +5,7 @@
 
 import type { CalculateResult } from "@/lib/tax-engine";
 
-export type RiskLevel = "🔴" | "🟡" | "🟢";
+export type RiskLevel = "Высокий" | "Средний" | "Низкий";
 
 export interface Risk {
   level: RiskLevel;
@@ -16,28 +16,28 @@ export interface Risk {
 export function computeRisks(fr: CalculateResult, safetyMarginPct: number): Risk[] {
   const risks: Risk[] = [];
   if (fr.profitability < 5) {
-    risks.push({ level: "🔴", title: "Низкая рентабельность", detail: `Чистая маржа ${fr.profitability.toFixed(1)}% — критически низко` });
+    risks.push({ level: "Высокий", title: "Низкая рентабельность", detail: `Чистая маржа ${fr.profitability.toFixed(1)}% — критически низко` });
   }
   if (fr.netProfit < 0) {
-    risks.push({ level: "🔴", title: "Убыток", detail: "Компания работает в убыток. Срочный пересмотр расходов" });
+    risks.push({ level: "Высокий", title: "Убыток", detail: "Компания работает в убыток. Срочный пересмотр расходов" });
   }
   if (fr.salaries + fr.social > fr.revenue * 0.5) {
-    risks.push({ level: "🟡", title: "Высокий ФОТ", detail: "Расходы на персонал превышают 50% выручки" });
+    risks.push({ level: "Средний", title: "Высокий ФОТ", detail: "Расходы на персонал превышают 50% выручки" });
   }
   if (fr.cogs > fr.revenue * 0.7) {
-    risks.push({ level: "🟡", title: "Высокая себестоимость", detail: "Себестоимость >70% выручки" });
+    risks.push({ level: "Средний", title: "Высокая себестоимость", detail: "Себестоимость >70% выручки" });
   }
   if (safetyMarginPct < 20) {
-    risks.push({ level: "🟡", title: "Малый запас прочности", detail: `Запас ${safetyMarginPct.toFixed(1)}% — риск убытка при снижении продаж` });
+    risks.push({ level: "Средний", title: "Малый запас прочности", detail: `Запас ${safetyMarginPct.toFixed(1)}% — риск убытка при снижении продаж` });
   }
   if (risks.length === 0) {
-    risks.push({ level: "🟢", title: "Финансово устойчива", detail: "Явных рисков не выявлено. Контролируйте ключевые метрики" });
+    risks.push({ level: "Низкий", title: "Финансово устойчива", detail: "Явных рисков не выявлено. Контролируйте ключевые метрики" });
   }
   return risks;
 }
 
 export interface Recommendation {
-  priority: "🔴 Высокий" | "🟡 Средний" | "🟢 Низкий";
+  priority: "Высокий" | "Средний" | "Низкий";
   title: string;
   detail: string;
 }
@@ -50,19 +50,19 @@ export function computeRecommendations(
   const recs: Recommendation[] = [];
   if (fr.totalDirect - bestRegimeTax > 1) {
     recs.push({
-      priority: "🔴 Высокий",
+      priority: "Высокий",
       title: "Оптимизация налогового режима",
       detail: `Перейдите на «${bestRegimeName}» — экономия ${Math.round(fr.totalDirect - bestRegimeTax).toLocaleString("ru-RU")} сом`,
     });
   }
   if (fr.sellingExp > fr.revenue * 0.1) {
-    recs.push({ priority: "🟡 Средний", title: "Контроль коммерческих расходов", detail: "Расходы >10% выручки. Аудит маркетинга" });
+    recs.push({ priority: "Средний", title: "Контроль коммерческих расходов", detail: "Расходы >10% выручки. Аудит маркетинга" });
   }
   if (fr.profitability > 15) {
-    recs.push({ priority: "🟢 Низкий", title: "Реинвестирование", detail: "Высокая рентабельность — направьте прибыль в развитие" });
+    recs.push({ priority: "Низкий", title: "Реинвестирование", detail: "Высокая рентабельность — направьте прибыль в развитие" });
   }
   if (recs.length === 0) {
-    recs.push({ priority: "🟢 Низкий", title: "Сохранять модель", detail: "Показатели в норме" });
+    recs.push({ priority: "Низкий", title: "Сохранять модель", detail: "Показатели в норме" });
   }
   return recs;
 }
@@ -119,8 +119,8 @@ export function accountingStandard(totalRevenue: number): string {
 
 export function continuityNote(netProfit: number): string {
   return netProfit > 0
-    ? "✅ Компания финансово устойчива. Признаков прекращения деятельности нет."
-    : "⚠️ Убыток периода требует анализа допущения о непрерывности деятельности.";
+    ? "Компания финансово устойчива. Признаков прекращения деятельности нет."
+    : "Убыток периода требует анализа допущения о непрерывности деятельности.";
 }
 
 /** CVP line: profit as a function of revenue, 0 to 1.5x current revenue, ~20 points. */

@@ -23,7 +23,7 @@ export function Drawer({ open, title, subtitle, onClose, children }: Props) {
   }, [open, onClose]);
 
   return (
-    <div aria-hidden={!open} inert={!open} className={`fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`}>
+    <div aria-hidden={!open} inert={!open} className={`fixed inset-0 z-50 overflow-hidden ${open ? "" : "pointer-events-none invisible"}`}>
       <div
         onClick={onClose}
         className={`absolute inset-0 bg-black/50 transition-opacity duration-200 ${open ? "opacity-100" : "opacity-0"}`}
@@ -32,10 +32,10 @@ export function Drawer({ open, title, subtitle, onClose, children }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`absolute right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-fl-gold/20 bg-fl-charcoal-2
+        className={`absolute right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-fl-line bg-fl-charcoal-2
                     shadow-2xl transition-transform duration-200 ease-out ${open ? "translate-x-0" : "translate-x-full"}`}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-fl-gold/10 px-5 py-4">
+        <header className="flex items-start justify-between gap-4 border-b border-fl-line px-5 py-4">
           <div>
             <h2 className="font-display text-lg font-semibold text-fl-cream">{title}</h2>
             {subtitle && <p className="mt-0.5 text-sm text-fl-cream/50">{subtitle}</p>}

@@ -42,8 +42,8 @@ export default function ExecutivePage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
       <header className="mb-8">
-        <h1 className="font-display text-3xl font-bold text-fl-gold-bright sm:text-4xl">
-          🎯 Big 4 Executive Report
+        <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">
+          Big 4 Executive Report
         </h1>
         <p className="mt-1 text-sm text-fl-cream/60">Сводка для руководителя · {periodLabel}</p>
       </header>
@@ -82,12 +82,12 @@ function ExecutiveBody({
   return (
     <>
       {/* Executive summary */}
-      <section className="mb-6 space-y-1.5 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 text-sm sm:p-5">
-        <p className="font-display text-base font-semibold text-fl-gold-bright">📌 EXECUTIVE SUMMARY — {periodLabel}</p>
-        <p>💰 <b>Чистая прибыль:</b> {formatNumber(fr.netProfit)} сом (рентабельность {formatPercent(fr.profitability)})</p>
-        <p>📊 <b>Валовая маржа:</b> {formatPercent(gm)} | <b>Налоговая нагрузка:</b> {formatPercent(tb)} | <b>Запас прочности:</b> {formatPercent(sm)}</p>
-        <p>🏛️ <b>Режим:</b> {fr.regimeName} | <b>EBIT:</b> {formatNumber(fr.ebit)} сом | <b>EBT:</b> {formatNumber(fr.ebt)} сом</p>
-        <p>📍 <b>Точка безубыточности:</b> {formatNumber(be)} сом — {sm > 30 ? "✅ устойчив" : sm > 15 ? "⚠️ внимание" : "🔴 критично"}</p>
+      <section className="mb-6 space-y-1.5 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 text-sm sm:p-5">
+        <p className="font-display text-base font-semibold text-fl-gold-bright">EXECUTIVE SUMMARY — {periodLabel}</p>
+        <p><b>Чистая прибыль:</b> {formatNumber(fr.netProfit)} сом (рентабельность {formatPercent(fr.profitability)})</p>
+        <p><b>Валовая маржа:</b> {formatPercent(gm)} | <b>Налоговая нагрузка:</b> {formatPercent(tb)} | <b>Запас прочности:</b> {formatPercent(sm)}</p>
+        <p><b>Режим:</b> {fr.regimeName} | <b>EBIT:</b> {formatNumber(fr.ebit)} сом | <b>EBT:</b> {formatNumber(fr.ebt)} сом</p>
+        <p><b>Точка безубыточности:</b> {formatNumber(be)} сом — {sm > 30 ? "устойчив" : sm > 15 ? "внимание" : "критично"}</p>
       </section>
 
       {/* KPI dashboard */}
@@ -99,18 +99,18 @@ function ExecutiveBody({
       </section>
 
       {/* Risks */}
-      <section className="mb-6 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">⚠️ Анализ рисков</h2>
+      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Анализ рисков</h2>
         <div className="space-y-1.5 text-sm">
           {risks.map((r, i) => (
-            <p key={i}>{r.level} <b className="text-fl-cream">{r.title}</b> — <span className="text-fl-cream/60">{r.detail}</span></p>
+            <p key={i}><span className={r.level === "Высокий" ? "text-fl-red" : r.level === "Средний" ? "text-fl-amber" : "text-fl-green"}>{r.level}</span> · <b className="text-fl-cream">{r.title}</b> — <span className="text-fl-cream/60">{r.detail}</span></p>
           ))}
         </div>
       </section>
 
       {/* CVP chart */}
-      <section className="mb-6 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-1 font-display text-base font-semibold text-fl-cream">📐 CVP-анализ</h2>
+      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+        <h2 className="mb-1 font-display text-base font-semibold text-fl-cream">CVP-анализ</h2>
         <div className="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Metric label="Вал. маржа" value={formatPercent(gm)} />
           <Metric label="Точка безубыточности" value={formatNumber(be)} />
@@ -134,21 +134,21 @@ function ExecutiveBody({
       </section>
 
       {/* Forecast scenarios */}
-      <section className="mb-6 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">🔮 Прогноз и сценарии</h2>
+      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Прогноз и сценарии</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <ScenarioCard label="🔴 Пессимистичный" growth={scenarios.pessimistic}
+          <ScenarioCard label="Пессимистичный" growth={scenarios.pessimistic}
             onChange={(v) => setScenarios({ ...scenarios, pessimistic: v })} fr={fr} />
-          <ScenarioCard label="🟡 Базовый" growth={scenarios.base}
+          <ScenarioCard label="Базовый" growth={scenarios.base}
             onChange={(v) => setScenarios({ ...scenarios, base: v })} fr={fr} />
-          <ScenarioCard label="🟢 Оптимистичный" growth={scenarios.optimistic}
+          <ScenarioCard label="Оптимистичный" growth={scenarios.optimistic}
             onChange={(v) => setScenarios({ ...scenarios, optimistic: v })} fr={fr} />
         </div>
       </section>
 
       {/* Recommendations */}
-      <section className="mb-6 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">✅ Рекомендации</h2>
+      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Рекомендации</h2>
         <div className="space-y-1.5 text-sm">
           {recs.map((r, i) => (
             <p key={i}><b className="text-fl-gold-bright">{r.priority}</b> | <b className="text-fl-cream">{r.title}</b> — <span className="text-fl-cream/60">{r.detail}</span></p>
@@ -157,8 +157,8 @@ function ExecutiveBody({
       </section>
 
       {/* Waterfall */}
-      <section className="mb-6 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">📈 Водопад: от выручки к прибыли</h2>
+      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Водопад: от выручки к прибыли</h2>
         <ResponsiveContainer width="100%" height={320}>
           <BarChart data={bars} margin={{ top: 20 }}>
             <CartesianGrid stroke="#C9A22720" vertical={false} />
@@ -175,8 +175,8 @@ function ExecutiveBody({
       </section>
 
       {/* Explanatory notes */}
-      <section className="rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 text-sm leading-relaxed sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">📝 Пояснительная записка (IAS 1.112)</h2>
+      <section className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 text-sm leading-relaxed sm:p-5">
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Пояснительная записка (IAS 1.112)</h2>
         <div className="space-y-3 text-fl-cream/80">
           <p><b className="text-fl-cream">1. Основы подготовки отчётности.</b> Отчётность за <b>{periodLabel}</b> подготовлена по методу начисления (МСФО IAS 1.27). Применяемый стандарт: <b>{accountingStandard(fr.totalRevenue)}</b>.</p>
           <p><b className="text-fl-cream">2. Учётная политика.</b> Выручка признаётся по мере выполнения обязательств (МСФО IFRS 15). Запасы оцениваются по средней себестоимости. Амортизация начисляется линейным способом.</p>
@@ -193,7 +193,7 @@ function ExecutiveBody({
 function ScenarioCard({ label, growth, onChange, fr }: { label: string; growth: number; onChange: (v: number) => void; fr: CalculateResult }) {
   const fct = doForecast(fr, growth);
   return (
-    <div className="rounded-lg border border-fl-gold/10 bg-fl-charcoal p-3">
+    <div className="rounded-lg border border-fl-line bg-fl-charcoal p-3">
       <div className="mb-2 flex items-center justify-between text-sm">
         <span className="text-fl-cream/70">{label}</span>
         <span className="font-mono text-fl-gold-bright">{growth >= 0 ? "+" : ""}{growth}%</span>
@@ -207,7 +207,7 @@ function ScenarioCard({ label, growth, onChange, fr }: { label: string; growth: 
 
 function Kpi({ label, value, gold }: { label: string; value: string; gold?: boolean }) {
   return (
-    <div className="rounded-lg border border-fl-gold/10 bg-fl-charcoal-2 p-3">
+    <div className="rounded-lg border border-fl-line bg-fl-charcoal-2 p-3">
       <div className="text-xs text-fl-cream/50">{label}</div>
       <div className={`mt-1 font-mono text-lg font-semibold tabular-nums ${gold ? "text-fl-gold-bright" : "text-fl-cream"}`}>{value}</div>
     </div>
@@ -216,7 +216,7 @@ function Kpi({ label, value, gold }: { label: string; value: string; gold?: bool
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-fl-gold/10 bg-fl-charcoal p-2">
+    <div className="rounded-md border border-fl-line bg-fl-charcoal p-2">
       <div className="text-[11px] text-fl-cream/50">{label}</div>
       <div className="font-mono text-sm font-semibold text-fl-cream">{value}</div>
     </div>

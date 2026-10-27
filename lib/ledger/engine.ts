@@ -2,20 +2,24 @@
 // lib/ledger/engine.ts — журнал проводок → все формы отчётности.
 //
 //   entries ──► ОСВ (оборотно-сальдовая ведомость)
-//                ├─► ОПиУ        (обороты счетов 6xxx/7xxx за период)
-//                ├─► Баланс Ф.1  (сальдо на начало и конец, прибыль закрывается в 530 виртуально)
-//                ├─► ОДДС Ф.3    (прямой метод: строки по корр. счёту денежных проводок)
-//                ├─► Капитал Ф.4 (движения по счетам 5xxx + чистая прибыль из ОПиУ)
-//                └─► Налоги      (расчёт по режиму из оборотов периода)
+//                ├─► ОПиУ (Ф.2)  обороты счетов 6000–9900 за период, кроме проводок закрытия
+//                ├─► Баланс (Ф.1) сальдо на начало и конец; незакрытая прибыль → стр. 530
+//                ├─► ОДДС (Ф.3)  прямой метод: строки по корр. счёту денежных проводок
+//                ├─► Капитал (Ф.4) движения по счетам 5000 + чистая прибыль из ОПиУ
+//                └─► Налоги      расчёт по режиму из оборотов периода
 //   + сверки между формами
+//
+// Проводки закрытия (source = "closing", счёт 5999) переносят прибыль на 5300.
+// Они участвуют в сальдо и ОСВ, но не в ОПиУ и не в Ф.4 — иначе прибыль
+// периода обнулилась бы или посчиталась дважды.
 //
 // Pure functions only — no Prisma, no fetch — so every invariant is unit
 // tested in lib/ledger/engine.test.ts.
 // ════════════════════════════════════════════════════════════════════════
 
 import {
-  ACCOUNTS, CASH_ACCOUNTS, SUSPENSE_ACCOUNTS, getAccount, isCash, isPl, accountName,
-  type CfRole, type PlRole,
+  ACCOUNTS, CASH_ACCOUNTS, SUSPENSE_ACCOUNTS, getAccount, isCash, isPl, isPostable, accountName,
+  type CfRole, type Nature, type PlRole,
 } from "./accounts";
 import { computeBalanceTotals } from "@/lib/balance-sheet";
 import { computeCashFlowTotals } from "@/lib/cash-flow";
@@ -32,7 +36,9 @@ export function validateEntry(e: Pick<LedgerEntry, "lines" | "date">): string[] 
   if (e.lines.length < 2) errors.push("В проводке должно быть минимум две строки");
   let dr = 0, cr = 0;
   e.lines.forEach((l, i) => {
-    if (!getAccount(l.account)) errors.push(`Строка ${i + 1}: неизвестный счёт ${l.account}`);
+    const a = getAccount(l.account);
+    if (!a) errors.push(`Строка ${i + 1}: счёта ${l.account} нет в плане счетов`);
+    else if (a.header) errors.push(`Строка ${i + 1}: ${l.account} — групповой счёт, выберите субсчёт`);
     if (l.debit < 0 || l.credit < 0) errors.push(`Строка ${i + 1}: суммы не могут быть отрицательными`);
     if (l.debit > EPS && l.credit > EPS) errors.push(`Строка ${i + 1}: укажите либо дебет, либо кредит`);
     if (l.debit <= EPS && l.credit <= EPS) errors.push(`Строка ${i + 1}: пустая сумма`);
@@ -58,7 +64,7 @@ function addNet(m: Net, l: LedgerLine) {
   m.set(l.account, (m.get(l.account) ?? 0) + l.debit - l.credit);
 }
 
-// ── ОСВ ────────────────────────────────────────────────────────────────────
+// ── result shapes ──────────────────────────────────────────────────────────
 
 export interface TbRow {
   account: string;
@@ -73,13 +79,6 @@ export interface TrialBalance {
   totals: Omit<TbRow, "account" | "name">;
 }
 
-function split(net: number): [number, number] {
-  const r = round2(net);
-  return r >= 0 ? [r, 0] : [0, -r];
-}
-
-// ── result shape ───────────────────────────────────────────────────────────
-
 export interface IsLine {
   key: string;
   label: string;
@@ -90,29 +89,39 @@ export interface IsLine {
 
 export interface IncomeStatement {
   lines: IsLine[];
-  byRole: Record<PlRole, number>;
+  /** by ОПиУ section; expenses positive, incomes positive */
+  byLine: Record<PlRole, number>;
+  /** expenses by nature (элементы затрат), positive */
+  byNature: Partial<Record<Nature, number>>;
+  revenueGross: number;
+  returns: number;
+  netRevenue: number;
+  /** чистая выручка + прочие операционные доходы — база для оборотных налогов */
   revenueTotal: number;
   grossProfit: number;
-  ebit: number;
+  operatingProfit: number;
   ebt: number;
   incomeTax: number;
+  ordinaryProfit: number;
+  extraordinary: number;
   netProfit: number;
+  /** чистая прибыль / чистая выручка, % */
   margin: number;
+  /** @deprecated alias of operatingProfit */
+  ebit: number;
 }
 
 export interface BalanceSheet {
-  /** leaf + total rows of ФОСАМК Ф.1, at period end */
   closing: Record<number, number>;
-  /** same, at period start */
   opening: Record<number, number>;
-  /** row code → contributing accounts (for drill-down) */
   accountsByRow: Record<number, string[]>;
 }
 
 export interface CashFlowStatement {
   values: Record<number, number>;
-  /** row code → entry ids that produced it (for drill-down) */
   entriesByRow: Record<number, string[]>;
+  /** counter-account → cash in (+) / out (−) over the period */
+  byAccount: Record<string, number>;
 }
 
 export interface EquityStatement {
@@ -137,6 +146,17 @@ export interface TaxSection {
   postedEntryIds: string[];
   vatOutput: number;
   vatInput: number;
+  cashRevenue: number;
+}
+
+export interface MonthlyPoint {
+  month: string; // YYYY-MM
+  revenue: number;
+  expenses: number;
+  netProfit: number;
+  cashIn: number;
+  cashOut: number;
+  cashEnd: number;
 }
 
 export interface Statements {
@@ -153,16 +173,6 @@ export interface Statements {
   entryCount: number;
 }
 
-export interface MonthlyPoint {
-  month: string; // YYYY-MM
-  revenue: number;
-  expenses: number;
-  netProfit: number;
-  cashIn: number;
-  cashOut: number;
-  cashEnd: number;
-}
-
 export interface BuildOptions {
   regime: RegimeKey | null;
   patentMonthly?: number;
@@ -176,6 +186,8 @@ export function buildStatements(entries: LedgerEntry[], period: Period, opts: Bu
   const before: Net = new Map();
   const turnDr = new Map<string, number>();
   const turnCr = new Map<string, number>();
+  const plDr = new Map<string, number>();
+  const plCr = new Map<string, number>();
   const inPeriod: LedgerEntry[] = [];
 
   for (const e of entries) {
@@ -186,6 +198,10 @@ export function buildStatements(entries: LedgerEntry[], period: Period, opts: Bu
       for (const l of e.lines) {
         turnDr.set(l.account, (turnDr.get(l.account) ?? 0) + l.debit);
         turnCr.set(l.account, (turnCr.get(l.account) ?? 0) + l.credit);
+        if (e.source !== "closing") {
+          plDr.set(l.account, (plDr.get(l.account) ?? 0) + l.debit);
+          plCr.set(l.account, (plCr.get(l.account) ?? 0) + l.credit);
+        }
       }
     }
   }
@@ -194,7 +210,7 @@ export function buildStatements(entries: LedgerEntry[], period: Period, opts: Bu
   for (const e of inPeriod) e.lines.forEach((l) => addNet(closing, l));
 
   const trialBalance = buildTrialBalance(before, turnDr, turnCr, closing);
-  const incomeStatement = buildIncomeStatement(turnDr, turnCr);
+  const incomeStatement = buildIncomeStatement(plDr, plCr);
   const balanceSheet = buildBalanceSheet(before, closing);
   const cashFlow = buildCashFlow(inPeriod, before);
   const equity = buildEquity(inPeriod, before, incomeStatement.netProfit);
@@ -213,11 +229,17 @@ export function buildStatements(entries: LedgerEntry[], period: Period, opts: Bu
 
 // ── ОСВ ────────────────────────────────────────────────────────────────────
 
+function split(net: number): [number, number] {
+  const r = round2(net);
+  return r >= 0 ? [r, 0] : [0, -r];
+}
+
+const ORDER = new Map(ACCOUNTS.map((a, i) => [a.code, i]));
+
 function buildTrialBalance(before: Net, turnDr: Map<string, number>, turnCr: Map<string, number>, closing: Net): TrialBalance {
   const codes = new Set<string>([...before.keys(), ...turnDr.keys(), ...turnCr.keys()]);
-  const order = new Map(ACCOUNTS.map((a, i) => [a.code, i]));
   const rows: TbRow[] = [...codes]
-    .sort((a, b) => (order.get(a) ?? 9999) - (order.get(b) ?? 9999) || a.localeCompare(b))
+    .sort((a, b) => (ORDER.get(a) ?? 9999) - (ORDER.get(b) ?? 9999) || a.localeCompare(b))
     .map((code) => {
       const [openingDr, openingCr] = split(before.get(code) ?? 0);
       const [closingDr, closingCr] = split(closing.get(code) ?? 0);
@@ -241,68 +263,81 @@ function buildTrialBalance(before: Net, turnDr: Map<string, number>, turnCr: Map
   };
 }
 
-// ── ОПиУ ───────────────────────────────────────────────────────────────────
+// ── ОПиУ (Ф.2) ─────────────────────────────────────────────────────────────
 
-const PL_ROLES: PlRole[] = [
-  "revenue", "otherIncome", "investInc", "otherNonOpInc",
-  "cogs", "selling", "admin", "salaries", "social", "rent", "utilities", "otherTaxes",
-  "otherOp", "interest", "otherNonOpExp", "incomeTax",
+export const PL_LINES: PlRole[] = [
+  "revenue", "otherOpIncome", "cogs", "selling", "otherOpExpense", "admin",
+  "nonOpIncome", "nonOpExpense", "extraordinaryIncome", "extraordinaryExpense", "incomeTax",
 ];
 
-function buildIncomeStatement(turnDr: Map<string, number>, turnCr: Map<string, number>): IncomeStatement {
-  const byRole = Object.fromEntries(PL_ROLES.map((r) => [r, 0])) as Record<PlRole, number>;
-  const accountsByRole = Object.fromEntries(PL_ROLES.map((r) => [r, [] as string[]])) as Record<PlRole, string[]>;
+function buildIncomeStatement(dr: Map<string, number>, cr: Map<string, number>): IncomeStatement {
+  const byLine = Object.fromEntries(PL_LINES.map((r) => [r, 0])) as Record<PlRole, number>;
+  const accountsBy = Object.fromEntries(PL_LINES.map((r) => [r, [] as string[]])) as Record<PlRole, string[]>;
+  const byNature: Partial<Record<Nature, number>> = {};
+  let revenueGross = 0, returns = 0;
 
   for (const a of ACCOUNTS) {
     if (!a.pl) continue;
-    const dr = turnDr.get(a.code) ?? 0;
-    const cr = turnCr.get(a.code) ?? 0;
-    const amount = a.type === "income" ? cr - dr : dr - cr;
-    byRole[a.pl] += amount;
-    accountsByRole[a.pl].push(a.code);
+    const d = dr.get(a.code) ?? 0, c = cr.get(a.code) ?? 0;
+    if (Math.abs(d) < EPS && Math.abs(c) < EPS) { accountsBy[a.pl].push(a.code); continue; }
+    const amount = a.type === "income" ? c - d : d - c;
+    byLine[a.pl] += amount;
+    accountsBy[a.pl].push(a.code);
+    if (a.pl === "revenue") {
+      if (a.contra) returns += -amount; else revenueGross += amount;
+    }
+    if (a.type === "expense" && a.pl !== "incomeTax") {
+      const n: Nature = a.nature ?? "other";
+      byNature[n] = (byNature[n] ?? 0) + amount;
+    }
   }
-  for (const r of PL_ROLES) byRole[r] = round2(byRole[r]);
+  for (const r of PL_LINES) byLine[r] = round2(byLine[r]);
+  for (const k of Object.keys(byNature) as Nature[]) {
+    byNature[k] = round2(byNature[k]!);
+    if (Math.abs(byNature[k]!) < EPS) delete byNature[k];
+  }
 
-  const b = byRole;
-  const acc = (...roles: PlRole[]) => roles.flatMap((r) => accountsByRole[r]);
-  const adminTotal = round2(b.admin + b.salaries + b.social + b.rent + b.utilities + b.otherTaxes);
-  const grossProfit = round2(b.revenue - b.cogs);
-  const ebit = round2(grossProfit - b.selling - adminTotal + b.otherIncome - b.otherOp);
-  const nonOp = round2(b.investInc - b.interest + b.otherNonOpInc - b.otherNonOpExp);
-  const ebt = round2(ebit + nonOp);
-  const netProfit = round2(ebt - b.incomeTax);
-  const revenueTotal = round2(b.revenue + b.otherIncome);
+  const b = byLine;
+  const acc = (...roles: PlRole[]) => roles.flatMap((r) => accountsBy[r]);
+  const netRevenue = round2(b.revenue);
+  const grossProfit = round2(netRevenue - b.cogs);
+  const operatingProfit = round2(grossProfit + b.otherOpIncome - b.selling - b.admin - b.otherOpExpense);
+  const ebt = round2(operatingProfit + b.nonOpIncome - b.nonOpExpense);
+  const ordinaryProfit = round2(ebt - b.incomeTax);
+  const extraordinary = round2(b.extraordinaryIncome - b.extraordinaryExpense);
+  const netProfit = round2(ordinaryProfit + extraordinary);
+  const revenueTotal = round2(netRevenue + b.otherOpIncome);
 
   const lines: IsLine[] = [
-    { key: "revenue", label: "Выручка от реализации", amount: b.revenue, accounts: acc("revenue"), kind: "line" },
-    { key: "cogs", label: "Себестоимость реализованной продукции", amount: -b.cogs, accounts: acc("cogs"), kind: "line" },
+    { key: "revenueGross", label: "Выручка от реализации", amount: round2(revenueGross), accounts: acc("revenue").filter((c) => c !== "6120"), kind: "line" },
+    { key: "returns", label: "Возвраты проданных товаров и скидки", amount: -round2(returns), accounts: ["6120"], kind: "sub" },
+    { key: "netRevenue", label: "Чистая выручка", amount: netRevenue, accounts: acc("revenue"), kind: "subtotal" },
+    { key: "cogs", label: "Себестоимость реализованной продукции и товаров", amount: -b.cogs, accounts: acc("cogs"), kind: "line" },
     { key: "gross", label: "Валовая прибыль", amount: grossProfit, accounts: acc("revenue", "cogs"), kind: "subtotal" },
-    { key: "selling", label: "Коммерческие расходы", amount: -b.selling, accounts: acc("selling"), kind: "line" },
-    { key: "adminTotal", label: "Административные расходы", amount: -adminTotal, accounts: acc("admin", "salaries", "social", "rent", "utilities", "otherTaxes"), kind: "line" },
-    { key: "salaries", label: "в т.ч. оплата труда", amount: -b.salaries, accounts: acc("salaries"), kind: "sub" },
-    { key: "social", label: "в т.ч. страховые взносы", amount: -b.social, accounts: acc("social"), kind: "sub" },
-    { key: "rent", label: "в т.ч. аренда", amount: -b.rent, accounts: acc("rent"), kind: "sub" },
-    { key: "utilities", label: "в т.ч. коммунальные и энергия", amount: -b.utilities, accounts: acc("utilities"), kind: "sub" },
-    { key: "otherTaxes", label: "в т.ч. налоги в составе расходов", amount: -b.otherTaxes, accounts: acc("otherTaxes"), kind: "sub" },
-    { key: "otherIncome", label: "Прочие операционные доходы", amount: b.otherIncome, accounts: acc("otherIncome"), kind: "line" },
-    { key: "otherOp", label: "Прочие операционные расходы", amount: -b.otherOp, accounts: acc("otherOp"), kind: "line" },
-    { key: "ebit", label: "Прибыль от операционной деятельности", amount: ebit, accounts: [], kind: "subtotal" },
-    { key: "investInc", label: "Доходы от инвестиций", amount: b.investInc, accounts: acc("investInc"), kind: "line" },
-    { key: "interest", label: "Расходы по процентам", amount: -b.interest, accounts: acc("interest"), kind: "line" },
-    { key: "otherNonOp", label: "Прочие внереализационные доходы и расходы", amount: round2(b.otherNonOpInc - b.otherNonOpExp), accounts: acc("otherNonOpInc", "otherNonOpExp"), kind: "line" },
+    { key: "otherOpIncome", label: "Прочие доходы от операционной деятельности", amount: b.otherOpIncome, accounts: acc("otherOpIncome"), kind: "line" },
+    { key: "selling", label: "Расходы, связанные с реализацией", amount: -b.selling, accounts: acc("selling"), kind: "line" },
+    { key: "admin", label: "Общие и административные расходы", amount: -b.admin, accounts: acc("admin"), kind: "line" },
+    { key: "otherOpExpense", label: "Прочие производственные расходы", amount: -b.otherOpExpense, accounts: acc("otherOpExpense"), kind: "line" },
+    { key: "operating", label: "Прибыль от операционной деятельности", amount: operatingProfit, accounts: [], kind: "subtotal" },
+    { key: "nonOpIncome", label: "Доходы от неоперационной деятельности", amount: b.nonOpIncome, accounts: acc("nonOpIncome"), kind: "line" },
+    { key: "nonOpExpense", label: "Расходы по неоперационной деятельности", amount: -b.nonOpExpense, accounts: acc("nonOpExpense"), kind: "line" },
     { key: "ebt", label: "Прибыль до налогообложения", amount: ebt, accounts: [], kind: "subtotal" },
-    { key: "incomeTax", label: "Налог на прибыль / единый налог / патент", amount: -b.incomeTax, accounts: acc("incomeTax"), kind: "line" },
-    { key: "net", label: "Чистая прибыль (убыток)", amount: netProfit, accounts: acc(...PL_ROLES), kind: "total" },
+    { key: "incomeTax", label: "Налог на прибыль (единый налог, патент)", amount: -b.incomeTax, accounts: acc("incomeTax"), kind: "line" },
+    { key: "ordinary", label: "Прибыль от обычной деятельности", amount: ordinaryProfit, accounts: [], kind: "subtotal" },
+    { key: "extraordinary", label: "Чрезвычайные статьи", amount: extraordinary, accounts: acc("extraordinaryIncome", "extraordinaryExpense"), kind: "line" },
+    { key: "net", label: "Чистая прибыль (убыток)", amount: netProfit, accounts: acc(...PL_LINES), kind: "total" },
   ];
 
   return {
-    lines, byRole, revenueTotal, grossProfit, ebit, ebt,
-    incomeTax: b.incomeTax, netProfit,
-    margin: revenueTotal > 0 ? round2((netProfit / revenueTotal) * 100) : 0,
+    lines, byLine, byNature,
+    revenueGross: round2(revenueGross), returns: round2(returns), netRevenue, revenueTotal,
+    grossProfit, operatingProfit, ebt, incomeTax: b.incomeTax, ordinaryProfit, extraordinary, netProfit,
+    margin: netRevenue > 0 ? round2((netProfit / netRevenue) * 100) : 0,
+    ebit: operatingProfit,
   };
 }
 
-// ── Баланс ─────────────────────────────────────────────────────────────────
+// ── Баланс (Ф.1) ───────────────────────────────────────────────────────────
 
 function balanceValues(net: Net): Record<number, number> {
   const v: Record<number, number> = {};
@@ -315,12 +350,11 @@ function balanceValues(net: Net): Record<number, number> {
     const a = getAccount(code);
     if (!a) continue;
     if (isPl(code)) { pl += n; continue; }
-    // assets: debit balance; liabilities & equity: credit balance
     const amount = a.type === "asset" ? n : -n;
     add(a.bsRow, amount);
     if (a.bsSub !== undefined && a.bsSub !== a.bsRow) add(a.bsSub, amount);
   }
-  // virtual closing of the P&L into retained earnings (5300)
+  // virtual closing of whatever P&L has not been closed to 5300 yet
   v[530] = (v[530] ?? 0) - pl;
   for (const k of Object.keys(v)) v[Number(k)] = round2(v[Number(k)]);
   const totals = computeBalanceTotals(v);
@@ -331,6 +365,7 @@ function balanceValues(net: Net): Record<number, number> {
 function buildBalanceSheet(before: Net, closing: Net): BalanceSheet {
   const accountsByRow: Record<number, string[]> = {};
   for (const a of ACCOUNTS) {
+    if (a.header) continue;
     if (a.bsRow !== undefined) (accountsByRow[a.bsRow] ??= []).push(a.code);
     if (a.bsSub !== undefined && a.bsSub !== a.bsRow) (accountsByRow[a.bsSub] ??= []).push(a.code);
     if (a.pl) (accountsByRow[530] ??= []).push(a.code);
@@ -338,7 +373,7 @@ function buildBalanceSheet(before: Net, closing: Net): BalanceSheet {
   return { opening: balanceValues(before), closing: balanceValues(closing), accountsByRow };
 }
 
-// ── ОДДС (прямой метод) ────────────────────────────────────────────────────
+// ── ОДДС (Ф.3, прямой метод) ───────────────────────────────────────────────
 
 const CF_IN: Partial<Record<CfRole, number>> = {
   sales: 10, supplies: 20, services: 20, interest: 20, otherOperating: 20, incomeTax: 20,
@@ -370,12 +405,17 @@ export function cashFlowAllocation(e: LedgerEntry): Array<{ row: number; amount:
   });
 }
 
+const INFLOW_ROWS = new Set([10, 20, 30, 210, 220, 230, 240, 250, 260, 410, 420, 430, 440, 450]);
+export function isInflowRow(row: number) { return INFLOW_ROWS.has(row); }
+
 function buildCashFlow(inPeriod: LedgerEntry[], before: Net): CashFlowStatement {
   const values: Record<number, number> = {};
   const entriesByRow: Record<number, string[]> = {};
+  const byAccount: Record<string, number> = {};
   for (const e of inPeriod) {
     for (const a of cashFlowAllocation(e)) {
       values[a.row] = (values[a.row] ?? 0) + a.amount;
+      byAccount[a.account] = round2((byAccount[a.account] ?? 0) + (isInflowRow(a.row) ? a.amount : -a.amount));
       const ids = (entriesByRow[a.row] ??= []);
       if (!ids.includes(e.id)) ids.push(e.id);
     }
@@ -385,12 +425,20 @@ function buildCashFlow(inPeriod: LedgerEntry[], before: Net): CashFlowStatement 
   for (const k of Object.keys(values)) values[Number(k)] = round2(values[Number(k)]);
   const all = computeCashFlowTotals(values);
   for (const k of Object.keys(all)) all[Number(k)] = round2(all[Number(k)]);
-  return { values: all, entriesByRow };
+  return { values: all, entriesByRow, byAccount };
 }
 
 // ── Отчёт об изменениях в капитале (Ф.4) ───────────────────────────────────
 
-const EQUITY_COL: Record<string, number> = { "5130": 0, "5210": 1, "5220": 1, "5410": 1, "5310": 2 };
+/** column of Ф.4: 0 уставный, 1 прочий, 2 нераспределённая прибыль */
+function equityCol(code: string): number | undefined {
+  const a = getAccount(code);
+  if (!a || a.type !== "equity") return undefined;
+  if (a.bsRow === 510 || a.bsRow === 514) return 0;
+  if (a.bsRow === 520 || a.bsRow === 540) return 1;
+  if (a.bsRow === 530) return 2;
+  return undefined;
+}
 
 function buildEquity(inPeriod: LedgerEntry[], before: Net, netProfit: number): EquityStatement {
   const v: EquityValues = {};
@@ -408,23 +456,24 @@ function buildEquity(inPeriod: LedgerEntry[], before: Net, netProfit: number): E
   let priorPl = 0;
   for (const [code, n] of before) {
     if (isPl(code)) { priorPl += n; continue; }
-    const col = EQUITY_COL[code];
+    const col = equityCol(code);
     if (col !== undefined) add(10, col, -n);
   }
   add(10, 2, -priorPl);
 
   for (const e of inPeriod) {
-    const counters = e.lines.filter((l) => EQUITY_COL[l.account] === undefined);
-    const counterCodes = counters.map((l) => l.account);
+    if (e.source === "closing") continue; // profit is shown once, in row 080
+    const counterCodes = e.lines.filter((l) => equityCol(l.account) === undefined).map((l) => l.account);
     for (const l of e.lines) {
-      const col = EQUITY_COL[l.account];
+      const col = equityCol(l.account);
       if (col === undefined) continue;
       const amount = l.credit - l.debit;
       let row: number;
       if (l.account === "5220") row = 50;
+      else if (l.account === "5230") row = 70;
       else if (counterCodes.includes("3540")) row = 90;
-      else if (counterCodes.some((c) => isCash(c) || c === "1910")) row = col === 2 && amount < 0 ? 90 : 100;
-      else if (counterCodes.length === 0) row = 110; // transfer between equity accounts (e.g. to reserve capital)
+      else if (counterCodes.some((c) => isCash(c) || c === "1900")) row = col === 2 && amount < 0 ? 90 : 100;
+      else if (counterCodes.length === 0) row = 110; // between equity accounts, e.g. to reserve capital
       else row = 20;
       add(row, col, amount, e.id);
     }
@@ -446,25 +495,30 @@ function buildEquity(inPeriod: LedgerEntry[], before: Net, netProfit: number): E
 
 // ── Налоги ─────────────────────────────────────────────────────────────────
 
+const TAX_EXPENSE_ACCOUNTS = new Set(["9910", "8190"]);
+
 function buildTaxSection(inPeriod: LedgerEntry[], period: Period, is: IncomeStatement, opts: BuildOptions): TaxSection {
-  let cashRevenue = 0;
-  let posted = 0;
+  let cashRevenue = 0, posted = 0, postedTurnoverTax = 0;
   const postedEntryIds: string[] = [];
   let vatOutput = 0, vatInput = 0;
 
   for (const e of inPeriod) {
+    if (e.source === "closing") continue;
     const revCredit = e.lines
-      .filter((l) => { const r = getAccount(l.account)?.pl; return r === "revenue" || r === "otherIncome"; })
+      .filter((l) => { const r = getAccount(l.account)?.pl; return r === "revenue" || r === "otherOpIncome"; })
       .reduce((s, l) => s + l.credit - l.debit, 0);
     if (revCredit > EPS) {
       const debits = e.lines.filter((l) => l.debit > EPS);
       const totalDr = debits.reduce((s, l) => s + l.debit, 0);
-      const cashDr = debits.filter((l) => l.account === "1110").reduce((s, l) => s + l.debit, 0);
+      const cashDr = debits.filter((l) => l.account === "1110" || l.account === "1120").reduce((s, l) => s + l.debit, 0);
       if (totalDr > EPS) cashRevenue += revCredit * (cashDr / totalDr);
     }
     if (e.source === "tax") {
       postedEntryIds.push(e.id);
-      posted += e.lines.filter((l) => l.account === "7710" || l.account === "7510").reduce((s, l) => s + l.debit - l.credit, 0);
+      for (const l of e.lines) {
+        if (TAX_EXPENSE_ACCOUNTS.has(l.account)) posted += l.debit - l.credit;
+        if (l.account === "8190") postedTurnoverTax += l.debit - l.credit;
+      }
     }
     for (const l of e.lines) {
       if (l.account === "3430") vatOutput += l.credit - l.debit;
@@ -472,18 +526,20 @@ function buildTaxSection(inPeriod: LedgerEntry[], period: Period, is: IncomeStat
     }
   }
 
-  // EBT is already before 7710, and the simplified regime's base is revenue,
-  // so re-running the accrual after posting it gives the same number.
+  // EBT before the period's own tax accrual, so re-running it is idempotent
   const computed = opts.regime
     ? computeTaxAccrual(opts.regime, {
         revenueTotal: is.revenueTotal,
         cashRevenue: round2(cashRevenue),
-        ebt: is.ebt,
+        ebtBeforeTaxEntry: round2(is.ebt + postedTurnoverTax),
         months: monthsInPeriod(period.from, period.to),
       }, opts.patentMonthly ?? 0)
     : null;
 
-  return { computed, posted: round2(posted), postedEntryIds, vatOutput: round2(vatOutput), vatInput: round2(vatInput) };
+  return {
+    computed, posted: round2(posted), postedEntryIds,
+    vatOutput: round2(vatOutput), vatInput: round2(vatInput), cashRevenue: round2(cashRevenue),
+  };
 }
 
 // ── Помесячная динамика (для графиков) ─────────────────────────────────────
@@ -497,13 +553,15 @@ function buildMonthly(inPeriod: LedgerEntry[], before: Net): MonthlyPoint[] {
   };
   for (const e of inPeriod) {
     const p = get(e.date.slice(0, 7));
-    for (const l of e.lines) {
-      const a = getAccount(l.account);
-      if (a?.type === "income") p.revenue += l.credit - l.debit;
-      if (a?.type === "expense") p.expenses += l.debit - l.credit;
+    if (e.source !== "closing") {
+      for (const l of e.lines) {
+        const a = getAccount(l.account);
+        if (a?.type === "income") p.revenue += l.credit - l.debit;
+        if (a?.type === "expense") p.expenses += l.debit - l.credit;
+      }
     }
     for (const alloc of cashFlowAllocation(e)) {
-      if (alloc.row < 700 && isInflowRow(alloc.row)) p.cashIn += alloc.amount; else p.cashOut += alloc.amount;
+      if (isInflowRow(alloc.row)) p.cashIn += alloc.amount; else p.cashOut += alloc.amount;
     }
   }
   let cash = CASH_ACCOUNTS.reduce((s, c) => s + (before.get(c) ?? 0), 0);
@@ -519,9 +577,6 @@ function buildMonthly(inPeriod: LedgerEntry[], before: Net): MonthlyPoint[] {
     });
 }
 
-const INFLOW_ROWS = new Set([10, 20, 30, 210, 220, 230, 240, 250, 260, 410, 420, 430, 440, 450]);
-function isInflowRow(row: number) { return INFLOW_ROWS.has(row); }
-
 // ── Сверки ─────────────────────────────────────────────────────────────────
 
 function eq(a: number, b: number, tol = 0.01) { return Math.abs(a - b) <= tol; }
@@ -530,19 +585,24 @@ function money(n: number) { return n.toLocaleString("ru-RU", { maximumFractionDi
 function runChecks(all: LedgerEntry[], s: Statements, closing: Net, opts: BuildOptions): Check[] {
   const checks: Check[] = [];
 
-  const unbalanced = all.filter((e) => {
-    const d = e.lines.reduce((x, l) => x + l.debit - l.credit, 0);
-    return Math.abs(d) > EPS;
-  });
+  const unbalanced = all.filter((e) => Math.abs(e.lines.reduce((x, l) => x + l.debit - l.credit, 0)) > EPS);
   checks.push({
     id: "entries", title: "Каждая проводка: дебет = кредит",
     status: unbalanced.length ? "error" : "ok",
     detail: unbalanced.length ? `Несбалансированных проводок: ${unbalanced.length}` : `Проверено проводок: ${all.length}`,
   });
 
-  const unknown = [...new Set(all.flatMap((e) => e.lines.map((l) => l.account)).filter((c) => !getAccount(c)))];
-  if (unknown.length) {
-    checks.push({ id: "accounts", title: "Счета есть в плане счетов", status: "error", detail: `Неизвестные счета: ${unknown.join(", ")}` });
+  const codes = [...new Set(all.flatMap((e) => e.lines.map((l) => l.account)))];
+  const unknown = codes.filter((c) => !getAccount(c));
+  const headers = codes.filter((c) => getAccount(c) && !isPostable(c));
+  if (unknown.length || headers.length) {
+    checks.push({
+      id: "accounts", title: "Счета соответствуют плану счетов", status: "error",
+      detail: [
+        unknown.length ? `нет в плане счетов: ${unknown.join(", ")}` : "",
+        headers.length ? `проводки на групповые счета: ${headers.join(", ")}` : "",
+      ].filter(Boolean).join("; "),
+    });
   }
 
   const t = s.trialBalance.totals;
@@ -557,7 +617,7 @@ function runChecks(all: LedgerEntry[], s: Statements, closing: Net, opts: BuildO
   checks.push({
     id: "bs", title: "Баланс: актив = пассив",
     status: eq(bs[299] ?? 0, bs[599] ?? 0) ? "ok" : "error",
-    detail: "Стр. 299 = стр. 599 (IAS 1.54)",
+    detail: "Стр. 299 = стр. 599 (МСФО (IAS) 1)",
     left: { label: "Актив (299)", value: bs[299] ?? 0 }, right: { label: "Пассив (599)", value: bs[599] ?? 0 },
   });
 
@@ -607,7 +667,7 @@ function runChecks(all: LedgerEntry[], s: Statements, closing: Net, opts: BuildO
   if (suspense > EPS) {
     checks.push({
       id: "suspense", title: "Невыясненные суммы", status: "warn",
-      detail: `На счетах 1595/3615 висит ${money(round2(suspense))} сом — уточните категорию операций в выписке`,
+      detail: `На субсчетах 1590.01 / 3600.01 — ${money(round2(suspense))} сом. Уточните категорию операций в выписке`,
     });
   }
 
@@ -627,6 +687,37 @@ function runChecks(all: LedgerEntry[], s: Statements, closing: Net, opts: BuildO
   }
 
   return checks;
+}
+
+// ── закрытие периода (реформация) ──────────────────────────────────────────
+
+/**
+ * Lines of the closing entry for the period: every P&L account is closed to
+ * 5999 «Свод доходов и расходов», and 5999 to 5300 «Нераспределённая прибыль».
+ * Built from P&L turnover of the period (closing entries excluded), so it can
+ * be regenerated after late postings.
+ */
+export function closingEntryLines(entries: LedgerEntry[], period: Period): LedgerLine[] {
+  const net = new Map<string, number>();
+  for (const e of entries) {
+    if (e.source === "closing" || !isInPeriod(e, period)) continue;
+    for (const l of e.lines) if (isPl(l.account)) net.set(l.account, (net.get(l.account) ?? 0) + l.debit - l.credit);
+  }
+  const lines: LedgerLine[] = [];
+  let result = 0; // credit − debit of P&L = profit
+  for (const code of [...net.keys()].sort((a, b) => (ORDER.get(a) ?? 0) - (ORDER.get(b) ?? 0))) {
+    const n = round2(net.get(code)!);
+    if (Math.abs(n) < EPS) continue;
+    lines.push(n > 0 ? { account: code, debit: 0, credit: n } : { account: code, debit: -n, credit: 0 });
+    result -= n;
+  }
+  result = round2(result);
+  if (lines.length === 0) return [];
+  // close P&L into 5999 and 5999 into 5300 in one balanced entry
+  lines.push(result >= 0 ? { account: "5999", debit: 0, credit: result } : { account: "5999", debit: -result, credit: 0 });
+  lines.push(result >= 0 ? { account: "5999", debit: result, credit: 0 } : { account: "5999", debit: 0, credit: -result });
+  lines.push(result >= 0 ? { account: "5300", debit: 0, credit: result } : { account: "5300", debit: -result, credit: 0 });
+  return lines.filter((l) => l.debit > EPS || l.credit > EPS);
 }
 
 // ── drill-down helper ──────────────────────────────────────────────────────

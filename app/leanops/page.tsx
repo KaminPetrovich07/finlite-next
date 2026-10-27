@@ -14,7 +14,7 @@ import {
 } from "@/lib/leanops";
 import { formatNumber, formatPercent } from "@/lib/format";
 
-const TABS = ["📦 Учёт остатков", "🔍 Аудит потерь (Муда)", "💹 Юнит-экономика", "📊 Lean-дашборд"] as const;
+const TABS = ["Учёт остатков", "Аудит потерь (Муда)", "Юнит-экономика", "Lean-дашборд"] as const;
 const COLORS = { green: "#4F7942", red: "#B23B3B", gold: "#C9A227" };
 
 const emptyStock: StockLossInputs = {
@@ -37,8 +37,8 @@ export default function LeanOpsPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
       <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold text-fl-gold-bright sm:text-4xl">
-          🏭 LeanOps — Бережливое производство
+        <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">
+          LeanOps — Бережливое производство
         </h1>
         <p className="mt-1 text-sm text-fl-cream/60">KT Lean Platform · учёт остатков, аудит муда, юнит-экономика</p>
       </header>
@@ -47,7 +47,7 @@ export default function LeanOpsPage() {
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`rounded-md px-3 py-2 text-sm font-medium ${
-              tab === t ? "bg-fl-gold text-fl-charcoal" : "border border-fl-gold/20 text-fl-cream/70 hover:border-fl-gold/40"
+              tab === t ? "bg-fl-accent text-fl-on-accent" : "border border-fl-line text-fl-cream/70 hover:border-fl-gold/40"
             }`}>
             {t}
           </button>
@@ -72,7 +72,7 @@ function StockLossTab({ result, onCalc }: { result: StockLossResult | null; onCa
 
   return (
     <section className="space-y-6">
-      <div className="rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
+      <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
         <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">I. Сырьё и материалы</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <NumField label="Поступило сырья (ед.)" value={i.rawIn} onChange={set("rawIn")} />
@@ -84,7 +84,7 @@ function StockLossTab({ result, onCalc }: { result: StockLossResult | null; onCa
         </div>
       </div>
 
-      <div className="rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
+      <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
         <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">II. Готовая продукция</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <NumField label="Выпущено (шт)" value={i.prodOut} onChange={set("prodOut")} />
@@ -96,8 +96,8 @@ function StockLossTab({ result, onCalc }: { result: StockLossResult | null; onCa
         </div>
       </div>
 
-      <button onClick={() => onCalc(i)} className="w-full rounded-md bg-fl-gold py-3 font-display text-lg font-semibold text-fl-charcoal hover:bg-fl-gold-bright sm:w-auto sm:px-8">
-        🧮 Рассчитать остатки и потери
+      <button onClick={() => onCalc(i)} className="w-full rounded-md bg-fl-accent py-3 font-display text-lg font-semibold text-fl-on-accent hover:bg-fl-accent-hover sm:w-auto sm:px-8">
+        Рассчитать остатки и потери
       </button>
 
       {result && (
@@ -109,8 +109,8 @@ function StockLossTab({ result, onCalc }: { result: StockLossResult | null; onCa
             <Kpi label="Потери от выпуска" value={formatPercent(result.lossPct)} gold />
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">📋 Сводная таблица</h3>
+          <div className="overflow-x-auto rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">Сводная таблица</h3>
             <table className="w-full text-sm">
               <tbody>
                 {[
@@ -123,7 +123,7 @@ function StockLossTab({ result, onCalc }: { result: StockLossResult | null; onCa
                   ["Стоимость брака", result.defectValue, false],
                   ["ИТОГО ПОТЕРИ", result.lossTotal, true],
                 ].map(([label, val, isTotal]) => (
-                  <tr key={label as string} className={`border-t border-fl-gold/10 ${isTotal ? "font-semibold" : ""}`}>
+                  <tr key={label as string} className={`border-t border-fl-line ${isTotal ? "font-semibold" : ""}`}>
                     <td className="py-1.5 text-fl-cream/80">{label as string}</td>
                     <td className={`py-1.5 text-right font-mono tabular-nums ${isTotal ? "text-fl-red" : "text-fl-cream"}`}>{formatNumber(val as number)}</td>
                   </tr>
@@ -133,10 +133,10 @@ function StockLossTab({ result, onCalc }: { result: StockLossResult | null; onCa
           </div>
 
           {result.wasteQty > 0 && (
-            <Alert kind="warn">💡 <b>Монетизация отходов:</b> {formatNumber(result.wasteValue)} сом. Передайте переработчикам (матрасы, подушки, топливо).</Alert>
+            <Alert kind="warn"><b>Монетизация отходов:</b> {formatNumber(result.wasteValue)} сом. Передайте переработчикам (матрасы, подушки, топливо).</Alert>
           )}
           {result.lossPct > 15 && (
-            <Alert kind="err">🔴 Высокие потери {formatPercent(result.lossPct)} — рекомендуется Lean-аудит.</Alert>
+            <Alert kind="err">Высокие потери {formatPercent(result.lossPct)} — рекомендуется Lean-аудит.</Alert>
           )}
         </>
       )}
@@ -155,7 +155,7 @@ function MudaTab({ scores, setScores, result, onCalc }: {
     <section className="space-y-6">
       <div className="space-y-3">
         {MUDA_CATEGORIES.map((c) => (
-          <details key={c.key} className="rounded-lg border border-fl-gold/20 bg-fl-charcoal-2 p-4">
+          <details key={c.key} className="rounded-lg border border-fl-line bg-fl-charcoal-2 p-4">
             <summary className="cursor-pointer font-medium text-fl-cream">{c.name}</summary>
             <p className="mt-2 text-sm text-fl-cream/60">{c.desc}</p>
             <label className="mt-3 block">
@@ -168,8 +168,8 @@ function MudaTab({ scores, setScores, result, onCalc }: {
         ))}
       </div>
 
-      <button onClick={onCalc} className="w-full rounded-md bg-fl-gold py-3 font-display text-lg font-semibold text-fl-charcoal hover:bg-fl-gold-bright sm:w-auto sm:px-8">
-        📊 Рассчитать Lean-индекс
+      <button onClick={onCalc} className="w-full rounded-md bg-fl-accent py-3 font-display text-lg font-semibold text-fl-on-accent hover:bg-fl-accent-hover sm:w-auto sm:px-8">
+        Рассчитать Lean-индекс
       </button>
 
       {result && (
@@ -181,8 +181,8 @@ function MudaTab({ scores, setScores, result, onCalc }: {
           </div>
           <Alert kind="info">{result.maturity.level} <b>{result.maturity.name}:</b> {result.maturity.desc}</Alert>
 
-          <div className="rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">📊 Муда-радар</h3>
+          <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">Муда-радар</h3>
             <ResponsiveContainer width="100%" height={320}>
               <RadarChart data={radarData}>
                 <PolarGrid stroke="#C9A22730" />
@@ -193,8 +193,8 @@ function MudaTab({ scores, setScores, result, onCalc }: {
             </ResponsiveContainer>
           </div>
 
-          <div className="rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">🎯 Топ-3 приоритета</h3>
+          <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">Топ-3 приоритета</h3>
             <div className="space-y-2">
               {top3Priorities(scores).map((p, i) => (
                 <Alert key={p.key} kind="warn"><b>#{i + 1} {p.name}</b> (балл: {p.score}/10) → {p.rec}</Alert>
@@ -219,7 +219,7 @@ function UnitEconomicsTab({ inputs, setInputs, result, onCalc }: {
 
   return (
     <section className="space-y-6">
-      <div className="grid grid-cols-1 gap-6 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:grid-cols-2 sm:p-5">
+      <div className="grid grid-cols-1 gap-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:grid-cols-2 sm:p-5">
         <div>
           <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Затраты на единицу</h2>
           <div className="space-y-3">
@@ -236,7 +236,7 @@ function UnitEconomicsTab({ inputs, setInputs, result, onCalc }: {
             <label className="block">
               <span className="text-sm text-fl-cream/70">Канал продаж</span>
               <select value={inputs.channel} onChange={(e) => setInputs({ ...inputs, channel: e.target.value as SalesChannel })}
-                className="mt-1 w-full rounded-md border border-fl-gold/30 bg-fl-charcoal px-3 py-2.5 text-fl-cream">
+                className="mt-1 w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2.5 text-fl-cream">
                 {Object.keys(SALES_CHANNELS).map((ch) => <option key={ch} value={ch}>{ch}</option>)}
               </select>
             </label>
@@ -247,8 +247,8 @@ function UnitEconomicsTab({ inputs, setInputs, result, onCalc }: {
         </div>
       </div>
 
-      <button onClick={onCalc} className="w-full rounded-md bg-fl-gold py-3 font-display text-lg font-semibold text-fl-charcoal hover:bg-fl-gold-bright sm:w-auto sm:px-8">
-        💹 Рассчитать юнит-экономику
+      <button onClick={onCalc} className="w-full rounded-md bg-fl-accent py-3 font-display text-lg font-semibold text-fl-on-accent hover:bg-fl-accent-hover sm:w-auto sm:px-8">
+        Рассчитать юнит-экономику
       </button>
 
       {result && (
@@ -260,11 +260,11 @@ function UnitEconomicsTab({ inputs, setInputs, result, onCalc }: {
             <Kpi label="Прибыль/мес." value={formatNumber(result.profitMonth)} />
           </div>
 
-          {result.marginPct < 20 && <Alert kind="warn">⚠️ Маржа {formatPercent(result.marginPct)} — ниже 20%. Снизьте с/с через Lean или пересмотрите цену.</Alert>}
-          {result.marginPct > 40 && <Alert kind="ok">✅ Маржа {formatPercent(result.marginPct)} — отлично. Масштабируйте.</Alert>}
+          {result.marginPct < 20 && <Alert kind="warn">Маржа {formatPercent(result.marginPct)} — ниже 20%. Снизьте с/с через Lean или пересмотрите цену.</Alert>}
+          {result.marginPct > 40 && <Alert kind="ok">Маржа {formatPercent(result.marginPct)} — отлично. Масштабируйте.</Alert>}
 
-          <div className="rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">📈 Водопад юнит-экономики</h3>
+          <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">Водопад юнит-экономики</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={bars} margin={{ top: 20 }}>
                 <CartesianGrid stroke="#C9A22720" vertical={false} />
@@ -279,13 +279,13 @@ function UnitEconomicsTab({ inputs, setInputs, result, onCalc }: {
             </ResponsiveContainer>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">📊 Сравнение каналов продаж</h3>
+          <div className="overflow-x-auto rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+            <h3 className="mb-2 font-display text-sm font-semibold text-fl-cream">Сравнение каналов продаж</h3>
             <table className="w-full text-left text-sm">
               <thead><tr className="text-fl-cream/50"><th className="py-1.5 pr-3">Канал</th><th className="py-1.5 pr-3 text-right">Комиссия</th><th className="py-1.5 pr-3 text-right">Маржа</th><th className="py-1.5 text-right">Маржа %</th></tr></thead>
               <tbody>
                 {cmp.map((c) => (
-                  <tr key={c.channel} className="border-t border-fl-gold/10">
+                  <tr key={c.channel} className="border-t border-fl-line">
                     <td className="py-1.5 pr-3 text-fl-cream/80">{c.channel}</td>
                     <td className="py-1.5 pr-3 text-right font-mono tabular-nums">{formatNumber(c.commission)}</td>
                     <td className={`py-1.5 pr-3 text-right font-mono tabular-nums ${c.margin > 0 ? "text-fl-green" : "text-fl-red"}`}>{formatNumber(c.margin)}</td>
@@ -320,7 +320,7 @@ function DashboardTab({ stockResult, mudaResult, ueResult }: {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   if (!stockResult && !mudaResult && !ueResult) {
-    return <Alert kind="info">👈 Заполните данные на вкладках «Учёт остатков», «Аудит потерь» и «Юнит-экономика»</Alert>;
+    return <Alert kind="info">Заполните данные на вкладках «Учёт остатков», «Аудит потерь» и «Юнит-экономика»</Alert>;
   }
 
   async function saveToReport() {
@@ -334,9 +334,9 @@ function DashboardTab({ stockResult, mudaResult, ueResult }: {
         body: JSON.stringify({ leanResults: { stock: stockResult, muda: mudaResult, unitEconomics: ueResult } }),
       });
       if (!res.ok) throw new Error("Ошибка сохранения");
-      setSaveMsg("✅ Результаты LeanOps сохранены в отчёт");
+      setSaveMsg("Результаты LeanOps сохранены в отчёт");
     } catch (e: any) {
-      setSaveMsg(`❌ ${e.message}`);
+      setSaveMsg(`${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -351,43 +351,43 @@ function DashboardTab({ stockResult, mudaResult, ueResult }: {
         {ueResult && <Kpi label="Маржа/ед." value={formatPercent(ueResult.marginPct)} />}
       </div>
 
-      <div className="space-y-1.5 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 text-sm sm:p-5">
-        <p className="font-display text-base font-semibold text-fl-gold-bright">🏭 LEANOPS EXECUTIVE SUMMARY</p>
-        {stockResult && <p>📦 <b>Потери:</b> {formatNumber(stockResult.lossTotal)} сом ({formatPercent(stockResult.lossPct)})</p>}
-        {stockResult && <p>♻️ <b>Монетизация отходов:</b> {formatNumber(stockResult.wasteValue)} сом → продайте переработчикам</p>}
-        {mudaResult && <p>📊 <b>Lean-индекс:</b> {mudaResult.leanIdx.toFixed(0)} /100</p>}
-        {ueResult && <p>💹 <b>Юнит-маржа:</b> {formatNumber(ueResult.marginUnit)} сом/ед. ({formatPercent(ueResult.marginPct)})</p>}
-        {ueResult && <p>💰 <b>Прибыль/мес:</b> {formatNumber(ueResult.profitMonth)} сом</p>}
+      <div className="space-y-1.5 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 text-sm sm:p-5">
+        <p className="font-display text-base font-semibold text-fl-gold-bright">LEANOPS EXECUTIVE SUMMARY</p>
+        {stockResult && <p><b>Потери:</b> {formatNumber(stockResult.lossTotal)} сом ({formatPercent(stockResult.lossPct)})</p>}
+        {stockResult && <p><b>Монетизация отходов:</b> {formatNumber(stockResult.wasteValue)} сом → продайте переработчикам</p>}
+        {mudaResult && <p><b>Lean-индекс:</b> {mudaResult.leanIdx.toFixed(0)} /100</p>}
+        {ueResult && <p><b>Юнит-маржа:</b> {formatNumber(ueResult.marginUnit)} сом/ед. ({formatPercent(ueResult.marginPct)})</p>}
+        {ueResult && <p><b>Прибыль/мес:</b> {formatNumber(ueResult.profitMonth)} сом</p>}
       </div>
 
-      <div className="rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-        <h3 className="mb-3 font-display text-base font-semibold text-fl-cream">🔗 Интеграция LeanOps ↔ FinLite KG</h3>
+      <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+        <h3 className="mb-3 font-display text-base font-semibold text-fl-cream">Интеграция LeanOps ↔ FinLite KG</h3>
         <p className="mb-3 text-sm text-fl-cream/60">Выберите отчёт, чтобы сохранить результаты LeanOps вместе с ним.</p>
         <ReportPickerBar {...picker} />
         {picker.reportId && (
           <>
             <button onClick={saveToReport} disabled={saving}
-              className="rounded-md bg-fl-gold px-5 py-2.5 font-medium text-fl-charcoal hover:bg-fl-gold-bright disabled:opacity-50">
-              {saving ? "Сохранение…" : "💾 Сохранить результаты в отчёт"}
+              className="rounded-md bg-fl-accent px-5 py-2.5 font-medium text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50">
+              {saving ? "Сохранение…" : "Сохранить результаты в отчёт"}
             </button>
             {saveMsg && <p className="mt-2 text-sm text-fl-cream/80">{saveMsg}</p>}
             {stockResult && (
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Alert kind="info">📦 <b>Потери LeanOps:</b> {formatNumber(stockResult.lossTotal)} сом → включены в себестоимость (стр.020)</Alert>
-                {stockResult.wasteValue > 0 && <Alert kind="info">♻️ <b>Продажа отходов:</b> {formatNumber(stockResult.wasteValue)} сом → прочие доходы (стр.040)</Alert>}
+                <Alert kind="info"><b>Потери LeanOps:</b> {formatNumber(stockResult.lossTotal)} сом → включены в себестоимость (стр.020)</Alert>
+                {stockResult.wasteValue > 0 && <Alert kind="info"><b>Продажа отходов:</b> {formatNumber(stockResult.wasteValue)} сом → прочие доходы (стр.040)</Alert>}
               </div>
             )}
           </>
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
-        <h3 className="mb-3 font-display text-base font-semibold text-fl-cream">🗺️ Roadmap Lean (план на 3 месяца)</h3>
+      <div className="overflow-x-auto rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
+        <h3 className="mb-3 font-display text-base font-semibold text-fl-cream">Roadmap Lean (план на 3 месяца)</h3>
         <table className="w-full text-left text-sm">
           <thead><tr className="text-fl-cream/50"><th className="py-1.5 pr-3">Период</th><th className="py-1.5 pr-3">Инструмент</th><th className="py-1.5">Действие</th></tr></thead>
           <tbody>
             {ROADMAP.map(([period, tool, action], i) => (
-              <tr key={i} className="border-t border-fl-gold/10">
+              <tr key={i} className="border-t border-fl-line">
                 <td className="py-2 pr-3 font-semibold text-fl-gold-bright">{period}</td>
                 <td className="py-2 pr-3 font-semibold text-fl-cream">{tool}</td>
                 <td className="py-2 text-fl-cream/60">{action}</td>
@@ -426,14 +426,14 @@ function NumField({ label, value, onChange }: { label: string; value: number; on
     <label className="block">
       <span className="text-xs text-fl-cream/60">{label}</span>
       <input type="number" value={value} onChange={onChange}
-        className="mt-1 w-full rounded-md border border-fl-gold/30 bg-fl-charcoal px-3 py-2 text-sm text-fl-cream tabular-nums" />
+        className="mt-1 w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream tabular-nums" />
     </label>
   );
 }
 
 function Kpi({ label, value, sub, gold }: { label: string; value: string; sub?: string; gold?: boolean }) {
   return (
-    <div className="rounded-lg border border-fl-gold/10 bg-fl-charcoal-2 p-3">
+    <div className="rounded-lg border border-fl-line bg-fl-charcoal-2 p-3">
       <div className="text-xs text-fl-cream/50">{label}</div>
       <div className={`mt-1 font-mono text-lg font-semibold tabular-nums ${gold ? "text-fl-gold-bright" : "text-fl-cream"}`}>{value}</div>
       {sub && <div className="text-xs text-fl-cream/50">{sub}</div>}
@@ -446,7 +446,7 @@ function Alert({ kind, children }: { kind: "ok" | "warn" | "err" | "info"; child
     ok: "border-fl-green/40 bg-fl-green/10",
     warn: "border-fl-gold/40 bg-fl-gold/10",
     err: "border-fl-red/40 bg-fl-red/10",
-    info: "border-fl-gold/20 bg-fl-charcoal-2",
+    info: "border-fl-line bg-fl-charcoal-2",
   };
   return <div className={`rounded-lg border p-3 text-sm text-fl-cream ${styles[kind]}`}>{children}</div>;
 }

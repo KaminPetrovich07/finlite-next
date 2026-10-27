@@ -1,45 +1,48 @@
 // ════════════════════════════════════════════════════════════════════════
 // lib/ledger/posting.ts — банковская операция (категория) → проводка.
 //
-// Each category from lib/categories.ts maps to a counter-account; the bank
-// side is always 1210. Deliberate simplifications, all visible in the journal
-// and fixable by editing the entry:
-//   • закупка товара → сразу 7010 (себестоимость), без учёта запасов;
-//   • выплата зарплаты → сразу 7220 (без отдельного начисления по 3520);
+// Each category from lib/categories.ts maps to a counter-account of the
+// official chart (Пост. №231); the bank side is always 1210. Deliberate
+// simplifications, all visible in the journal and fixable there:
+//   • закупка товара → 7210 «Приобретение товаров» (метод периодического
+//     учёта запасов, который Инструкция допускает): без отдельного списания
+//     себестоимости; остаток на конец периода корректируется через 7290;
+//   • выплата зарплаты → 8010 сразу (без начисления через 3520). Для полного
+//     учёта начисляйте зарплату проводкой «Начисление зарплаты» в журнале;
 //   • при общем режиме из поступления выручки выделяется НДС 12% (3430);
 //     входящий НДС по закупкам к зачёту НЕ берётся — без ЭСФ поставщика
-//     зачёт неправомерен, поэтому консервативно.
-//   • «Не определено» уходит на счета невыясненных сумм 1595 / 3615, и
-//     сверка не станет зелёной, пока категорию не уточнят.
+//     зачёт неправомерен, поэтому консервативно;
+//   • «Не определено» уходит на субсчета невыясненных сумм 1590.01 / 3600.01,
+//     и сверка не станет зелёной, пока категорию не уточнят.
 // ════════════════════════════════════════════════════════════════════════
 
 import type { Category } from "@/lib/categories";
 import type { RegimeKey } from "@/lib/tax-engine";
-import { VAT_RATE } from "@/lib/tax-engine";
+import { REGIME_INFO, VAT_RATE } from "@/lib/tax-engine";
 import { round2, type LedgerLine } from "./types";
 
 export const BANK_ACCOUNT = "1210";
 
 const EXPENSE_ACCOUNT: Partial<Record<Category, string>> = {
-  "Себестоимость / закупка товара": "7010",
-  "Зарплата": "7220",
-  "Аренда": "7240",
-  "Коммунальные услуги": "7250",
-  "Связь и интернет": "7210",
-  "Транспорт и логистика": "7110",
-  "Реклама и маркетинг": "7110",
-  "Банковские комиссии": "7210",
-  "Канцелярия и хозрасходы": "7210",
-  "Профессиональные услуги (бухгалтер, юрист)": "7210",
-  "Прочие операционные расходы": "7310",
+  "Себестоимость / закупка товара": "7210",
+  "Зарплата": "8010",
+  "Аренда": "8030",
+  "Коммунальные услуги": "8220",
+  "Связь и интернет": "8070",
+  "Транспорт и логистика": "7540",
+  "Реклама и маркетинг": "7510",
+  "Банковские комиссии": "8040",
+  "Канцелярия и хозрасходы": "8060",
+  "Профессиональные услуги (бухгалтер, юрист)": "8170",
+  "Прочие операционные расходы": "8490",
 };
 
 const INCOME_ACCOUNT: Partial<Record<Category, string>> = {
-  "Выручка от продаж": "6010",
-  "Прочие операционные доходы": "6110",
-  "Доходы от инвестиций": "6210",
+  "Выручка от продаж": "6110",
+  "Прочие операционные доходы": "6200",
+  "Доходы от инвестиций": "9110",
   "Возврат от поставщика": "3110",
-  "Прочие доходы": "6310",
+  "Прочие доходы": "9190",
 };
 
 /** Tax payments reduce the matching liability, chosen by the payment purpose text. */
@@ -67,10 +70,10 @@ export function counterAccountFor(tx: BankTxInput): string {
   if (category === "Налоги и сборы") return taxLiabilityAccount(tx.description);
   if (category === "Кредиты и проценты") {
     if (inflow) return "3310";
-    return d.includes("процент") ? "7410" : "3310";
+    return d.includes("процент") ? "9510" : "3310";
   }
-  if (inflow) return INCOME_ACCOUNT[category] ?? "3615";
-  return EXPENSE_ACCOUNT[category] ?? "1595";
+  if (inflow) return INCOME_ACCOUNT[category] ?? "3600.01";
+  return EXPENSE_ACCOUNT[category] ?? "1590.01";
 }
 
 export function bankTxToLines(tx: BankTxInput, regime: RegimeKey | null): LedgerLine[] {
@@ -87,11 +90,11 @@ export function bankTxToLines(tx: BankTxInput, regime: RegimeKey | null): Ledger
   }
 
   // Output VAT is carved out of sales receipts for VAT payers (общий режим)
-  if (regime === "general" && counter === "6010") {
+  if (regime && REGIME_INFO[regime]?.kind === "general" && counter === "6110") {
     const vat = round2((amount * VAT_RATE) / (1 + VAT_RATE));
     return [
       { account: BANK_ACCOUNT, debit: amount, credit: 0 },
-      { account: "6010", debit: 0, credit: round2(amount - vat) },
+      { account: "6110", debit: 0, credit: round2(amount - vat) },
       { account: "3430", debit: 0, credit: vat, memo: "НДС 12% в составе выручки" },
     ];
   }

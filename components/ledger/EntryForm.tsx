@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ACCOUNTS, ACCOUNT_TYPE_LABEL, type AccountType } from "@/lib/ledger/accounts";
+import { ACCOUNTS } from "@/lib/ledger/accounts";
 import { formatNumber, parseFormattedNumber } from "@/lib/format";
 
 interface Line { account: string; debit: string; credit: string; memo: string }
@@ -14,8 +14,27 @@ interface Props {
 }
 
 const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "" });
-const GROUPS: AccountType[] = ["asset", "liability", "equity", "income", "expense"];
-const field = "w-full rounded-md border border-fl-gold/25 bg-fl-charcoal px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
+/** Postable accounts grouped under their group header (1100, 1200 …), in chart order. */
+const GROUPS: Array<{ title: string; accounts: typeof ACCOUNTS }> = (() => {
+  const out: Array<{ title: string; accounts: typeof ACCOUNTS }> = [];
+  let cur: { title: string; accounts: typeof ACCOUNTS } | null = null;
+  for (const a of ACCOUNTS) {
+    if (a.header) {
+      if (a.code.endsWith("000") && a.code !== "8000") continue; // section titles: 1000, 2000 …
+      cur = { title: `${a.code} ${a.name}`, accounts: [] };
+      out.push(cur);
+    } else {
+      const key = (c: string) => (c.startsWith("8") ? "8" : c.slice(0, 2)); // 8000 groups 8010–8490
+      if (!cur || (!a.parent && key(a.code) !== key(cur.title))) {
+        cur = { title: `${a.code} ${a.name}`, accounts: [] };
+        out.push(cur);
+      }
+      cur.accounts.push(a);
+    }
+  }
+  return out.filter((g) => g.accounts.length);
+})();
+const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 
 export function EntryForm({ mode, defaultDate, onSubmit, onCancel }: Props) {
   const [date, setDate] = useState(defaultDate);
@@ -80,7 +99,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel }: Props) {
           <span>Счёт</span><span className="text-right">Дебет</span><span className="text-right">Кредит</span><span>Комментарий</span><span />
         </div>
         {lines.map((l, i) => (
-          <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-fl-gold/10 p-2 md:grid-cols-[1fr_130px_130px_1fr_32px] md:border-0 md:p-0">
+          <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-fl-line p-2 md:grid-cols-[1fr_130px_130px_1fr_32px] md:border-0 md:p-0">
             <select
               aria-label={`Счёт, строка ${i + 1}`}
               value={l.account}
@@ -89,8 +108,8 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel }: Props) {
             >
               <option value="">Выберите счёт</option>
               {GROUPS.map((g) => (
-                <optgroup key={g} label={ACCOUNT_TYPE_LABEL[g]}>
-                  {ACCOUNTS.filter((a) => a.type === g).map((a) => <option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                <optgroup key={g.title} label={g.title}>
+                  {g.accounts.map((a) => <option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
                 </optgroup>
               ))}
             </select>
@@ -124,7 +143,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel }: Props) {
         </button>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-fl-gold/10 pt-4">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-fl-line pt-4">
         <p className="text-sm text-fl-cream/60">
           Дебет <span className="num text-fl-cream">{formatNumber(totals.dr, 2)}</span>
           <span className="mx-2 text-fl-cream/30">/</span>
@@ -136,7 +155,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel }: Props) {
           <button
             type="submit"
             disabled={!ready || saving}
-            className="rounded-md bg-fl-gold px-4 py-2.5 text-sm font-semibold text-fl-charcoal hover:bg-fl-gold-bright disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? "Сохраняю…" : "Провести"}
           </button>

@@ -5,6 +5,7 @@ import { useCompanies } from "@/components/ledger/useCompanies";
 import { PeriodPicker } from "@/components/ledger/PeriodPicker";
 import { EntryCard } from "@/components/ledger/EntryCard";
 import { EntryForm } from "@/components/ledger/EntryForm";
+import { PayrollForm } from "@/components/ledger/PayrollForm";
 import { Notice } from "@/components/ledger/statements";
 import { useToast } from "@/components/Toast";
 import { demoEntries, DEMO_PERIOD } from "@/lib/ledger/demo";
@@ -22,7 +23,7 @@ export default function LedgerPage() {
   const [pickerKey, setPickerKey] = useState(0);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<null | "manual" | "opening">(null);
+  const [form, setForm] = useState<null | "manual" | "opening" | "payroll">(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
@@ -84,6 +85,32 @@ export default function LedgerPage() {
     load();
   }
 
+  async function savePayroll(p: { date: string; production: number; sales: number; admin: number }) {
+    const res = await fetch("/api/ledger/payroll", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...p, companyId }),
+    });
+    const body = await res.json();
+    if (!res.ok) { toast.show(body.error ?? "Не удалось начислить", "error"); return false; }
+    toast.show("Зарплата начислена — отчётность обновлена");
+    setForm(null);
+    load();
+    return true;
+  }
+
+  async function closePeriod() {
+    if (!period) return;
+    if (!confirm(`Закрыть счета доходов и расходов за ${periodLabel(period.from, period.to).toLowerCase()}? Прибыль перейдёт на счёт 5300 через 5999. Повторное закрытие заменит проводку.`)) return;
+    setBusy(true);
+    const res = await fetch("/api/ledger/close", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, ...period }),
+    });
+    const body = await res.json();
+    setBusy(false);
+    if (!res.ok) { toast.show(body.error ?? "Ошибка", "error"); return; }
+    toast.show(body.entry ? "Период закрыт: прибыль перенесена на 5300" : "Закрывать нечего — нет доходов и расходов", "info");
+    load();
+  }
+
   async function postBank() {
     setBusy(true);
     const res = await fetch("/api/ledger/post-bank", {
@@ -113,7 +140,7 @@ export default function LedgerPage() {
     <main className="mx-auto max-w-5xl px-4 pb-24 pt-8 sm:px-6 sm:pt-10">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold text-fl-gold-bright sm:text-4xl">Журнал проводок</h1>
+          <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Журнал проводок</h1>
           <p className="mt-1 max-w-2xl text-sm text-fl-cream/60">
             Единственный источник данных для баланса, ОПиУ, ОДДС, отчёта о капитале и налогов. Операции из банковских
             выписок попадают сюда автоматически.
@@ -122,11 +149,11 @@ export default function LedgerPage() {
         <a href="/reports" className="text-sm text-fl-gold underline-offset-4 hover:underline">Открыть отчётность</a>
       </header>
 
-      <section className="mb-5 flex flex-col gap-3 rounded-xl border border-fl-gold/15 bg-fl-charcoal-2 p-4 sm:p-5 lg:flex-row lg:items-center">
+      <section className="mb-5 flex flex-col gap-3 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5 lg:flex-row lg:items-center">
         <label className="flex flex-col gap-1 text-xs text-fl-cream/50 lg:min-w-[220px]">
           Компания
           <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setForm(null); }}
-            className="rounded-md border border-fl-gold/25 bg-fl-charcoal px-2.5 py-2 text-sm text-fl-cream">
+            className="rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream">
             {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
@@ -137,22 +164,28 @@ export default function LedgerPage() {
       </section>
 
       {isDemo ? (
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fl-gold/15 bg-fl-gold/5 px-4 py-3">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fl-line bg-fl-gold/5 px-4 py-3">
           <p className="text-sm text-fl-cream/70">Демо-компания только для просмотра. Копию можно менять, удалять и дополнять.</p>
           <button onClick={createDemoCopy} disabled={busy}
-            className="rounded-md bg-fl-gold px-4 py-2 text-sm font-semibold text-fl-charcoal hover:bg-fl-gold-bright disabled:opacity-50">
+            className="rounded-md bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50">
             Создать редактируемую копию
           </button>
         </div>
       ) : (
         <div className="mb-5 flex flex-wrap gap-2">
-          <button onClick={() => setForm("manual")} className="rounded-md bg-fl-gold px-4 py-2.5 text-sm font-semibold text-fl-charcoal hover:bg-fl-gold-bright">
+          <button onClick={() => setForm("manual")} className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
             Новая проводка
           </button>
           <button onClick={() => setForm("opening")} className="rounded-md border border-fl-gold/40 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10">
             Ввести начальные остатки
           </button>
-          <button onClick={postBank} disabled={busy} className="rounded-md border border-fl-gold/20 px-4 py-2.5 text-sm text-fl-cream/70 hover:text-fl-cream disabled:opacity-50">
+          <button onClick={() => setForm("payroll")} className="rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream">
+            Начислить зарплату
+          </button>
+          <button onClick={closePeriod} disabled={busy} className="rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream disabled:opacity-50">
+            Закрыть период
+          </button>
+          <button onClick={postBank} disabled={busy} className="rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/70 hover:text-fl-cream disabled:opacity-50">
             Провести операции из выписок
           </button>
         </div>
@@ -160,7 +193,9 @@ export default function LedgerPage() {
 
       {form && period && (
         <div className="mb-6">
-          <EntryForm key={form} mode={form} defaultDate={period.from} onSubmit={save} onCancel={() => setForm(null)} />
+          {form === "payroll"
+            ? <PayrollForm defaultDate={period.to} onSubmit={savePayroll} onCancel={() => setForm(null)} />
+            : <EntryForm key={form} mode={form} defaultDate={period.from} onSubmit={save} onCancel={() => setForm(null)} />}
         </div>
       )}
 

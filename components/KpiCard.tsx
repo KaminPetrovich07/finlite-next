@@ -17,9 +17,9 @@ export function KpiCard({ label, value, sub, trend, plan, highlight }: KpiCardPr
     <div className={`rounded-xl border p-4 transition-colors
       ${highlight
         ? "border-fl-gold/40 bg-fl-gold/5"
-        : "border-fl-gold/10 bg-fl-charcoal-2"}`}
+        : "border-fl-line bg-fl-charcoal-2"}`}
     >
-      <p className="text-[11px] uppercase tracking-widest text-fl-cream/40 font-display mb-1">{label}</p>
+      <p className="text-xs font-medium text-fl-cream/55 mb-1">{label}</p>
       <div className="flex items-baseline gap-2">
         <span className={`font-mono text-xl font-semibold tabular-nums leading-none
           ${highlight ? "text-fl-gold-bright" : "text-fl-cream"}`}>

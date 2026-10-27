@@ -44,7 +44,7 @@ export function MoneyInput({ label, value, onChange, hint, required }: MoneyInpu
           onChange(parsed);
           setDisplay(parsed ? formatNumber(parsed) : "");
         }}
-        className="mt-1 w-full rounded-md border border-fl-gold/30 bg-fl-charcoal
+        className="mt-1 w-full rounded-md border border-fl-line bg-fl-charcoal-2
                    px-3 py-2.5 text-base text-fl-cream tabular-nums
                    placeholder:text-fl-cream/30
                    focus:border-fl-gold focus:outline-none focus:ring-1 focus:ring-fl-gold/50"

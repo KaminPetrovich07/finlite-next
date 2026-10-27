@@ -69,25 +69,25 @@ export default function TransactionsPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
       <header className="mb-8">
-        <h1 className="font-display text-3xl font-bold text-fl-gold-bright sm:text-4xl">
+        <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">
           Банковские выписки
         </h1>
         <p className="mt-1 text-sm text-fl-cream/60">Импорт и автоматическая категоризация операций</p>
       </header>
 
-      <section className="mb-6 rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
+      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <label>
             <span className="text-sm text-fl-cream/70">Компания</span>
             <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}
-              className="mt-1 w-full rounded-md border border-fl-gold/30 bg-fl-charcoal px-3 py-2.5 text-fl-cream">
+              className="mt-1 w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2.5 text-fl-cream">
               {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
           <label>
             <span className="text-sm text-fl-cream/70">Банк</span>
             <select value={bank} onChange={(e) => setBank(e.target.value)}
-              className="mt-1 w-full rounded-md border border-fl-gold/30 bg-fl-charcoal px-3 py-2.5 text-fl-cream">
+              className="mt-1 w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2.5 text-fl-cream">
               <option value="mbank">МБанк</option>
               <option value="bakai">Бакай Банк</option>
               <option value="eldik">Элдик Банк</option>
@@ -100,23 +100,23 @@ export default function TransactionsPage() {
               type="file"
               accept=".xlsx,.xls,.csv,.txt"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="mt-1 w-full text-sm text-fl-cream/80 file:mr-3 file:rounded-md file:border-0 file:bg-fl-gold file:px-3 file:py-2 file:text-fl-charcoal"
+              className="mt-1 w-full text-sm text-fl-cream/80 file:mr-3 file:rounded-md file:border-0 file:bg-fl-accent file:px-3 file:py-2 file:text-fl-on-accent"
             />
           </label>
         </div>
         <button
           onClick={handleUpload}
           disabled={!file || !companyId || uploading}
-          className="mt-4 rounded-md bg-fl-gold px-5 py-2.5 font-medium text-fl-charcoal hover:bg-fl-gold-bright disabled:opacity-50"
+          className="mt-4 rounded-md bg-fl-accent px-5 py-2.5 font-medium text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50"
         >
-          {uploading ? "Обрабатываю…" : "📤 Загрузить и категоризировать"}
+          {uploading ? "Обрабатываю…" : "Загрузить и категоризировать"}
         </button>
 
-        {uploadError && <p className="mt-3 text-sm text-fl-red">❌ {uploadError}</p>}
+        {uploadError && <p className="mt-3 text-sm text-fl-red">{uploadError}</p>}
 
         {uploadResult && (
-          <div className="mt-4 rounded-lg border border-fl-gold/10 bg-fl-charcoal p-3 text-sm">
-            <p className="text-fl-cream">✅ Загружено транзакций: {uploadResult.count}</p>
+          <div className="mt-4 rounded-lg border border-fl-line bg-fl-charcoal p-3 text-sm">
+            <p className="text-fl-cream">Загружено транзакций: {uploadResult.count}</p>
             <p className="mt-1 text-fl-cream/70">
               Проведено в журнал: {uploadResult.posted ?? 0}.{" "}
               <a href="/reports" className="text-fl-gold underline-offset-4 hover:underline">Посмотреть в отчётности</a>
@@ -143,7 +143,7 @@ export default function TransactionsPage() {
             </div>
           </section>
 
-          <section className="overflow-x-auto rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
+          <section className="overflow-x-auto rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
             <h2 className="mb-3 font-display text-lg font-semibold text-fl-cream">Операции</h2>
             <table className="w-full text-left text-sm">
               <thead>
@@ -156,7 +156,7 @@ export default function TransactionsPage() {
               </thead>
               <tbody>
                 {transactions.map((t) => (
-                  <tr key={t.id} className="border-t border-fl-gold/10 align-top">
+                  <tr key={t.id} className="border-t border-fl-line align-top">
                     <td className="py-2 pr-3 whitespace-nowrap text-fl-cream/70">
                       {new Date(t.txDate).toLocaleDateString("ru-RU")}
                     </td>
@@ -169,7 +169,7 @@ export default function TransactionsPage() {
                         value={t.category}
                         onChange={(e) => updateCategory(t.id, e.target.value)}
                         className={`rounded border px-2 py-1 text-xs ${
-                          t.categorySource === "manual" ? "border-fl-gold text-fl-gold" : "border-fl-gold/20 text-fl-cream/70"
+                          t.categorySource === "manual" ? "border-fl-gold text-fl-gold" : "border-fl-line text-fl-cream/70"
                         } bg-fl-charcoal`}
                       >
                         {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}

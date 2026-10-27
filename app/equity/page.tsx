@@ -33,9 +33,9 @@ export default function EquityPage() {
         body: JSON.stringify({ equityStatement: values }),
       });
       if (!res.ok) throw new Error("Ошибка сохранения");
-      setSaveMsg("✅ Капитал сохранён");
+      setSaveMsg("Капитал сохранён");
     } catch (e: any) {
-      setSaveMsg(`❌ ${e.message}`);
+      setSaveMsg(`${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -44,7 +44,7 @@ export default function EquityPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
       <header className="mb-8">
-        <h1 className="font-display text-3xl font-bold text-fl-gold-bright sm:text-4xl">
+        <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">
           Капитал · ФОСАМК Ф.№4
         </h1>
         <p className="mt-1 text-sm text-fl-cream/60">Изменения в собственном капитале</p>
@@ -56,7 +56,7 @@ export default function EquityPage() {
         <p className="text-sm text-fl-cream/50">Выберите отчёт, чтобы заполнить отчёт о капитале.</p>
       ) : (
         <>
-          <section className="overflow-x-auto rounded-xl border border-fl-gold/20 bg-fl-charcoal-2 p-4 sm:p-5">
+          <section className="overflow-x-auto rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="text-fl-cream/50">
@@ -67,7 +67,7 @@ export default function EquityPage() {
               </thead>
               <tbody>
                 {EQUITY_ROWS.map((row) => (
-                  <tr key={row.code} className={`border-t border-fl-gold/10 ${row.isTotal ? "font-semibold text-fl-gold" : "text-fl-cream/80"}`}>
+                  <tr key={row.code} className={`border-t border-fl-line ${row.isTotal ? "font-semibold text-fl-gold" : "text-fl-cream/80"}`}>
                     <td className="py-2 pr-3 text-fl-cream/40">{row.code}</td>
                     <td className="py-2 pr-3">{row.label}</td>
                     {EQUITY_COLUMNS.map((_, ci) => (
@@ -76,7 +76,7 @@ export default function EquityPage() {
                           type="number"
                           value={values[equityKey(row.code, ci)] ?? 0}
                           onChange={(e) => setValue(row.code, ci, Number(e.target.value))}
-                          className="w-28 rounded-md border border-fl-gold/30 bg-fl-charcoal px-2 py-1.5 text-right text-sm text-fl-cream tabular-nums"
+                          className="w-28 rounded-md border border-fl-line bg-fl-charcoal-2 px-2 py-1.5 text-right text-sm text-fl-cream tabular-nums"
                         />
                       </td>
                     ))}
@@ -89,9 +89,9 @@ export default function EquityPage() {
           <button
             onClick={save}
             disabled={saving}
-            className="mt-6 w-full rounded-md bg-fl-gold py-3 font-display text-lg font-semibold text-fl-charcoal hover:bg-fl-gold-bright disabled:opacity-50 sm:w-auto sm:px-8"
+            className="mt-6 w-full rounded-md bg-fl-accent py-3 font-display text-lg font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50 sm:w-auto sm:px-8"
           >
-            {saving ? "Сохранение…" : "💾 Сохранить"}
+            {saving ? "Сохранение…" : "Сохранить"}
           </button>
           {saveMsg && <p className="mt-3 text-sm text-fl-cream/80">{saveMsg}</p>}
         </>

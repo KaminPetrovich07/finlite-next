@@ -18,10 +18,10 @@ const KINDS: Array<{ kind: PeriodKind; label: string }> = [
 ];
 
 const YEARS = [2024, 2025, 2026, 2027];
-const field = "rounded-md border border-fl-gold/25 bg-fl-charcoal px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
+const field = "rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 
 export function PeriodPicker({ from, to, onChange }: Props) {
-  const [kind, setKind] = useState<PeriodKind>("month");
+  const [kind, setKind] = useState<PeriodKind>(() => inferKind(from, to));
   const [year, setYear] = useState(Number(from.slice(0, 4)));
   const [month, setMonth] = useState(Number(from.slice(5, 7)));
   const [quarter, setQuarter] = useState(Math.floor((Number(from.slice(5, 7)) - 1) / 3) + 1);
@@ -35,7 +35,7 @@ export function PeriodPicker({ from, to, onChange }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div role="tablist" aria-label="Тип периода" className="flex rounded-md border border-fl-gold/20 p-0.5">
+      <div role="tablist" aria-label="Тип периода" className="flex rounded-md border border-fl-line p-0.5">
         {KINDS.map((k) => (
           <button
             key={k.kind}
@@ -75,4 +75,14 @@ export function PeriodPicker({ from, to, onChange }: Props) {
       )}
     </div>
   );
+}
+
+/** Which preset the given dates correspond to, so the picker opens on it. */
+function inferKind(from: string, to: string): PeriodKind {
+  const y = Number(from.slice(0, 4)), m = Number(from.slice(5, 7));
+  const same = (p: { from: string; to: string }) => p.from === from && p.to === to;
+  if (same(monthPeriod(y, m))) return "month";
+  if ((m - 1) % 3 === 0 && same(quarterPeriod(y, (m - 1) / 3 + 1))) return "quarter";
+  if (same(yearPeriod(y))) return "year";
+  return "custom";
 }

@@ -3,13 +3,15 @@
 // No Prisma types here: the engine must stay testable without a database.
 // ════════════════════════════════════════════════════════════════════════
 
-export type EntrySource = "opening" | "manual" | "bank" | "tax" | "demo";
+export type EntrySource = "opening" | "manual" | "bank" | "tax" | "closing" | "payroll" | "demo";
 
 export const SOURCE_LABEL: Record<EntrySource, string> = {
   opening: "Начальные остатки",
   manual: "Ручная проводка",
   bank: "Банковская выписка",
   tax: "Начисление налогов",
+  closing: "Закрытие периода",
+  payroll: "Начисление зарплаты",
   demo: "Демо",
 };
 

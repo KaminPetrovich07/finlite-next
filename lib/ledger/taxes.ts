@@ -1,27 +1,29 @@
 // ════════════════════════════════════════════════════════════════════════
-// lib/ledger/taxes.ts — tax accrual for a period, computed FROM the ledger.
+// lib/ledger/taxes.ts — начисление налогов за период ИЗ журнала.
 //
-// Rates and regime list come from lib/tax-engine.ts so the calculator and the
-// ledger can never drift apart. What differs is the base: the calculator
-// takes typed-in totals, this takes turnovers of the period, and for the
-// единый налог it uses the ACTUAL cash/non-cash split of revenue (revenue
-// credited against касса 1110 vs everything else) instead of a slider.
+// Ставки и перечень режимов — из lib/tax-engine.ts (REGIME_INFO), поэтому
+// калькулятор и журнал не могут разойтись. Отличается только база: здесь —
+// обороты периода, а для единого налога — ФАКТИЧЕСКОЕ деление выручки на
+// наличную (поступила в кассу 1110/1120) и безналичную, без ползунка.
 //
-// The result is a balanced set of lines that /api/statements/taxes stores as
-// one JournalEntry (source = "tax"), so taxes flow into ОПиУ (7710/7510),
-// баланс (34xx) and — once paid from the bank — ОДДС (стр. 090 / 080).
+// Проводки (учётная политика, см. lib/ledger/accounts.ts):
+//   налог на прибыль, единый налог, патент, e-commerce  Дт 9910  Кт 3410 / 3490
+//   налог с продаж (общий режим)                         Дт 8190  Кт 3490
+// НДС не начисляется здесь: он выделяется в момент проведения выручки (3430).
 // ════════════════════════════════════════════════════════════════════════
 
-import { INCOME_TAX, SALES_TAX, REGIMES, UNIFIED_RATES, type RegimeKey } from "@/lib/tax-engine";
+import { INCOME_TAX, REGIME_INFO, type RegimeKey } from "@/lib/tax-engine";
 import { round2, type LedgerLine } from "./types";
 
+export { isRegimeKey } from "@/lib/tax-engine";
+
 export interface TaxBase {
-  /** выручка + прочие операционные доходы за период */
+  /** чистая выручка + прочие операционные доходы за период */
   revenueTotal: number;
   /** часть выручки, полученная наличными (через кассу) */
   cashRevenue: number;
-  /** прибыль до налогообложения (без 7710) */
-  ebt: number;
+  /** прибыль до налогообложения без начисления налогов этого периода */
+  ebtBeforeTaxEntry: number;
   /** количество календарных месяцев в периоде (для патента) */
   months: number;
 }
@@ -38,52 +40,57 @@ export interface TaxLine {
 export interface TaxAccrual {
   regime: RegimeKey;
   regimeName: string;
+  article: string;
   lines: TaxLine[];
   total: number;
   entryLines: LedgerLine[];
 }
 
-export function isRegimeKey(k: string | null | undefined): k is RegimeKey {
-  return !!k && k in REGIMES;
-}
+const pct = (rate: number) => `${Number((rate * 100).toPrecision(3)).toString().replace(".", ",")}%`;
 
 export function computeTaxAccrual(regime: RegimeKey, base: TaxBase, patentMonthly: number): TaxAccrual {
+  const info = REGIME_INFO[regime];
   const lines: TaxLine[] = [];
 
-  if (regime === "general") {
-    const b = Math.max(0, base.ebt);
+  if (info.kind === "general") {
+    const st = info.salesTax ?? 0;
+    const salesTax = round2(base.revenueTotal * st);
     lines.push({
-      label: "Налог на прибыль 10% — ст.240 НК КР",
-      base: b, rate: INCOME_TAX, amount: round2(b * INCOME_TAX),
-      debit: "7710", credit: "3410",
+      label: `Налог с продаж ${pct(st)} — ст. 368 НК КР`,
+      base: base.revenueTotal, rate: st, amount: salesTax, debit: "8190", credit: "3490",
     });
-  } else if (regime === "simplified") {
+    const profitBase = Math.max(0, round2(base.ebtBeforeTaxEntry - salesTax));
     lines.push({
-      label: "Налог с продаж 2% — ст.368 НК КР",
-      base: base.revenueTotal, rate: SALES_TAX, amount: round2(base.revenueTotal * SALES_TAX),
-      debit: "7510", credit: "3490",
+      label: `Налог на прибыль ${pct(INCOME_TAX)} — ст. 240 НК КР`,
+      base: profitBase, rate: INCOME_TAX, amount: round2(profitBase * INCOME_TAX), debit: "9910", credit: "3410",
     });
-  } else if (regime === "patent") {
+  } else if (info.kind === "patent") {
     const amount = round2(patentMonthly * base.months);
     lines.push({
-      label: `Патент — ${base.months} мес. × ${patentMonthly} сом (ст.414 НК КР)`,
-      base: base.months, rate: null, amount,
-      debit: "7710", credit: "3490",
+      label: `Патент: ${base.months} мес. × ${patentMonthly.toLocaleString("ru-RU")} сом — ${info.article}`,
+      base: base.months, rate: null, amount, debit: "9910", credit: "3490",
     });
   } else {
-    const [cashRate, nonCashRate] = UNIFIED_RATES[regime]!;
-    const cash = Math.max(0, Math.min(base.cashRevenue, base.revenueTotal));
-    const nonCash = Math.max(0, base.revenueTotal - cash);
-    lines.push({
-      label: `Единый налог, наличная выручка ${pct(cashRate)} — ст.423 НК КР`,
-      base: cash, rate: cashRate, amount: round2(cash * cashRate),
-      debit: "7710", credit: "3410",
-    });
-    lines.push({
-      label: `Единый налог, безналичная выручка ${pct(nonCashRate)} — ст.423 НК КР`,
-      base: nonCash, rate: nonCashRate, amount: round2(nonCash * nonCashRate),
-      debit: "7710", credit: "3410",
-    });
+    const [cashRate, nonCashRate] = info.rates!;
+    const title = info.kind === "ecommerce" ? "Налог на электронную торговлю" : "Единый налог";
+    if (cashRate === nonCashRate) {
+      lines.push({
+        label: `${title} ${pct(cashRate)} — ${info.article}`,
+        base: base.revenueTotal, rate: cashRate, amount: round2(base.revenueTotal * cashRate),
+        debit: "9910", credit: info.kind === "ecommerce" ? "3490" : "3410",
+      });
+    } else {
+      const cash = Math.max(0, Math.min(base.cashRevenue, base.revenueTotal));
+      const nonCash = Math.max(0, base.revenueTotal - cash);
+      lines.push({
+        label: `${title}, наличная выручка ${pct(cashRate)} — ${info.article}`,
+        base: round2(cash), rate: cashRate, amount: round2(cash * cashRate), debit: "9910", credit: "3410",
+      });
+      lines.push({
+        label: `${title}, безналичная выручка ${pct(nonCashRate)} — ${info.article}`,
+        base: round2(nonCash), rate: nonCashRate, amount: round2(nonCash * nonCashRate), debit: "9910", credit: "3410",
+      });
+    }
   }
 
   const nonZero = lines.filter((l) => l.amount > 0);
@@ -102,11 +109,7 @@ export function computeTaxAccrual(regime: RegimeKey, base: TaxBase, patentMonthl
     entryLines.push({ account: cr, debit: 0, credit: amount });
   }
 
-  return { regime, regimeName: REGIMES[regime], lines, total, entryLines };
-}
-
-function pct(rate: number): string {
-  return `${Number((rate * 100).toPrecision(3))}%`;
+  return { regime, regimeName: info.name, article: info.article, lines, total, entryLines };
 }
 
 /** Whole calendar months touched by [from, to], e.g. 2026-07-01..2026-09-30 → 3. */

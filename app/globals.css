@@ -2,10 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Base ──────────────────────────────────────────────────────────────── */
-
+/* ── Theme tokens ─────────────────────────────────────────────────────────
+   Light «классический офис» is the default; dark «ночной терминал» is set by
+   data-theme="dark" on <html> (toggle in the nav, remembered per browser,
+   first visit follows the OS). Values are space-separated RGB so Tailwind
+   opacity modifiers work (text-fl-cream/60). */
 :root {
+  color-scheme: light;
+  --c-bg: 245 246 248;
+  --c-surface: 255 255 255;
+  --c-surface-2: 238 240 244;
+  --c-ink: 18 21 28;
+  --c-line: 222 226 233;
+  --c-gold: 140 96 0;          /* accent text on white, 5.3:1 */
+  --c-gold-strong: 120 82 0;
+  --c-gold-fill: 242 183 5;    /* brand saffron */
+  --c-accent: 242 183 5;
+  --c-accent-hover: 255 200 40;
+  --c-on-accent: 28 22 0;
+  --c-pos: 21 128 61;
+  --c-neg: 196 32 38;
+  --c-warn: 180 83 9;
+  --c-info: 37 99 235;
+  --c-shadow: 15 23 42;
+  --c-s1: 42 120 214;          /* chart series — validated, see lib/chart-theme.ts */
+  --c-s2: 235 104 52;
+  --c-s3: 27 175 122;
+}
+
+:root[data-theme="dark"] {
   color-scheme: dark;
+  --c-bg: 13 16 21;
+  --c-surface: 22 26 33;
+  --c-surface-2: 30 35 44;
+  --c-ink: 236 239 244;
+  --c-line: 44 50 61;
+  --c-gold: 245 197 66;
+  --c-gold-strong: 255 210 90;
+  --c-gold-fill: 242 183 5;
+  --c-accent: 242 183 5;
+  --c-accent-hover: 255 204 51;
+  --c-on-accent: 28 22 0;
+  --c-pos: 52 211 153;
+  --c-neg: 248 113 113;
+  --c-warn: 251 176 36;
+  --c-info: 96 165 250;
+  --c-shadow: 0 0 0;
+  --c-s1: 57 135 229;
+  --c-s2: 217 89 38;
+  --c-s3: 25 158 112;
 }
 
 html {
@@ -14,70 +59,64 @@ html {
 }
 
 body {
-  background: #14110D;
-  background-image:
-    radial-gradient(circle at 15% -5%, rgba(201,162,39,0.07) 0%, transparent 42%),
-    radial-gradient(circle at 85% 100%, rgba(79,121,66,0.04) 0%, transparent 38%);
-  color: #F2EDE4;
+  background: rgb(var(--c-bg));
+  color: rgb(var(--c-ink));
   min-height: 100dvh;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
 }
 
 /* ── Typography ─────────────────────────────────────────────────────────── */
 
 h1, h2, h3, h4 {
-  font-family: var(--font-display), serif;
-  letter-spacing: -0.01em;
+  font-family: "Manrope", system-ui, sans-serif;
+  letter-spacing: -0.015em;
   line-height: 1.15;
 }
 
-/* Tight uppercase section labels */
+/* Small section labels — sentence case, not tracked caps */
 .label-caps {
-  font-family: var(--font-display), serif;
-  font-size: 0.6875rem;       /* 11px */
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(242, 237, 228, 0.45);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgb(var(--c-ink) / 0.55);
 }
 
-/* Mono tabular numbers — use everywhere currency appears */
+/* Columns of money: tabular figures so digits line up */
 .num {
-  font-family: var(--font-mono), monospace;
-  font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 /* ── Inputs ─────────────────────────────────────────────────────────────── */
 
-/* Suppress native number spinner arrows */
 input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-}
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
 input[type="number"] { -moz-appearance: textfield; }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────── */
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(201,162,39,0.25); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(201,162,39,0.4); }
+::-webkit-scrollbar-thumb { background: rgb(var(--c-ink) / 0.18); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-ink) / 0.3); }
 
 /* ── Focus ──────────────────────────────────────────────────────────────── */
 
 :focus-visible {
-  outline: 2px solid #E8C547;
+  outline: 2px solid rgb(var(--c-info));
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-/* ── Range slider accent ────────────────────────────────────────────────── */
-input[type="range"] { accent-color: #C9A227; }
+input[type="range"], input[type="checkbox"] { accent-color: rgb(var(--c-gold-fill)); }
 
-/* ── Reduced motion ─────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+@media print {
+  nav, .no-print { display: none !important; }
+  body { background: white; }
 }

@@ -16,7 +16,7 @@ export function StickyBar({ netProfit, profitability, regimeName, visible }: Sti
     <div
       className={`
         fixed bottom-0 left-0 right-0 z-40
-        border-t border-fl-gold/20 bg-fl-charcoal/95 backdrop-blur-md
+        border-t border-fl-line bg-fl-charcoal/95 backdrop-blur-md
         transition-transform duration-300 ease-out
         ${visible ? "translate-y-0" : "translate-y-full"}
       `}
@@ -24,7 +24,7 @@ export function StickyBar({ netProfit, profitability, regimeName, visible }: Sti
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         {/* Left: label */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
-          <span className="text-xs uppercase tracking-widest text-fl-cream/40 font-display">
+          <span className="text-xs font-medium text-fl-cream/55">
             Чистая прибыль
           </span>
           <span className="text-xs text-fl-cream/30 hidden sm:inline">·</span>

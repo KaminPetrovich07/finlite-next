@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { buildStatements } from "@/lib/ledger/engine";
-import { demoEntries, DEMO_COMPANY } from "@/lib/ledger/demo";
-import { countUnpostedBankTx, loadEntries } from "@/lib/ledger/repo";
-import { isRegimeKey } from "@/lib/ledger/taxes";
+import { loadCompanyPeriod, NotFoundError } from "@/lib/ledger/load";
 import type { LedgerEntry } from "@/lib/ledger/types";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -19,44 +15,22 @@ export async function GET(req: NextRequest) {
   const companyId = sp.get("companyId");
   const from = sp.get("from") ?? "";
   const to = sp.get("to") ?? "";
-  const regimeParam = sp.get("regime");
   if (!companyId) return NextResponse.json({ error: "companyId обязателен" }, { status: 400 });
   if (!ISO.test(from) || !ISO.test(to) || from > to) {
     return NextResponse.json({ error: "Период задан неверно" }, { status: 400 });
   }
-
-  if (companyId === DEMO_COMPANY.id) {
-    const entries = demoEntries();
-    const regime = isRegimeKey(regimeParam) ? regimeParam : DEMO_COMPANY.regime;
-    const statements = buildStatements(entries, { from, to }, { regime, patentMonthly: DEMO_COMPANY.patentAmount });
-    return NextResponse.json({
-      company: { id: DEMO_COMPANY.id, name: DEMO_COMPANY.name, regime, patentAmount: DEMO_COMPANY.patentAmount },
-      demo: true,
-      statements,
-      entries: visible(entries, from, to),
-    });
-  }
-
   try {
-    const company = await prisma.company.findUnique({
-      where: { id: companyId },
-      select: { id: true, name: true, defaultRegime: true, patentAmount: true },
-    });
-    if (!company) return NextResponse.json({ error: "Компания не найдена" }, { status: 404 });
-
-    const regime = isRegimeKey(regimeParam) ? regimeParam : isRegimeKey(company.defaultRegime) ? company.defaultRegime : null;
-    const [entries, unpostedBankTx] = await Promise.all([
-      loadEntries(companyId, to),
-      countUnpostedBankTx(companyId, from, to),
-    ]);
-    const statements = buildStatements(entries, { from, to }, { regime, patentMonthly: company.patentAmount, unpostedBankTx });
+    const d = await loadCompanyPeriod(companyId, { from, to }, sp.get("regime"));
     return NextResponse.json({
-      company: { id: company.id, name: company.name, regime, patentAmount: company.patentAmount },
-      demo: false,
-      statements,
-      entries: visible(entries, from, to),
+      company: d.company,
+      demo: d.demo,
+      statements: d.statements,
+      previous: d.previous,
+      esg: d.esg,
+      entries: visible(d.entries, from, to),
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof NotFoundError) return NextResponse.json({ error: e.message }, { status: 404 });
     return NextResponse.json({ error: "База данных недоступна. Откройте демо-компанию, чтобы посмотреть отчётность." }, { status: 503 });
   }
 }

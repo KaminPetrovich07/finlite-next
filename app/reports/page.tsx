@@ -13,7 +13,8 @@ import { DEMO_PERIOD } from "@/lib/ledger/demo";
 import { entriesForAccounts, type Check, type Statements } from "@/lib/ledger/engine";
 import { monthPeriod, periodLabel } from "@/lib/ledger/period";
 import type { LedgerEntry } from "@/lib/ledger/types";
-import { REGIMES, type RegimeKey } from "@/lib/tax-engine";
+import { REGIME_INFO, REGIMES, type RegimeKey } from "@/lib/tax-engine";
+import { Dashboard } from "@/components/ledger/Dashboard";
 import { formatNumber } from "@/lib/format";
 import { useToast } from "@/components/Toast";
 
@@ -144,42 +145,35 @@ export default function ReportsPage() {
   const tabInfo = TABS.find((t) => t.key === tab)!;
   const cashEnd = s ? (s.balanceSheet.closing[110] ?? 0) + (s.balanceSheet.closing[120] ?? 0) : 0;
 
-  return (
-    <main className="mx-auto max-w-6xl px-4 pb-24 pt-8 sm:px-6 sm:pt-10">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-bold text-fl-gold-bright sm:text-4xl">Отчётность</h1>
-          <p className="mt-1 max-w-2xl text-sm text-fl-cream/60">
-            Все формы строятся из одного журнала проводок, поэтому каждая цифра раскрывается до операций,
-            а формы сверяются друг с другом автоматически.
-          </p>
-        </div>
-        <a href="/ledger" className="text-sm text-fl-gold underline-offset-4 hover:underline">Открыть журнал проводок</a>
-      </header>
+  const okChecks = s ? s.checks.filter((c) => c.status === "ok").length : 0;
+  const anyError = s ? s.checks.some((c) => c.status === "error") : false;
+  const field = "rounded-lg border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream shadow-card focus:border-fl-info focus:outline-none";
 
+  return (
+    <main className="mx-auto max-w-6xl px-4 pb-24 pt-6 sm:px-6 sm:pt-8">
       {/* controls */}
-      <section className="mb-5 flex flex-col gap-3 rounded-xl border border-fl-gold/15 bg-fl-charcoal-2 p-4 sm:p-5 lg:flex-row lg:flex-wrap lg:items-center">
-        <label className="flex flex-col gap-1 text-xs text-fl-cream/50 lg:min-w-[220px]">
+      <section aria-label="Компания и период" className="mb-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+        <label className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55 lg:min-w-[240px]">
           Компания
           <select
             value={companyId}
             onChange={(e) => { setCompanyId(e.target.value); setRegimeOverride(null); }}
-            className="rounded-md border border-fl-gold/25 bg-fl-charcoal px-2.5 py-2 text-sm text-fl-cream"
+            className={field}
           >
             {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <div className="flex flex-col gap-1 text-xs text-fl-cream/50">
+        <div className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55">
           Период
           {period && <PeriodPicker key={pickerKey} from={period.from} to={period.to} onChange={setPeriod} />}
         </div>
-        <label className="flex flex-col gap-1 text-xs text-fl-cream/50 lg:ml-auto lg:min-w-[260px]">
+        <label className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55 lg:ml-auto lg:w-[330px]">
           Налоговый режим
           <select
             value={data?.company.regime ?? ""}
             onChange={(e) => changeRegime(e.target.value)}
             disabled={!data}
-            className="rounded-md border border-fl-gold/25 bg-fl-charcoal px-2.5 py-2 text-sm text-fl-cream"
+            className={field}
           >
             <option value="" disabled>Не выбран</option>
             {(Object.keys(REGIMES) as RegimeKey[]).map((k) => <option key={k} value={k}>{REGIMES[k]}</option>)}
@@ -192,39 +186,80 @@ export default function ReportsPage() {
 
       {s && data && period && (
         <div className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
+          {/* hero */}
+          <section aria-label="Итоги периода" className="overflow-hidden rounded-2xl border border-fl-line bg-fl-charcoal-2 shadow-card">
+            <div className="flex flex-col gap-6 p-5 sm:p-7 md:flex-row md:items-center">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-fl-cream/60">
+                  {data.company.name} · {periodLabel(period.from, period.to)}
+                </p>
+                <p className="mt-3 text-sm font-medium text-fl-cream/70">Чистая прибыль</p>
+                <p className={`mt-1 text-5xl font-semibold tracking-tight sm:text-6xl ${s.incomeStatement.netProfit < 0 ? "text-fl-red" : "text-fl-cream"}`}>
+                  {formatNumber(s.incomeStatement.netProfit, 0)}
+                  <span className="ml-2 text-xl font-normal text-fl-cream/45">сом</span>
+                </p>
+                <p className="mt-2 text-sm text-fl-cream/60">
+                  {s.incomeStatement.margin.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% от чистой выручки
+                  {data.company.regime && <> · {REGIME_INFO[data.company.regime].short}</>}
+                </p>
+              </div>
+              <button
+                onClick={() => document.getElementById("checks")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                className="group flex items-center gap-4 self-start rounded-xl border border-fl-line bg-fl-charcoal px-4 py-3 text-left hover:border-fl-gold/40 md:self-center"
+              >
+                <Seal ok={okChecks} total={s.checks.length} error={anyError} />
+                <span>
+                  <span className="block text-sm font-semibold text-fl-cream">
+                    {okChecks === s.checks.length ? "Отчётность сходится" : anyError ? "Есть расхождения" : "Есть замечания"}
+                  </span>
+                  <span className="block text-xs text-fl-cream/55">{okChecks} из {s.checks.length} сверок · подробнее</span>
+                </span>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 border-t border-fl-line sm:grid-cols-3">
+              <Figure label="Чистая выручка" value={s.incomeStatement.netRevenue} note={s.incomeStatement.byLine.otherOpIncome ? `и прочие доходы ${formatNumber(s.incomeStatement.byLine.otherOpIncome, 0)}` : "за период"} />
+              <Figure label="Деньги на конец периода" value={cashEnd} note="касса и банк" border />
+              <Figure label="Налоги начислены" value={s.taxes.posted} note={s.taxes.computed ? `расчёт по режиму ${formatNumber(s.taxes.computed.total, 0)}` : "режим не выбран"} border />
+            </div>
+          </section>
+
           {data.demo && (
             <Notice>
-              Демо-компания: швейный цех на едином налоге, данные за июль 2026. Её нельзя изменить — чтобы попробовать
-              на своих данных, создайте копию в «Журнале».
+              Демо-компания: мебельное производство на едином налоге, III квартал 2026. Изменить её нельзя — чтобы
+              попробовать на своих данных, создайте копию в «Журнале».
             </Notice>
           )}
 
-          {/* period headline */}
-          <section aria-label="Итоги периода" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-fl-gold/15 bg-fl-gold/10 lg:grid-cols-4">
-            <Figure label="Выручка и прочие доходы" value={s.incomeStatement.revenueTotal} />
-            <Figure label="Чистая прибыль" value={s.incomeStatement.netProfit} note={`${s.incomeStatement.margin.toFixed(1)}% от выручки`} tone={s.incomeStatement.netProfit >= 0 ? "pos" : "neg"} />
-            <Figure label="Деньги на конец периода" value={cashEnd} note={`касса и банк, ${periodLabel(period.from, period.to)}`} />
-            <Figure label="Налоги начислены" value={s.taxes.posted} note={s.taxes.computed ? `расчёт ${formatNumber(s.taxes.computed.total, 0)}` : "режим не выбран"} />
-          </section>
+          <Dashboard s={s} />
 
-          <ChecksStrip checks={s.checks} onSelect={onCheck} />
+          <div id="checks" className="scroll-mt-20">
+            <ChecksStrip checks={s.checks} onSelect={onCheck} />
+          </div>
 
           {/* statements */}
           <section id="statement" className="scroll-mt-20">
-            <div role="tablist" aria-label="Формы отчётности" className="mb-4 flex gap-1 overflow-x-auto border-b border-fl-gold/15">
-              {TABS.map((t) => (
-                <button
-                  key={t.key}
-                  role="tab"
-                  aria-selected={tab === t.key}
-                  onClick={() => setTab(t.key)}
-                  className={`-mb-px whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm transition-colors ${
-                    tab === t.key ? "border-fl-gold text-fl-gold-bright" : "border-transparent text-fl-cream/55 hover:text-fl-cream"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-fl-line">
+              <div role="tablist" aria-label="Формы отчётности" className="-mb-px flex gap-1 overflow-x-auto">
+                {TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    role="tab"
+                    aria-selected={tab === t.key}
+                    onClick={() => setTab(t.key)}
+                    className={`whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors ${
+                      tab === t.key ? "border-fl-accent text-fl-cream" : "border-transparent text-fl-cream/55 hover:text-fl-cream"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <a
+                href={`/packages?companyId=${encodeURIComponent(companyId)}&from=${period.from}&to=${period.to}`}
+                className="mb-2 rounded-lg bg-fl-accent px-3.5 py-2 text-sm font-semibold text-fl-on-accent shadow-card hover:bg-fl-accent-hover"
+              >
+                Скачать отчёты
+              </a>
             </div>
             <h2 className="mb-3 font-display text-xl font-semibold text-fl-cream">
               {tabInfo.full}
@@ -256,15 +291,35 @@ export default function ReportsPage() {
   );
 }
 
-function Figure({ label, value, note, tone }: { label: string; value: number; note?: string; tone?: "pos" | "neg" }) {
+/** Reconciliation seal: ring fills with passing checks. */
+function Seal({ ok, total, error }: { ok: number; total: number; error: boolean }) {
+  const r = 22, c = 2 * Math.PI * r;
+  const tone = ok === total ? "rgb(var(--c-pos))" : error ? "rgb(var(--c-neg))" : "rgb(var(--c-warn))";
   return (
-    <div className="bg-fl-charcoal-2 px-4 py-4 sm:px-5">
-      <p className="text-xs text-fl-cream/50">{label}</p>
-      <p className={`num mt-1 text-xl font-semibold sm:text-2xl ${tone === "neg" ? "text-fl-red" : tone === "pos" ? "text-fl-green" : "text-fl-cream"}`}>
+    <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden>
+      <circle cx="28" cy="28" r={r} fill="none" stroke="rgb(var(--c-line))" strokeWidth="5" />
+      <circle
+        cx="28" cy="28" r={r} fill="none" stroke={tone} strokeWidth="5" strokeLinecap="round"
+        strokeDasharray={`${(c * ok) / Math.max(1, total)} ${c}`} transform="rotate(-90 28 28)"
+      />
+      {ok === total ? (
+        <path d="M20 28.5l5.5 5.5L37 22.5" fill="none" stroke={tone} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      ) : (
+        <text x="28" y="33" textAnchor="middle" fontSize="14" fontWeight="700" fill="rgb(var(--c-ink))">{ok}/{total}</text>
+      )}
+    </svg>
+  );
+}
+
+function Figure({ label, value, note, border }: { label: string; value: number; note?: string; border?: boolean }) {
+  return (
+    <div className={`px-5 py-4 sm:px-7 ${border ? "border-t border-fl-line sm:border-l sm:border-t-0" : ""}`}>
+      <p className="text-xs font-medium text-fl-cream/55">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-fl-cream">
         {formatNumber(value, 0)}
-        <span className="ml-1 font-body text-sm font-normal text-fl-cream/40">сом</span>
+        <span className="ml-1 text-sm font-normal text-fl-cream/45">сом</span>
       </p>
-      {note && <p className="mt-0.5 text-xs text-fl-cream/40">{note}</p>}
+      {note && <p className="mt-0.5 text-xs text-fl-cream/50">{note}</p>}
     </div>
   );
 }
