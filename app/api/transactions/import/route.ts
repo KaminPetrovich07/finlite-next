@@ -16,7 +16,7 @@ export const POST = route(async (req: NextRequest) => {
   if (!file || !companyId) {
     return NextResponse.json({ error: "Нужны file и companyId" }, { status: 400 });
   }
-  const user = await requireCompany(companyId, "edit");
+  await requireCompany(companyId, "edit");
 
   let parsed;
   try {
@@ -59,7 +59,7 @@ export const POST = route(async (req: NextRequest) => {
     return acc;
   }, {});
 
-  await logActivity(user.id, "bank_import", companyId, { file: file.name, count: categorized.length });
+  await logActivity("bank_import", companyId, { file: file.name, count: categorized.length });
   return NextResponse.json({
     importBatch,
     count: categorized.length,

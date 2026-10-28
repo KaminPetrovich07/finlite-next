@@ -2,9 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { UserMenu } from "@/components/auth/UserMenu";
 import { FeedbackDialog } from "@/components/auth/FeedbackDialog";
-import { useMe } from "@/components/auth/useMe";
 
 // Баланс / ОДДС / Капитал as hand-filled forms (/balance, /cashflow, /equity)
 // are superseded by /reports, where they are derived from the journal. The
@@ -30,16 +28,10 @@ const GROUPS: Array<{ title: string; links: Array<{ href: string; label: string 
   },
 ];
 
-const AUTH_PAGES = ["/login", "/register"];
-
 export function Nav() {
   const path = usePathname();
-  const { me } = useMe();
   const [feedback, setFeedback] = useState(false);
-  if (path && AUTH_PAGES.includes(path)) return null;
-  const groups = me?.role === "admin"
-    ? [...GROUPS, { title: "Управление", links: [{ href: "/admin", label: "Админ" }] }]
-    : GROUPS;
+  const groups = GROUPS;
   return (
     <nav className="sticky top-0 z-30 border-b border-fl-line bg-fl-charcoal-2/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2.5 sm:px-6">
@@ -87,7 +79,6 @@ export function Nav() {
           <span className="hidden lg:inline">Отзыв</span>
         </button>
         <ThemeToggle />
-        <UserMenu />
         <FeedbackDialog open={feedback} onClose={() => setFeedback(false)} />
       </div>
     </nav>

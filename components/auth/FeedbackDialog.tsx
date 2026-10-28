@@ -9,7 +9,7 @@ const KINDS = [
   { k: "other", label: "Другое" },
 ] as const;
 
-/** Modal form: the message goes to the creator's admin inbox; the reply shows up in «Профиль». */
+/** Modal form: the message is stored for the system's creator. */
 export function FeedbackDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [kind, setKind] = useState<(typeof KINDS)[number]["k"]>("idea");
   const [message, setMessage] = useState("");
@@ -48,7 +48,7 @@ export function FeedbackDialog({ open, onClose }: { open: boolean; onClose: () =
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-display text-xl font-bold">Обратная связь</h2>
-            <p className="mt-1 text-sm text-fl-cream/60">Сообщение получит создатель FinLite. Ответ появится в вашем профиле.</p>
+            <p className="mt-1 text-sm text-fl-cream/60">Сообщение получит создатель FinLite. Если нужен ответ, оставьте в тексте контакт — email или Telegram.</p>
           </div>
           <button onClick={onClose} aria-label="Закрыть" className="rounded-md p-1 text-fl-cream/50 hover:text-fl-cream">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" /></svg>
@@ -56,7 +56,7 @@ export function FeedbackDialog({ open, onClose }: { open: boolean; onClose: () =
         </div>
         {state === "sent" ? (
           <div className="mt-5 rounded-lg border-l-4 border-fl-green bg-fl-green/10 px-4 py-3 text-sm">
-            Спасибо, сообщение отправлено. Ответ появится в разделе «Профиль».
+            Спасибо, сообщение отправлено создателю FinLite.
           </div>
         ) : (
           <>

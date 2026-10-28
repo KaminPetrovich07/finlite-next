@@ -30,9 +30,9 @@ datasource db {
 }
 
 // ── Users, roles and access ───────────────────────────────────────────────
-// role: "admin"   — sees and manages everything (ADMIN_EMAIL gets it on sign-up)
-//       "full"    — creates companies, posts entries, edits own/shared companies
-//       "limited" — read-only: views, analyses and downloads shared companies
+// Reserved for sign-in, which is switched off for now (the app is one open
+// workspace). Tables stay so that turning it back on needs no data migration.
+// role: "admin" | "full" | "limited"
 model User {
   id           String    @id @default(cuid())
   email        String    @unique

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { calculate, REGIMES, type RegimeKey } from "@/lib/tax-engine";
-import { HttpError, requireCompany, requireUser, visibleCompanyIds } from "@/lib/auth/server";
+import { HttpError, requireCompany } from "@/lib/auth/server";
 
 const ReportInputSchema = z.object({
   companyId: z.string().min(1),
@@ -88,9 +88,6 @@ export async function GET(req: NextRequest) {
     if (companyId) {
       await requireCompany(companyId, "view");
       where = { companyId };
-    } else {
-      const ids = await visibleCompanyIds(await requireUser());
-      where = ids === null ? undefined : { companyId: { in: ids } };
     }
     const reports = await prisma.report.findMany({
       where,

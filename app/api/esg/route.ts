@@ -60,9 +60,8 @@ export async function PUT(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }, { status: 400 });
   const { companyId, from, to } = parsed.data;
   if (companyId === "demo") return NextResponse.json({ error: "Демо-компанию нельзя изменить" }, { status: 409 });
-  let userId: string;
   try {
-    userId = (await requireCompany(companyId, "edit")).id;
+    await requireCompany(companyId, "edit");
   } catch (e) {
     if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });
@@ -77,7 +76,7 @@ export async function PUT(req: NextRequest) {
       create: { companyId, periodFrom, periodTo, data: json },
       update: { data: json },
     });
-    await logActivity(userId, "esg_save", companyId, { from, to });
+    await logActivity("esg_save", companyId, { from, to });
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });

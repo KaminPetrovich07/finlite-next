@@ -50,12 +50,12 @@ async function build(sp: URLSearchParams, esgOverride: unknown) {
   if (!format || !(format in MIME)) return NextResponse.json({ error: "Формат: pdf, docx или xlsx" }, { status: 400 });
 
   try {
-    const user = await requireCompany(companyId, "view");
+    await requireCompany(companyId, "view");
     const data = await loadCompanyPeriod(companyId, { from, to });
     if (esgOverride) data.esg = normalizeEsgInput(esgOverride);
     const doc = BUILDERS[pkg](data);
     const buf = format === "pdf" ? await renderPdf(doc) : format === "docx" ? await renderDocx(doc) : await renderXlsx(doc);
-    await logActivity(user.id, "export", companyId === "demo" ? null : companyId, { package: pkg, format, from, to });
+    await logActivity("export", companyId === "demo" ? null : companyId, { package: pkg, format, from, to });
     const name = `${FILE[pkg]} — ${data.company.name} — ${doc.period}.${format}`.replace(/[\\/:*?"<>|«»]/g, "");
     return new NextResponse(new Uint8Array(buf), {
       headers: {
