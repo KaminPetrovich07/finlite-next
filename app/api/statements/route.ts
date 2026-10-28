@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadCompanyPeriod, NotFoundError } from "@/lib/ledger/load";
 import type { LedgerEntry } from "@/lib/ledger/types";
+import { companyAccess, HttpError, requireCompany } from "@/lib/auth/server";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -20,10 +21,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Период задан неверно" }, { status: 400 });
   }
   try {
+    const user = await requireCompany(companyId, "view");
     const d = await loadCompanyPeriod(companyId, { from, to }, sp.get("regime"));
     return NextResponse.json({
       company: d.company,
       demo: d.demo,
+      access: await companyAccess(user, companyId),
       statements: d.statements,
       previous: d.previous,
       esg: d.esg,
@@ -31,6 +34,7 @@ export async function GET(req: NextRequest) {
       entries: visible(d.entries, from, to),
     });
   } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     if (e instanceof NotFoundError) return NextResponse.json({ error: e.message }, { status: 404 });
     return NextResponse.json({ error: "База данных недоступна. Откройте демо-компанию, чтобы посмотреть отчётность." }, { status: 503 });
   }

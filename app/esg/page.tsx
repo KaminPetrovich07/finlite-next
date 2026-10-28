@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useCompanies } from "@/components/ledger/useCompanies";
+import { NEW_COMPANY, useCompanies } from "@/components/ledger/useCompanies";
 import { PeriodPicker } from "@/components/ledger/PeriodPicker";
 import { Notice } from "@/components/ledger/statements";
 import { useToast } from "@/components/Toast";
@@ -117,7 +117,7 @@ interface Loaded {
 }
 
 export default function EsgPage() {
-  const { companies, companyId, setCompanyId, company, loaded } = useCompanies();
+  const { companies, companyId, setCompanyId, company, loaded, readOnly } = useCompanies();
   const [period, setPeriodState] = useState<{ from: string; to: string } | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
   const [data, setData] = useState<Loaded | null>(null);
@@ -196,7 +196,7 @@ export default function EsgPage() {
     setPending(format);
     try {
       const qs = new URLSearchParams({ companyId, from: period.from, to: period.to, package: "esg", format });
-      const useScreen = dirty || demo;
+      const useScreen = dirty || demo || readOnly;
       const res = await fetch(`/api/export?${qs}`, useScreen
         ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ esg: input }) }
         : undefined);
@@ -233,7 +233,8 @@ export default function EsgPage() {
         <label className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55 lg:min-w-[240px]">
           Компания
           <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className={`${field} bg-fl-charcoal-2 shadow-card`}>
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.access === "view" && !c.demo ? " · просмотр" : ""}</option>)}
+            <option value={NEW_COMPANY}>+ Добавить компанию…</option>
           </select>
         </label>
         <div className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55">
@@ -302,7 +303,9 @@ export default function EsgPage() {
           ) : (
             <div className="space-y-5">
               <p className="text-sm text-fl-cream/60">
-                {demo
+                {readOnly && !demo
+                  ? "У вас доступ только для просмотра: данные можно менять для расчёта и скачивания, но не сохранять."
+                  : demo
                   ? "У демо-компании данные заполнены. Меняйте их — отчёт и скачиваемые файлы пересчитаются сразу. Сохранить демо нельзя."
                   : "Данные сохраняются отдельно для каждого периода. Отчёт пересчитывается сразу; файлы скачиваются с данными, которые на экране."}
               </p>
@@ -433,7 +436,7 @@ export default function EsgPage() {
             </div>
           )}
 
-          {!demo && (dirty || tab === "data") && (
+          {!readOnly && (dirty || tab === "data") && (
             <div className="fixed inset-x-0 bottom-0 z-30 border-t border-fl-line bg-fl-charcoal-2/95 backdrop-blur">
               <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
                 <p className="text-sm text-fl-cream/60">{dirty ? "Есть несохранённые изменения" : "Все данные сохранены"}</p>

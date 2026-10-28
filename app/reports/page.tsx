@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useCompanies } from "@/components/ledger/useCompanies";
+import { NEW_COMPANY, useCompanies } from "@/components/ledger/useCompanies";
 import { PeriodPicker } from "@/components/ledger/PeriodPicker";
 import { Drawer } from "@/components/ledger/Drawer";
 import { EntryCard } from "@/components/ledger/EntryCard";
@@ -160,7 +160,8 @@ export default function ReportsPage() {
             onChange={(e) => { setCompanyId(e.target.value); setRegimeOverride(null); }}
             className={field}
           >
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.access === "view" && !c.demo ? " · просмотр" : ""}</option>)}
+            <option value={NEW_COMPANY}>+ Добавить компанию…</option>
           </select>
         </label>
         <div className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55">

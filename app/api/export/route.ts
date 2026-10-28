@@ -6,6 +6,7 @@ import { renderPdf } from "@/lib/reports/render-pdf";
 import { renderDocx } from "@/lib/reports/render-docx";
 import { renderXlsx } from "@/lib/reports/render-xlsx";
 import { normalizeEsgInput } from "@/lib/esg/input";
+import { HttpError, logActivity, requireCompany } from "@/lib/auth/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -49,10 +50,12 @@ async function build(sp: URLSearchParams, esgOverride: unknown) {
   if (!format || !(format in MIME)) return NextResponse.json({ error: "Формат: pdf, docx или xlsx" }, { status: 400 });
 
   try {
+    const user = await requireCompany(companyId, "view");
     const data = await loadCompanyPeriod(companyId, { from, to });
     if (esgOverride) data.esg = normalizeEsgInput(esgOverride);
     const doc = BUILDERS[pkg](data);
     const buf = format === "pdf" ? await renderPdf(doc) : format === "docx" ? await renderDocx(doc) : await renderXlsx(doc);
+    await logActivity(user.id, "export", companyId === "demo" ? null : companyId, { package: pkg, format, from, to });
     const name = `${FILE[pkg]} — ${data.company.name} — ${doc.period}.${format}`.replace(/[\\/:*?"<>|«»]/g, "");
     return new NextResponse(new Uint8Array(buf), {
       headers: {
@@ -62,6 +65,7 @@ async function build(sp: URLSearchParams, esgOverride: unknown) {
       },
     });
   } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     if (e instanceof NotFoundError) return NextResponse.json({ error: e.message }, { status: 404 });
     console.error(e);
     return NextResponse.json({ error: "Не удалось сформировать отчёт" }, { status: 500 });

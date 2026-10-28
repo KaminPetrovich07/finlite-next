@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { HttpError, requireCompany } from "@/lib/auth/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { payrollLines } from "@/lib/ledger/payroll";
@@ -20,12 +21,14 @@ export async function POST(req: NextRequest) {
   const p = payrollLines({ production, sales, admin });
   if (p.gross <= 0) return NextResponse.json({ error: "Укажите сумму начисленной зарплаты" }, { status: 400 });
   try {
+    await requireCompany(companyId, "edit");
     const row = await createEntry(prisma, {
       companyId, date, source: "payroll", lines: p.lines,
       description: `Начисление заработной платы за ${date.slice(5, 7)}.${date.slice(0, 4)}`,
     });
     return NextResponse.json({ payroll: p, entry: toLedgerEntry(row) }, { status: 201 });
-  } catch {
+  } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });
   }
 }

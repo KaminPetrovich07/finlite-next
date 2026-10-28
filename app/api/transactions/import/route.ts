@@ -3,10 +3,11 @@ import { prisma } from "@/lib/db";
 import { parseStatementFile } from "@/lib/bank-parser";
 import { categorizeTransactions } from "@/lib/categorize";
 import { postBankTransactions } from "@/lib/ledger/repo";
+import { logActivity, requireCompany, route } from "@/lib/auth/server";
 
 export const runtime = "nodejs"; // xlsx parsing needs Node, not Edge
 
-export async function POST(req: NextRequest) {
+export const POST = route(async (req: NextRequest) => {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const companyId = formData.get("companyId") as string | null;
@@ -15,6 +16,7 @@ export async function POST(req: NextRequest) {
   if (!file || !companyId) {
     return NextResponse.json({ error: "Нужны file и companyId" }, { status: 400 });
   }
+  const user = await requireCompany(companyId, "edit");
 
   let parsed;
   try {
@@ -57,6 +59,7 @@ export async function POST(req: NextRequest) {
     return acc;
   }, {});
 
+  await logActivity(user.id, "bank_import", companyId, { file: file.name, count: categorized.length });
   return NextResponse.json({
     importBatch,
     count: categorized.length,
@@ -65,4 +68,4 @@ export async function POST(req: NextRequest) {
     detectedColumns: parsed.detectedColumns,
     summary,
   });
-}
+});

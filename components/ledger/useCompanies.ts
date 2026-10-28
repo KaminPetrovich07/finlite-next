@@ -9,7 +9,13 @@ export interface CompanyOption {
   defaultRegime: string | null;
   patentAmount: number;
   demo?: boolean;
+  /** "edit" — can post entries and change settings; "view" — read-only */
+  access?: "edit" | "view";
+  own?: boolean;
 }
+
+/** Value of the «+ Добавить компанию…» option in company selects. */
+export const NEW_COMPANY = "__new";
 
 const KEY = "finlite:companyId";
 
@@ -28,7 +34,7 @@ export function useCompanies() {
     } catch { /* offline / no DB — demo still works */ }
     const all = [
       ...list,
-      { id: DEMO_COMPANY.id, name: DEMO_COMPANY.name, defaultRegime: DEMO_COMPANY.regime, patentAmount: 0, demo: true },
+      { id: DEMO_COMPANY.id, name: DEMO_COMPANY.name, defaultRegime: DEMO_COMPANY.regime, patentAmount: 0, demo: true, access: "view" as const },
     ];
     setCompanies(all);
     let saved: string | null = null;
@@ -41,10 +47,12 @@ export function useCompanies() {
   useEffect(() => { reload(); }, [reload]);
 
   const setCompanyId = (id: string) => {
+    if (id === NEW_COMPANY) { window.location.href = "/companies?new=1"; return; }
     setCompanyIdState(id);
     try { localStorage.setItem(KEY, id); } catch { /* storage blocked */ }
   };
 
   const company = companies.find((c) => c.id === companyId) ?? null;
-  return { companies, companyId, setCompanyId, company, loaded, reload };
+  const readOnly = !company || company.demo || company.access === "view";
+  return { companies, companyId, setCompanyId, company, loaded, reload, readOnly };
 }

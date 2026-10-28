@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { HttpError, requireCompany } from "@/lib/auth/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { closingEntryLines } from "@/lib/ledger/engine";
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
   if (from > to) return NextResponse.json({ error: "Период задан неверно" }, { status: 400 });
   const ref = `${from}..${to}`;
   try {
+    await requireCompany(companyId, "edit");
     const entries = (await loadEntries(companyId, to)).filter((e) => !(e.source === "closing" && e.sourceRef === ref));
     const lines = closingEntryLines(entries, { from, to });
     const created = await prisma.$transaction(async (db) => {
@@ -33,7 +35,8 @@ export async function POST(req: NextRequest) {
       });
     });
     return NextResponse.json({ entry: created ? toLedgerEntry(created) : null });
-  } catch {
+  } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });
   }
 }

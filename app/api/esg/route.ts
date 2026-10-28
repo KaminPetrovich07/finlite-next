@@ -5,6 +5,7 @@ import { fromIsoDate } from "@/lib/ledger/repo";
 import { EMPTY_ESG, INDUSTRY_LABEL, type EsgInput } from "@/lib/esg/input";
 import { FUELS } from "@/lib/esg/factors";
 import { TOPICS } from "@/lib/esg/materiality";
+import { HttpError, logActivity, requireCompany } from "@/lib/auth/server";
 
 const Schema = z.object({
   companyId: z.string().min(1),
@@ -59,6 +60,13 @@ export async function PUT(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }, { status: 400 });
   const { companyId, from, to } = parsed.data;
   if (companyId === "demo") return NextResponse.json({ error: "Демо-компанию нельзя изменить" }, { status: 409 });
+  let userId: string;
+  try {
+    userId = (await requireCompany(companyId, "edit")).id;
+  } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
+    return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });
+  }
   const { data, error } = sanitize(parsed.data.data);
   if (!data) return NextResponse.json({ error }, { status: 400 });
   const periodFrom = fromIsoDate(from), periodTo = fromIsoDate(to);
@@ -69,6 +77,7 @@ export async function PUT(req: NextRequest) {
       create: { companyId, periodFrom, periodTo, data: json },
       update: { data: json },
     });
+    await logActivity(userId, "esg_save", companyId, { from, to });
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });

@@ -2,12 +2,15 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { UserMenu } from "@/components/auth/UserMenu";
+import { FeedbackDialog } from "@/components/auth/FeedbackDialog";
+import { useMe } from "@/components/auth/useMe";
 
 // Баланс / ОДДС / Капитал as hand-filled forms (/balance, /cashflow, /equity)
 // are superseded by /reports, where they are derived from the journal. The
 // routes still exist; they are just no longer in the menu.
 const GROUPS: Array<{ title: string; links: Array<{ href: string; label: string }> }> = [
-  { title: "Учёт", links: [{ href: "/ledger", label: "Журнал" }, { href: "/transactions", label: "Выписки" }] },
+  { title: "Учёт", links: [{ href: "/companies", label: "Компании" }, { href: "/ledger", label: "Журнал" }, { href: "/transactions", label: "Выписки" }] },
   {
     title: "Отчёты",
     links: [
@@ -27,8 +30,16 @@ const GROUPS: Array<{ title: string; links: Array<{ href: string; label: string 
   },
 ];
 
+const AUTH_PAGES = ["/login", "/register"];
+
 export function Nav() {
   const path = usePathname();
+  const { me } = useMe();
+  const [feedback, setFeedback] = useState(false);
+  if (path && AUTH_PAGES.includes(path)) return null;
+  const groups = me?.role === "admin"
+    ? [...GROUPS, { title: "Управление", links: [{ href: "/admin", label: "Админ" }] }]
+    : GROUPS;
   return (
     <nav className="sticky top-0 z-30 border-b border-fl-line bg-fl-charcoal-2/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2.5 sm:px-6">
@@ -40,7 +51,7 @@ export function Nav() {
         </a>
 
         <div className="relative flex min-w-0 flex-1 items-center gap-5 overflow-x-auto [scrollbar-width:none]">
-          {GROUPS.map((g, gi) => (
+          {groups.map((g, gi) => (
             <div key={g.title} className={`flex flex-shrink-0 items-center gap-1 ${gi > 0 ? "border-l border-fl-line pl-5" : ""}`}>
               <span className="sr-only">{g.title}:</span>
               {g.links.map((l) => {
@@ -64,7 +75,20 @@ export function Nav() {
           ))}
         </div>
 
+        <button
+          onClick={() => setFeedback(true)}
+          aria-label="Обратная связь создателю"
+          title="Обратная связь"
+          className="hidden h-9 flex-shrink-0 items-center gap-1.5 rounded-md border border-fl-line px-2.5 text-sm text-fl-cream/70 hover:text-fl-cream sm:flex"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" strokeLinejoin="round" />
+          </svg>
+          <span className="hidden lg:inline">Отзыв</span>
+        </button>
         <ThemeToggle />
+        <UserMenu />
+        <FeedbackDialog open={feedback} onClose={() => setFeedback(false)} />
       </div>
     </nav>
   );

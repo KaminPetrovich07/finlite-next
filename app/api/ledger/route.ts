@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { HttpError, requireCompany } from "@/lib/auth/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { validateEntry } from "@/lib/ledger/engine";
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
   if (!companyId) return NextResponse.json({ error: "companyId обязателен" }, { status: 400 });
 
   try {
+    await requireCompany(companyId, "view");
     const rows = await prisma.journalEntry.findMany({
       where: {
         companyId,
@@ -29,7 +31,8 @@ export async function GET(req: NextRequest) {
       take: 2000,
     });
     return NextResponse.json(rows.map(toLedgerEntry));
-  } catch {
+  } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });
   }
 }
@@ -62,9 +65,11 @@ export async function POST(req: NextRequest) {
   if (errors.length) return NextResponse.json({ error: errors.join("; ") }, { status: 400 });
 
   try {
+    await requireCompany(input.companyId, "edit");
     const row = await createEntry(prisma, { ...input, lines });
     return NextResponse.json(toLedgerEntry(row), { status: 201 });
-  } catch {
+  } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "Не удалось сохранить проводку — база данных недоступна" }, { status: 503 });
   }
 }

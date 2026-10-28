@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { calculate, REGIMES, type RegimeKey } from "@/lib/tax-engine";
+import { HttpError, requireCompany, requireUser, visibleCompanyIds } from "@/lib/auth/server";
 
 const ReportInputSchema = z.object({
   companyId: z.string().min(1),
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
   const fr = calculate({ ...input, regimeKey: input.regimeKey as RegimeKey });
 
   try {
+    await requireCompany(input.companyId, "edit");
     const report = await prisma.report.create({
       data: {
         companyId: input.companyId,
@@ -71,7 +73,8 @@ export async function POST(req: NextRequest) {
       },
     });
     return NextResponse.json({ report, result: fr }, { status: 201 });
-  } catch {
+  } catch (e) {
+    if (e instanceof HttpError && e.status !== 403) return NextResponse.json({ error: e.message }, { status: e.status });
     // DB not connected — return calculation result only (no persistence)
     return NextResponse.json({ report: null, result: fr }, { status: 201 });
   }
@@ -81,14 +84,23 @@ export async function GET(req: NextRequest) {
   try {
     const companyId = req.nextUrl.searchParams.get("companyId");
     const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 50), 200);
+    let where: { companyId: string } | { companyId: { in: string[] } } | undefined;
+    if (companyId) {
+      await requireCompany(companyId, "view");
+      where = { companyId };
+    } else {
+      const ids = await visibleCompanyIds(await requireUser());
+      where = ids === null ? undefined : { companyId: { in: ids } };
+    }
     const reports = await prisma.report.findMany({
-      where: companyId ? { companyId } : undefined,
+      where,
       orderBy: { createdAt: "desc" },
       take: limit,
       include: { company: { select: { name: true } } },
     });
     return NextResponse.json(reports);
-  } catch {
+  } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json([]);
   }
 }

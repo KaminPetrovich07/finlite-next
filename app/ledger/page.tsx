@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useCompanies } from "@/components/ledger/useCompanies";
+import { NEW_COMPANY, useCompanies } from "@/components/ledger/useCompanies";
 import { PeriodPicker } from "@/components/ledger/PeriodPicker";
 import { EntryCard } from "@/components/ledger/EntryCard";
 import { EntryForm } from "@/components/ledger/EntryForm";
@@ -18,7 +18,7 @@ function currentMonth() {
 }
 
 export default function LedgerPage() {
-  const { companies, companyId, setCompanyId, company, loaded, reload } = useCompanies();
+  const { companies, companyId, setCompanyId, company, loaded, reload, readOnly } = useCompanies();
   const [period, setPeriodState] = useState<{ from: string; to: string } | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
@@ -154,7 +154,8 @@ export default function LedgerPage() {
           Компания
           <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setForm(null); }}
             className="rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream">
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.access === "view" && !c.demo ? " · просмотр" : ""}</option>)}
+            <option value={NEW_COMPANY}>+ Добавить компанию…</option>
           </select>
         </label>
         <div className="flex flex-col gap-1 text-xs text-fl-cream/50">
@@ -170,6 +171,10 @@ export default function LedgerPage() {
             className="rounded-md bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50">
             Создать редактируемую копию
           </button>
+        </div>
+      ) : readOnly ? (
+        <div className="mb-5 rounded-xl border border-fl-line bg-fl-info/5 px-4 py-3 text-sm text-fl-cream/70">
+          У вас доступ к этой компании только для просмотра: журнал и отчёты открыты, изменения недоступны.
         </div>
       ) : (
         <div className="mb-5 flex flex-wrap gap-2">
@@ -207,7 +212,7 @@ export default function LedgerPage() {
             <div>
               <h2 className="mb-2 font-display text-lg font-semibold text-fl-cream">Начальные остатки</h2>
               <div className="space-y-2.5">
-                {opening.map((e) => <EntryCard key={e.id} entry={e} onDelete={isDemo ? undefined : remove} />)}
+                {opening.map((e) => <EntryCard key={e.id} entry={e} onDelete={readOnly ? undefined : remove} />)}
               </div>
             </div>
           )}
@@ -223,7 +228,7 @@ export default function LedgerPage() {
               </Notice>
             ) : (
               <div className="space-y-2.5">
-                {inPeriod.map((e) => <EntryCard key={e.id} entry={e} onDelete={isDemo ? undefined : remove} />)}
+                {inPeriod.map((e) => <EntryCard key={e.id} entry={e} onDelete={readOnly ? undefined : remove} />)}
               </div>
             )}
           </div>

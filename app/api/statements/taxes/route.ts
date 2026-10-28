@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { HttpError, requireCompany } from "@/lib/auth/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { buildStatements } from "@/lib/ledger/engine";
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
   if (from > to) return NextResponse.json({ error: "Период задан неверно" }, { status: 400 });
 
   try {
+    await requireCompany(companyId, "edit");
     const { regime, patentAmount } = await companyRegime(companyId);
     if (!regime) return NextResponse.json({ error: "Сначала выберите налоговый режим компании" }, { status: 400 });
 
@@ -46,7 +48,8 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ accrual, entry: created ? toLedgerEntry(created) : null });
-  } catch {
+  } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });
   }
 }

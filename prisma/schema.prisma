@@ -18,7 +18,10 @@
 // ════════════════════════════════════════════════════════════════════════
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // driverAdapters: lets tests run the bundled WASM engine against a local
+  // Postgres; production keeps the native engine (no adapter is passed).
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -26,23 +29,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ── Multi-user / multi-company foundation ─────────────────────────────────
-// Minimal for Phase 1: enough structure that real auth (NextAuth/Clerk) can
-// be dropped in during Phase 2 without a schema rewrite. Not wired up yet.
+// ── Users, roles and access ───────────────────────────────────────────────
+// role: "admin"   — sees and manages everything (ADMIN_EMAIL gets it on sign-up)
+//       "full"    — creates companies, posts entries, edits own/shared companies
+//       "limited" — read-only: views, analyses and downloads shared companies
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  name      String?
-  companies Company[] @relation("CompanyMembers")
-  createdAt DateTime  @default(now())
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String?
+  role         String    @default("full")
+  blocked      Boolean   @default(false)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  ownedCompanies Company[]     @relation("CompanyOwner")
+  access         CompanyAccess[]
+  feedback       Feedback[]
+  activities     ActivityLog[]
 }
 
 model Company {
   id          String   @id @default(cuid())
   name        String
+  inn         String?
+  activity    String?
   defaultRegime String? // last-used regime_key, convenience default
   patentAmount  Float    @default(0) // monthly patent fee, used when regime = "patent"
-  members     User[]   @relation("CompanyMembers")
+  owner       User?    @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId     String?
+  access      CompanyAccess[]
   reports     Report[]
   bankTransactions BankTransaction[]
   journalEntries   JournalEntry[]
@@ -51,6 +66,51 @@ model Company {
   updatedAt   DateTime @updatedAt
 
   @@index([name])
+  @@index([ownerId])
+}
+
+/// A company shared with another user: level "view" or "edit".
+model CompanyAccess {
+  id        String   @id @default(cuid())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  level     String   @default("view")
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, userId])
+  @@index([userId])
+}
+
+/// Messages from users to the system's creator (admin inbox).
+model Feedback {
+  id        String    @id @default(cuid())
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  kind      String    @default("idea") // idea | bug | question | other
+  page      String?
+  message   String
+  status    String    @default("new")  // new | in_progress | done
+  reply     String?
+  repliedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([status, createdAt])
+}
+
+/// Who did what — shown to the admin.
+model ActivityLog {
+  id        String   @id @default(cuid())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  action    String
+  companyId String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 // ── Core report: one calculation period for one company ───────────────────

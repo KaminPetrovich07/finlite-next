@@ -124,7 +124,8 @@ export default function CalculatorPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    const c = await res.json();
+    const c = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(c.error ?? "Не удалось создать компанию", "error"); return; }
     setCompanies((prev) => [c, ...prev]);
     setCompanyId(c.id);
     setNewName("");

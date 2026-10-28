@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 export type ToastKind = "success" | "error" | "info";
 
@@ -62,10 +62,11 @@ let _toastId = 0;
 export function useToast() {
   const [toasts, setToasts] = useState<ToastState[]>([]);
 
-  function show(message: string, kind: ToastKind = "success") {
+  // stable identity, so pages can list it in effect dependencies
+  const show = useCallback((message: string, kind: ToastKind = "success") => {
     const id = ++_toastId;
     setToasts((t) => [...t, { id, message, kind }]);
-  }
+  }, []);
 
   function dismiss(id: number) {
     setToasts((t) => t.filter((x) => x.id !== id));
