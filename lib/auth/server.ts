@@ -5,14 +5,19 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEMO_COMPANY } from "@/lib/ledger/demo";
-import { isRole, SESSION_COOKIE, verifySession, type Role } from "./session";
+import { authEnabled, isRole, SESSION_COOKIE, verifySession, type Role } from "./session";
 
 export interface SessionUser {
   id: string;
   email: string;
   name: string | null;
   role: Role;
+  /** sign-in is switched off: one shared workspace, everything open */
+  public?: boolean;
 }
+
+/** The caller when sign-in is off (AUTH_ENABLED not set). */
+export const PUBLIC_USER: SessionUser = { id: "public", email: "", name: null, role: "full", public: true };
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -24,6 +29,7 @@ export type Access = "edit" | "view";
 
 /** The signed-in user, re-read from the database (role and block apply at once). */
 export async function currentUser(): Promise<SessionUser | null> {
+  if (!authEnabled()) return PUBLIC_USER;
   const jar = await cookies();
   const id = await verifySession(jar.get(SESSION_COOKIE)?.value);
   if (!id) return null;
@@ -40,6 +46,7 @@ export async function requireUser(): Promise<SessionUser> {
 
 export async function requireAdmin(): Promise<SessionUser> {
   const u = await requireUser();
+  if (u.public) throw new HttpError(403, "Вход в систему отключён — админ-панель недоступна");
   if (u.role !== "admin") throw new HttpError(403, "Доступно только администратору");
   return u;
 }
@@ -47,6 +54,10 @@ export async function requireAdmin(): Promise<SessionUser> {
 /** Users with limited access never edit, whatever a company share says. */
 export async function companyAccess(user: SessionUser, companyId: string): Promise<Access | null> {
   if (companyId === DEMO_COMPANY.id) return "view";
+  if (user.public) {
+    const exists = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true } });
+    return exists ? "edit" : null;
+  }
   if (user.role === "admin") return "edit";
   const c = await prisma.company.findUnique({
     where: { id: companyId },
@@ -77,7 +88,7 @@ export async function requireCompany(companyId: string | null | undefined, need:
 
 /** Ids the user can open (for lists); null = all (admin). */
 export async function visibleCompanyIds(user: SessionUser): Promise<string[] | null> {
-  if (user.role === "admin") return null;
+  if (user.role === "admin" || user.public) return null;
   const rows = await prisma.company.findMany({
     where: { OR: [{ ownerId: user.id }, { access: { some: { userId: user.id } } }] },
     select: { id: true },
@@ -104,6 +115,7 @@ export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>
 
 export async function logActivity(userId: string | null, action: string, companyId?: string | null, details?: Record<string, unknown>) {
   try {
+    if (userId === PUBLIC_USER.id) userId = null;
     await prisma.activityLog.create({ data: { userId, action, companyId: companyId ?? null, details: (details ?? undefined) as object | undefined } });
   } catch {
     /* logging never breaks the request */

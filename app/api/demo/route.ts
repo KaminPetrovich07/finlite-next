@@ -13,7 +13,7 @@ export async function POST() {
     const user = await requireUser();
     if (user.role === "limited") throw new HttpError(403, "С ограниченным доступом создавать компании нельзя");
     const company = await prisma.company.create({
-      data: { name: `${DEMO_COMPANY.name} (копия)`, defaultRegime: DEMO_COMPANY.regime, patentAmount: DEMO_COMPANY.patentAmount, ownerId: user.id, activity: DEMO_COMPANY.activity },
+      data: { name: `${DEMO_COMPANY.name} (копия)`, defaultRegime: DEMO_COMPANY.regime, patentAmount: DEMO_COMPANY.patentAmount, ownerId: user.public ? null : user.id, activity: DEMO_COMPANY.activity },
     });
     await prisma.$transaction(async (db) => {
       for (const e of demoEntries()) {

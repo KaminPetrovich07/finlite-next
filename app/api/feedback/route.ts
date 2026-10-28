@@ -14,13 +14,14 @@ export const POST = route(async (req: NextRequest) => {
   const user = await requireUser();
   const parsed = Schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) throw new HttpError(400, parsed.error.issues[0].message);
-  const f = await prisma.feedback.create({ data: { ...parsed.data, userId: user.id } });
+  const f = await prisma.feedback.create({ data: { ...parsed.data, userId: user.public ? null : user.id } });
   return NextResponse.json({ id: f.id }, { status: 201 });
 });
 
 /** GET /api/feedback — my messages and the creator's replies */
 export const GET = route(async () => {
   const user = await requireUser();
+  if (user.public) return NextResponse.json([]);
   const rows = await prisma.feedback.findMany({
     where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 100,
     select: { id: true, kind: true, page: true, message: true, status: true, reply: true, repliedAt: true, createdAt: true },

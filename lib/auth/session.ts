@@ -13,6 +13,20 @@ export const ROLE_LABEL: Record<Role, string> = {
 };
 export const isRole = (v: unknown): v is Role => v === "admin" || v === "full" || v === "limited";
 
+/**
+ * Sign-in is optional: without AUTH_ENABLED=1 the app is open to everyone,
+ * as before (one shared workspace, no users). Turning it on later needs
+ * AUTH_SECRET and ADMIN_EMAIL as well.
+ */
+export function authEnabled(): boolean {
+  return /^(1|true|yes|on)$/i.test(process.env.AUTH_ENABLED ?? "");
+}
+
+/** Throws a clear message when sign-in is on but AUTH_SECRET is missing. */
+export function assertAuthConfigured(): void {
+  secret();
+}
+
 function secret(): Uint8Array {
   const s = process.env.AUTH_SECRET;
   if (s && s.length >= 32) return new TextEncoder().encode(s);

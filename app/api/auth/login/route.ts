@@ -3,12 +3,14 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { HttpError, isAdminEmail, logActivity, route } from "@/lib/auth/server";
 import { checkPassword } from "@/lib/auth/password";
-import { cookieOptions, SESSION_COOKIE, signSession } from "@/lib/auth/session";
+import { assertAuthConfigured, authEnabled, cookieOptions, SESSION_COOKIE, signSession } from "@/lib/auth/session";
 
 const Schema = z.object({ email: z.string().trim().toLowerCase().max(200), password: z.string().max(200) });
 
 /** POST /api/auth/login */
 export const POST = route(async (req: NextRequest) => {
+  if (!authEnabled()) throw new HttpError(404, "Вход в систему отключён");
+  assertAuthConfigured(); // before touching the database, so a missing secret never leaves a half-created account
   const parsed = Schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) throw new HttpError(400, "Введите email и пароль");
   const { email, password } = parsed.data;

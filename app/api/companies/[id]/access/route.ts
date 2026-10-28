@@ -8,6 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
 /** Only the owner or the admin manages who else sees a company. */
 async function requireManager(id: string): Promise<SessionUser> {
   const user = await requireUser();
+  if (user.public) throw new HttpError(403, "Вход в систему отключён — доступ по пользователям не используется");
   const c = await prisma.company.findUnique({ where: { id }, select: { ownerId: true } });
   if (!c) throw new HttpError(404, "Компания не найдена");
   if (user.role !== "admin" && c.ownerId !== user.id) throw new HttpError(403, "Доступом управляет владелец компании или администратор");

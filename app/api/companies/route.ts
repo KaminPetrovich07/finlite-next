@@ -11,7 +11,7 @@ import { HttpError, logActivity, requireUser, route } from "@/lib/auth/server";
 export const GET = route(async () => {
   const user = await requireUser();
   const rows = await prisma.company.findMany({
-    where: user.role === "admin" ? undefined : { OR: [{ ownerId: user.id }, { access: { some: { userId: user.id } } }] },
+    where: user.role === "admin" || user.public ? undefined : { OR: [{ ownerId: user.id }, { access: { some: { userId: user.id } } }] },
     orderBy: { createdAt: "desc" },
     select: {
       id: true, name: true, inn: true, activity: true, defaultRegime: true, patentAmount: true, createdAt: true, ownerId: true,
@@ -21,7 +21,7 @@ export const GET = route(async () => {
     },
   });
   return NextResponse.json(rows.map(({ access, _count, ...c }) => {
-    const own = c.ownerId === user.id;
+    const own = user.public ? true : c.ownerId === user.id;
     const level = user.role === "admin" || own ? "edit" : access[0]?.level === "edit" ? "edit" : "view";
     return { ...c, own, entries: _count.journalEntries, access: user.role === "limited" ? "view" : level };
   }));
@@ -42,7 +42,7 @@ export const POST = route(async (req: NextRequest) => {
   if (!parsed.success) throw new HttpError(400, parsed.error.issues[0].message);
   const { name, inn, activity, defaultRegime } = parsed.data;
   const company = await prisma.company.create({
-    data: { name, inn: inn || null, activity: activity || null, defaultRegime: defaultRegime || null, ownerId: user.id },
+    data: { name, inn: inn || null, activity: activity || null, defaultRegime: defaultRegime || null, ownerId: user.public ? null : user.id },
   });
   await logActivity(user.id, "company_create", company.id, { name });
   return NextResponse.json({ ...company, own: true, access: "edit", entries: 0 }, { status: 201 });

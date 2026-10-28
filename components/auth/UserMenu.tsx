@@ -20,7 +20,7 @@ export function UserMenu() {
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
   }, [open]);
 
-  if (!me) return <span className="h-9 w-9 flex-shrink-0" aria-hidden />;
+  if (!me || me.public) return null;
   const initial = (me.name || me.email).trim().charAt(0).toUpperCase();
 
   return (

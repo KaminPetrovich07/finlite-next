@@ -8,6 +8,8 @@ export interface Me {
   email: string;
   name: string | null;
   role: Role;
+  /** sign-in is switched off on this deployment */
+  public?: boolean;
 }
 
 // One request per page load, shared by every component that asks.

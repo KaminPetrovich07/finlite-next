@@ -49,6 +49,11 @@ export default function AccountPage() {
   return (
     <main className="mx-auto max-w-4xl px-4 pb-24 pt-6 sm:px-6 sm:pt-8">
       <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Профиль</h1>
+      {me?.public && (
+        <p className="mt-4 rounded-xl border border-fl-line bg-fl-info/5 px-4 py-3 text-sm text-fl-cream/70">
+          Вход в систему на этом сайте отключён, поэтому профиля и ответов нет. Обратная связь всё равно доходит до создателя.
+        </p>
+      )}
 
       <div className="mt-6 grid gap-5 md:grid-cols-2">
         <section className={card}>

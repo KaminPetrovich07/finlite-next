@@ -71,7 +71,7 @@ export default function CompaniesPage() {
         <div>
           <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Компании</h1>
           <p className="mt-1 max-w-2xl text-sm text-fl-cream/60">
-            {me?.role === "admin"
+            {me?.public ? "Все компании системы. Создайте свою или откройте демо." : me?.role === "admin"
               ? "Как администратор вы видите все компании системы."
               : "Ваши компании и те, к которым вам открыли доступ. Владелец может открыть доступ другим пользователям."}
           </p>
@@ -200,7 +200,8 @@ function CompanyCard({ c, isAdmin, meId, onChanged, toast }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const canManage = isAdmin || c.own;
+  const { me } = useMe();
+  const canManage = !me?.public && (isAdmin || c.own);
   const regime = c.defaultRegime && c.defaultRegime in REGIME_INFO ? REGIME_INFO[c.defaultRegime as RegimeKey].short : "режим не выбран";
 
   return (
@@ -210,7 +211,7 @@ function CompanyCard({ c, isAdmin, meId, onChanged, toast }: {
           <p className="font-display text-lg font-semibold text-fl-cream">
             {c.name}
             <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-[11px] font-medium ${c.access === "edit" ? "bg-fl-green/15 text-fl-green" : "bg-fl-info/15 text-fl-info"}`}>
-              {c.own ? "владелец" : c.access === "edit" ? "редактирование" : "просмотр"}
+              {me?.public ? "редактирование" : c.own ? "владелец" : c.access === "edit" ? "редактирование" : "просмотр"}
             </span>
           </p>
           <p className="mt-0.5 text-sm text-fl-cream/55">
