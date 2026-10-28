@@ -24,10 +24,15 @@ export interface TableBlock {
   columns: Column[];
   rows: Array<{ cells: Cell[]; style?: RowStyle }>;
   note?: string;
+  /** numbered notes printed under the table; rows reference them with ¹ ² … */
+  footnotes?: string[];
 }
 
 export type Block =
   | { type: "h2"; text: string }
+  | { type: "h3"; text: string }
+  | { type: "list"; items: string[] }
+  | { type: "callout"; title?: string; text: string; tone?: "key" | "info" | "warn" }
   | { type: "p"; text: string }
   | { type: "note"; text: string }
   | { type: "kpis"; items: Array<{ label: string; value: string; note?: string }> }
@@ -49,6 +54,9 @@ export type FormatKey = "pdf" | "docx" | "xlsx";
 export interface ReportDoc {
   package: PackageKey;
   title: string;
+  subtitle?: string;
+  /** print a table of contents after the cover (long reports) */
+  toc?: boolean;
   company: string;
   regime: string;
   period: string;
@@ -117,9 +125,15 @@ export const PACKAGE_INFO: Record<PackageKey, { title: string; short: string; de
     contents: ["Расходы по элементам затрат", "Маржинальный доход и точка безубыточности", "Помесячная динамика", "Оборотный капитал и оборачиваемость", "Денежный поток по видам деятельности", "Налоговая нагрузка"],
   },
   esg: {
-    title: "ESG-отчёт",
+    title: "Отчёт об устойчивом развитии",
     short: "ESG",
-    description: "Экология, социальная сфера и управление с привязкой к стандартам GRI.",
-    contents: ["Выбросы Scope 1 и 2, энергия, вода, отходы", "Персонал, зарплата, обучение, безопасность", "Органы управления, политики, налоги", "Созданная и распределённая стоимость (GRI 201-1)"],
+    description: "Полный ESG-отчёт по GRI 2021 и IFRS S1/S2: анализ, методика каждого показателя, рекомендации, приложения.",
+    contents: ["Резюме, обращение руководителя, профиль компании", "Выбросы Охватов 1–3 (GHG Protocol), энергия, вода, отходы, климатические риски", "Персонал, оплата, обучение, охрана труда; управление, политики, налоги", "Существенные темы, GRI 201-1, рекомендации с расчётом эффекта", "Методика и коэффициенты, указатель GRI, соответствие IFRS S1/S2"],
   },
 };
+
+const SUP = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];
+/** 12 → "¹²" — footnote marker that survives every format as plain text. */
+export function sup(n: number): string {
+  return String(n).split("").map((d) => SUP[Number(d)]).join("");
+}

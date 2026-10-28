@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
       statements: d.statements,
       previous: d.previous,
       esg: d.esg,
+      prevEsg: d.prevEsg,
       entries: visible(d.entries, from, to),
     });
   } catch (e) {

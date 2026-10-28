@@ -1,7 +1,7 @@
 // Excel: one sheet per section, real numbers (not text) so the user can keep
 // calculating; money formatted with grouping and negatives in brackets.
 import ExcelJS from "exceljs";
-import type { Block, Column, ReportDoc, RowStyle } from "./model";
+import { sup, type Block, type Column, type ReportDoc, type RowStyle } from "./model";
 
 const MONEY = '#,##0;(#,##0);"—"';
 const NUM = '#,##0.##;-#,##0.##;"—"';
@@ -61,7 +61,13 @@ export async function renderXlsx(doc: ReportDoc): Promise<Buffer> {
     function renderBlock(b: Block) {
       switch (b.type) {
         case "h2": ws.addRow([]); text(b.text, { bold: true, size: 12 }); break;
+        case "h3": text(b.text, { bold: true }); break;
         case "p": text(b.text); break;
+        case "list": for (const it of b.items) text(`•  ${it}`); break;
+        case "callout":
+          if (b.title) text(b.title, { bold: true, color: b.tone === "warn" ? "FF9A4A00" : b.tone === "key" ? GOLD : "FF1D5DAA" });
+          text(b.text, { color: b.tone === "warn" ? "FF9A4A00" : undefined });
+          break;
         case "note": text(b.text, { italic: true, color: "FFB45309" }); break;
         case "pagebreak": break;
         case "kpis":
@@ -78,7 +84,7 @@ export async function renderXlsx(doc: ReportDoc): Promise<Buffer> {
           const max = Math.max(1, ...b.items.map((i) => i.value));
           for (const i of b.items) {
             const r = ws.addRow([i.label, i.value, "█".repeat(Math.max(1, Math.round((i.value / max) * 20)))]);
-            r.getCell(2).numFmt = MONEY;
+            r.getCell(2).numFmt = b.items.every((x) => Number.isInteger(x.value)) ? MONEY : NUM;
             r.getCell(3).font = { color: { argb: "FF2A78D6" } };
           }
           ws.addRow([]);
@@ -104,6 +110,7 @@ export async function renderXlsx(doc: ReportDoc): Promise<Buffer> {
           });
           if (!frozen && b.rows.length > 25) { ws.views = [{ state: "frozen", ySplit: head.number, showGridLines: false }]; frozen = true; }
           for (const row of b.rows) styleRow(ws.addRow(row.cells.map((c) => (c === null ? null : c))), b.columns, row.style ?? "normal");
+          b.footnotes?.forEach((f, i) => text(`${sup(i + 1)} ${f}`, { size: 9, color: "FF5B6170" }));
           if (b.note) text(b.note, { italic: true, size: 9, color: "FF5B6170" });
           ws.addRow([]);
           break;

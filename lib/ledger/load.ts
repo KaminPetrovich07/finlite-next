@@ -5,7 +5,7 @@ import { buildStatements, type Statements } from "./engine";
 import { demoEntries, DEMO_COMPANY, DEMO_ESG, DEMO_PERIOD } from "./demo";
 import { countUnpostedBankTx, fromIsoDate, loadEntries } from "./repo";
 import { isRegimeKey, REGIME_INFO, type RegimeKey } from "@/lib/tax-engine";
-import { EMPTY_ESG, type EsgInput } from "@/lib/esg";
+import { normalizeEsgInput, type EsgInput } from "@/lib/esg/input";
 import type { LedgerEntry, Period } from "./types";
 
 export interface CompanyInfo {
@@ -27,6 +27,8 @@ export interface CompanyPeriodData {
   /** same company, the period of equal length right before — for comparisons */
   previous: Statements;
   esg: EsgInput | null;
+  /** ESG data saved for the previous period, for year-on-year comparison */
+  prevEsg: EsgInput | null;
 }
 
 export class NotFoundError extends Error {}
@@ -60,7 +62,8 @@ export async function loadCompanyPeriod(companyId: string, period: Period, regim
       entries,
       statements: buildStatements(entries, period, opts),
       previous: buildStatements(entries, prev, opts),
-      esg: coversDemo ? { ...EMPTY_ESG, ...DEMO_ESG } : null,
+      esg: coversDemo ? normalizeEsgInput(DEMO_ESG) : null,
+      prevEsg: null,
     };
   }
 
@@ -70,12 +73,12 @@ export async function loadCompanyPeriod(companyId: string, period: Period, regim
   });
   if (!company) throw new NotFoundError("Компания не найдена");
   const regime = isRegimeKey(regimeOverride) ? regimeOverride : isRegimeKey(company.defaultRegime) ? company.defaultRegime : null;
-  const [entries, unpostedBankTx, esgRow] = await Promise.all([
+  const esgKey = (p: Period) => ({ companyId_periodFrom_periodTo: { companyId, periodFrom: fromIsoDate(p.from), periodTo: fromIsoDate(p.to) } });
+  const [entries, unpostedBankTx, esgRow, prevEsgRow] = await Promise.all([
     loadEntries(companyId, period.to),
     countUnpostedBankTx(companyId, period.from, period.to),
-    prisma.esgReport.findUnique({
-      where: { companyId_periodFrom_periodTo: { companyId, periodFrom: fromIsoDate(period.from), periodTo: fromIsoDate(period.to) } },
-    }),
+    prisma.esgReport.findUnique({ where: esgKey(period) }),
+    prisma.esgReport.findUnique({ where: esgKey(prev) }),
   ]);
   const opts = { regime, patentMonthly: company.patentAmount };
   return {
@@ -85,6 +88,7 @@ export async function loadCompanyPeriod(companyId: string, period: Period, regim
     entries,
     statements: buildStatements(entries, period, { ...opts, unpostedBankTx }),
     previous: buildStatements(entries, prev, opts),
-    esg: esgRow ? { ...EMPTY_ESG, ...(esgRow.data as object) } as EsgInput : null,
+    esg: esgRow ? normalizeEsgInput(esgRow.data) : null,
+    prevEsg: prevEsgRow ? normalizeEsgInput(prevEsgRow.data) : null,
   };
 }

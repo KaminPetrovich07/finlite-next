@@ -6,7 +6,7 @@ import { BUILDERS } from "./packages";
 import { renderPdf } from "./render-pdf";
 import { renderDocx } from "./render-docx";
 import { renderXlsx } from "./render-xlsx";
-import { computeEsg, EMPTY_ESG } from "@/lib/esg";
+import { buildEsgReport, computeEsg, EMPTY_ESG, normalizeEsgInput } from "@/lib/esg";
 import { payrollLines } from "@/lib/ledger/payroll";
 import { DEMO_ESG } from "@/lib/ledger/demo";
 
@@ -43,18 +43,72 @@ test("full package carries the same totals as the statements", async () => {
   assert.equal(total?.cells[3], d.statements.balanceSheet.closing[299]);
 });
 
-test("ESG: emissions and economic value", async () => {
+test("ESG: emissions by scope (GHG Protocol, IPCC 2006 factors)", async () => {
   const d = await loadCompanyPeriod("demo", Q3);
-  const rep = computeEsg(d.statements, { ...EMPTY_ESG, ...DEMO_ESG });
-  assert.ok(Math.abs(rep.emissions.scope2 - (41_800 * 0.153) / 1000) < 0.01);
-  assert.ok(Math.abs(rep.emissions.scope1 - (1_350 * 2.68 + 2_100 * 2.31) / 1000) < 0.01);
-  const e = rep.economic;
-  const is = d.statements.incomeStatement;
-  // retained = net profit + depreciation − dividends paid
-  assert.ok(Math.abs(e.retained - (is.netProfit + (is.byNature.depreciation ?? 0) - (d.statements.cashFlow.values[470] ?? 0))) < 0.02);
+  const input = normalizeEsgInput(DEMO_ESG);
+  const rep = computeEsg(d.statements, input);
+  assert.ok(Math.abs(rep.emissions.scope2 - (41_800 * 0.153) / 1000) < 0.01, "scope 2 = kWh × grid factor");
+  const scope1 = (1_350 * 2.676 + 2_100 * 2.272) / 1000;
+  assert.ok(Math.abs(rep.emissions.scope1 - scope1) < 0.01, "scope 1 = litres × IPCC factor");
+  assert.ok(rep.emissions.scope3 > 0, "scope 3 commute + travel");
+  assert.ok(Math.abs(rep.emissions.scope12 - rep.emissions.scope1 - rep.emissions.scope2) < 1e-9);
+  // old saved inputs (petrolL / dieselL) still load
+  const legacy = computeEsg(d.statements, normalizeEsgInput({ petrolL: 2_100, dieselL: 1_350, electricityKwh: 41_800 }));
+  assert.ok(Math.abs(legacy.emissions.scope1 - scope1) < 0.01);
   const empty = computeEsg(d.statements, EMPTY_ESG);
   assert.equal(empty.emissions.total, 0);
   assert.equal(empty.completeness.filled, 0);
+});
+
+test("ESG: economic value adds up (GRI 201-1, accrual basis)", async () => {
+  const d = await loadCompanyPeriod("demo", Q3);
+  const e = computeEsg(d.statements, normalizeEsgInput(DEMO_ESG)).economic;
+  const sum = e.operatingCosts + e.employees + e.capitalProviders + e.government + e.community;
+  assert.ok(Math.abs(e.distributed - sum) < 0.02, "distributed = sum of stakeholders");
+  assert.ok(Math.abs(e.generated - e.distributed - e.retained) < 0.02, "retained = generated − distributed");
+  const is = d.statements.incomeStatement;
+  // retained = net profit + depreciation − dividends declared (500 000 in the demo)
+  assert.ok(Math.abs(e.retained - (is.netProfit + (is.byNature.depreciation ?? 0) - 500_000)) < 1, `retained ${e.retained}`);
+});
+
+test("ESG report: methodology footnote for every indicator, all sections present", async () => {
+  const d = await loadCompanyPeriod("demo", Q3);
+  const doc = buildEsgReport({ company: d.company, period: d.period, statements: d.statements, previous: d.previous, esg: d.esg, prevEsg: null });
+  const titles = doc.sections.map((s) => s.title);
+  for (const t of ["Резюме", "Ключевые ESG-показатели", "Существенные темы", "Экология", "Социальная сфера", "Управление", "Рекомендации"]) {
+    assert.ok(titles.includes(t), t);
+  }
+  assert.ok(titles.some((t) => t.includes("Указатель стандартов GRI")));
+  assert.ok(titles.some((t) => t.includes("IFRS S1 и IFRS S2")));
+  const key = doc.sections.find((s) => s.title === "Ключевые ESG-показатели")!;
+  for (const b of key.blocks) {
+    if (b.type !== "table") continue;
+    assert.equal(b.footnotes?.length, b.rows.length, `${b.title}: one footnote per row`);
+  }
+  const text = JSON.stringify(doc);
+  assert.ok(!/\.\.(?!\.)/.test(text.replace(/\.\.\./g, "")), "no doubled periods");
+  assert.ok(!text.includes("NaN") && !text.includes("undefined"), "no NaN / undefined in text");
+});
+
+test("ESG report without inputs still builds from the ledger", async () => {
+  const d = await loadCompanyPeriod("demo", Q3);
+  const doc = buildEsgReport({ company: d.company, period: d.period, statements: d.statements, previous: d.previous, esg: null, prevEsg: null });
+  assert.ok(doc.disclaimer);
+  assert.ok(!JSON.stringify(doc).includes("NaN"));
+  const pdf = await renderPdf(doc);
+  assert.equal(pdf.subarray(0, 4).toString(), "%PDF");
+});
+
+test("ESG report compares with the previous period when it has data", async () => {
+  const d = await loadCompanyPeriod("demo", Q3);
+  const prevEsg = normalizeEsgInput({ ...DEMO_ESG, electricityKwh: 50_000, vehiclePetrolL: 2_500 });
+  // reuse Q3 statements as a stand-in previous period with entries
+  const doc = buildEsgReport({ company: d.company, period: d.period, statements: d.statements, previous: d.statements, esg: d.esg, prevEsg });
+  const text = JSON.stringify(doc);
+  assert.ok(text.includes("снизились на"), "emissions fell vs previous period");
+  assert.ok(!text.includes("NaN"));
+  const docx = await renderDocx(doc);
+  assert.equal(docx.subarray(0, 2).toString(), "PK");
 });
 
 test("payroll entry: withholdings and employer contributions", () => {

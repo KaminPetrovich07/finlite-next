@@ -13,7 +13,7 @@ import type { CompanyPeriodData } from "@/lib/ledger/load";
 import { formatDate, periodLabel } from "@/lib/ledger/period";
 import { computeTaxAccrual, monthsInPeriod } from "@/lib/ledger/taxes";
 import { comparableRegimes, REGIME_INFO, type RegimeKey } from "@/lib/tax-engine";
-import { computeEsg, EMPTY_ESG, PILLAR_LABEL, type Pillar } from "@/lib/esg";
+import { buildEsgReport } from "@/lib/esg/report";
 import { money, num, pct, PACKAGE_INFO, type Block, type PackageKey, type ReportDoc, type Section, type TableBlock } from "./model";
 
 const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
@@ -433,44 +433,17 @@ export function buildManagement(d: CompanyPeriodData): ReportDoc {
 }
 
 // ── 5. ESG ─────────────────────────────────────────────────────────────────
+// Полноценный отчёт об устойчивом развитии собирается в lib/esg/report.ts.
 
 export function buildEsg(d: CompanyPeriodData): ReportDoc {
-  const rep = computeEsg(d.statements, d.esg ?? EMPTY_ESG);
-  const SRC = { ledger: "из учёта", input: "введено", calc: "расчёт" } as const;
-  const pillar = (p: Pillar): Section => ({
-    title: PILLAR_LABEL[p], sheet: PILLAR_LABEL[p],
-    blocks: [{
-      type: "table",
-      columns: [{ label: "Показатель", width: 44 }, { label: "Значение", width: 18 }, { label: "Ед.", width: 12 }, { label: "GRI", width: 13 }, { label: "Источник", width: 13 }],
-      rows: rep.metrics.filter((m) => m.pillar === p).map((m) => ({
-        cells: [m.note ? `${m.label} (${m.note})` : m.label, m.value === null ? "—" : typeof m.value === "number" ? num(m.value) : m.value, m.unit, m.gri, SRC[m.source]],
-      })),
-    }],
+  return buildEsgReport({
+    company: d.company,
+    period: d.period,
+    statements: d.statements,
+    previous: d.previous,
+    esg: d.esg,
+    prevEsg: d.prevEsg,
   });
-  const e = rep.economic;
-  return base(d, "esg", [
-    {
-      title: "Обзор", sheet: "Обзор", blocks: [
-        ...(d.esg ? [] : [{ type: "note" as const, text: "Нефинансовые данные (энергия, персонал, органы управления) за этот период не введены. В отчёте только показатели, посчитанные из журнала. Заполните их на странице ESG." }]),
-        { type: "kpis", items: [
-          { label: "Выбросы CO₂, всего", value: `${num(rep.emissions.total, 1)} т`, note: `Scope 1 — ${num(rep.emissions.scope1, 1)} т, Scope 2 — ${num(rep.emissions.scope2, 1)} т` },
-          { label: "Углеродоёмкость", value: rep.emissions.intensity === null ? "—" : `${num(rep.emissions.intensity, 3)} т / млн сом` },
-          { label: "Работникам выплачено", value: `${money(e.employees)} сом`, note: "зарплата и взносы" },
-          { label: "Государству", value: `${money(e.government)} сом`, note: "налоги и штрафы" },
-        ] },
-        { type: "table", title: "Созданная и распределённая экономическая стоимость (GRI 201-1)", columns: [{ label: "Статья", width: 70 }, { label: "Сом", kind: "money", width: 30 }], rows: [
-          { cells: ["Создано: выручка и прочие доходы", e.generated], style: "subtotal" },
-          { cells: ["Операционные затраты (поставщики)", e.operatingCosts] },
-          { cells: ["Работникам: зарплата и взносы", e.employees] },
-          { cells: ["Кредиторам и собственникам: проценты и дивиденды", e.capitalProviders] },
-          { cells: ["Государству: налоги и штрафы", e.government] },
-          { cells: ["Осталось в компании", e.retained], style: "total" },
-        ] },
-        { type: "p", text: "Коэффициент выбросов электросети КР — 0,153 кг CO₂/кВт·ч (Ember / Our World in Data, 2025). Коэффициенты по топливу — ориентировочные на основе IPCC 2006; их можно уточнить на странице ESG." },
-      ],
-    },
-    pillar("E"), pillar("S"), pillar("G"),
-  ]);
 }
 
 export const BUILDERS: Record<PackageKey, (d: CompanyPeriodData) => ReportDoc> = {

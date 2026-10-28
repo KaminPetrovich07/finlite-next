@@ -4,7 +4,7 @@ import {
   AlignmentType, BorderStyle, Document, Footer, Header, HeadingLevel, PageNumber, PageOrientation, Packer, Paragraph,
   ShadingType, Table, TableCell, TableRow, TextRun, WidthType,
 } from "docx";
-import { cellText, type Block, type ReportDoc, type RowStyle, type TableBlock } from "./model";
+import { cellText, sup, type Block, type ReportDoc, type RowStyle, type TableBlock } from "./model";
 
 const FONT = "Arial";
 const INK = "12151C";
@@ -18,6 +18,12 @@ const p = (text: string, opts: { bold?: boolean; size?: number; color?: string; 
     spacing: { after: opts.after ?? 80 },
     children: [new TextRun({ text, bold: opts.bold, size: opts.size ?? 18, color: opts.color ?? INK, italics: opts.italics, font: FONT })],
   });
+
+const CALLOUT = {
+  key: { bar: "F2B705", fill: "FFF8E1", title: GOLD },
+  info: { bar: "2A78D6", fill: "EEF4FC", title: "1D5DAA" },
+  warn: { bar: "D97706", fill: "FEF3E2", title: "9A4A00" },
+} as const;
 
 const none = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
 const hair = { style: BorderStyle.SINGLE, size: 2, color: LINE };
@@ -50,6 +56,7 @@ function table(b: TableBlock): Array<Paragraph | Table> {
   const out: Array<Paragraph | Table> = [];
   if (b.title) out.push(p(b.title, { bold: true, size: 19, after: 60 }));
   out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
+  b.footnotes?.forEach((f, i) => out.push(p(`${sup(i + 1)} ${f}`, { size: 14, color: MUTED, after: 20 })));
   out.push(p(b.note ?? "", { italics: true, size: 15, color: MUTED, after: 160 }));
   return out;
 }
@@ -57,7 +64,26 @@ function table(b: TableBlock): Array<Paragraph | Table> {
 function block(b: Block): Array<Paragraph | Table> {
   switch (b.type) {
     case "h2": return [new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 80 }, children: [new TextRun({ text: b.text, font: FONT, bold: true, size: 22, color: INK })] })];
-    case "p": return [p(b.text, { after: 100 })];
+    case "h3": return [new Paragraph({ heading: HeadingLevel.HEADING_3, spacing: { before: 160, after: 60 }, children: [new TextRun({ text: b.text, font: FONT, bold: true, size: 19, color: INK })] })];
+    case "p": return [p(b.text, { after: 100, align: AlignmentType.JUSTIFIED })];
+    case "list": return b.items.map((t, i) => new Paragraph({
+      indent: { left: 360, hanging: 220 },
+      spacing: { after: i === b.items.length - 1 ? 120 : 40 },
+      children: [new TextRun({ text: `•\t${t}`, font: FONT, size: 18, color: INK })],
+      tabStops: [{ type: "left", position: 360 }],
+    }));
+    case "callout": {
+      const tone = CALLOUT[b.tone ?? "info"];
+      return [new Paragraph({
+        shading: { type: ShadingType.CLEAR, color: "auto", fill: tone.fill },
+        border: { left: { style: BorderStyle.SINGLE, size: 24, color: tone.bar, space: 6 } },
+        spacing: { before: 60, after: 160 },
+        children: [
+          ...(b.title ? [new TextRun({ text: b.title, font: FONT, size: 19, bold: true, color: tone.title, break: 0 }), new TextRun({ text: "", break: 1 })] : []),
+          new TextRun({ text: b.text, font: FONT, size: 18, color: INK }),
+        ],
+      })];
+    }
     case "note": return [new Paragraph({
       shading: { type: ShadingType.CLEAR, color: "auto", fill: "FFF8E1" },
       border: { left: { style: BorderStyle.SINGLE, size: 18, color: "F2B705", space: 6 } },
@@ -85,7 +111,7 @@ function block(b: Block): Array<Paragraph | Table> {
 }
 
 export async function renderDocx(doc: ReportDoc): Promise<Buffer> {
-  const wide = doc.sections.some((s) => s.blocks.some((b) => b.type === "table" && b.columns.length >= 7));
+  const wide = !doc.toc && doc.sections.some((s) => s.blocks.some((b) => b.type === "table" && b.columns.length >= 7));
   const footer = new Footer({
     children: [new Paragraph({
       alignment: AlignmentType.RIGHT,
@@ -105,7 +131,18 @@ export async function renderDocx(doc: ReportDoc): Promise<Buffer> {
     headers: { default: new Header({ children: [] }) },
     footers: { default: footer },
     children: [
-      ...(i === 0 ? [
+      ...(i === 0 && doc.toc ? [
+        new Paragraph({ spacing: { before: 2400, after: 0 }, children: [] }),
+        p(doc.company, { size: 26, color: MUTED, after: 80 }),
+        p(doc.title, { bold: true, size: 56, after: 80 }),
+        ...(doc.subtitle ? [p(doc.subtitle, { size: 28, color: GOLD, after: 600 })] : []),
+        p(`Налоговый режим: ${doc.regime}`, { size: 18, color: MUTED, after: 40 }),
+        p(`Сформировано в FinLite KG ${doc.generatedAt}`, { size: 18, color: MUTED, after: 240 }),
+        ...(doc.disclaimer ? block({ type: "note", text: doc.disclaimer }) : []),
+        new Paragraph({ pageBreakBefore: true, heading: HeadingLevel.HEADING_1, spacing: { after: 160 }, children: [new TextRun({ text: "Содержание", font: FONT, bold: true, size: 30, color: INK })] }),
+        ...doc.sections.map((x, k) => p(`${k + 1}. ${x.title}`, { size: 20, after: 60 })),
+        new Paragraph({ pageBreakBefore: true, children: [] }),
+      ] : i === 0 ? [
         p(doc.title, { bold: true, size: 40, after: 60 }),
         p(doc.company, { size: 24, after: 40 }),
         p(`${doc.period} · ${doc.regime}`, { size: 18, color: MUTED, after: 40 }),

@@ -13,6 +13,7 @@
 // Используется в демо-режиме без базы данных, в POST /api/demo и в тестах.
 // ════════════════════════════════════════════════════════════════════════
 
+import type { EsgInput } from "@/lib/esg/input";
 import { SOCIAL_EMPLOYEE, SOCIAL_EMPLOYER, PIT_RATE, type RegimeKey } from "@/lib/tax-engine";
 import { buildStatements } from "./engine";
 import { monthPeriod } from "./period";
@@ -30,30 +31,57 @@ export const DEMO_COMPANY = {
 export const DEMO_PERIOD = { from: "2026-07-01", to: "2026-09-30" };
 
 /** Non-financial inputs of the demo company for the ESG report. */
-export const DEMO_ESG = {
+export const DEMO_ESG: Partial<EsgInput> = {
+  industry: "production",
+  region: "г. Бишкек",
+  companyDescription:
+    "ОсОО «Белес» — производитель корпусной мебели в Бишкеке: кухонные гарнитуры, шкафы и мебель для гостиниц и офисов по индивидуальным заказам. У компании собственный цех площадью около 900 м² с раскроечным и кромкооблицовочным оборудованием и выставочный салон в арендованном помещении.\n\n" +
+    "Основное сырьё — ламинированная ДСП, МДФ и фурнитура — закупается у дистрибьюторов в Кыргызстане. Продукция продаётся частным покупателям через салон и Instagram и по договорам с гостиницами и застройщиками; доставка и сборка выполняются собственным транспортом.",
+  ceoMessage: "",
   electricityKwh: 41_800,
+  renewableKwh: 0,
   heatGcal: 0,
-  dieselL: 1_350,
-  petrolL: 2_100,
+  vehiclePetrolL: 2_100,
+  vehicleDieselL: 1_200,
+  generatorDieselL: 150,
   gasM3: 0,
   coalT: 0,
   waterM3: 420,
   wasteT: 6.8,
   wasteRecycledT: 4.1,
+  hazardousWasteT: 0.05,
   employees: 14,
+  employeesStart: 13,
   women: 6,
-  womenManagers: 1,
   managers: 3,
+  womenManagers: 1,
+  under30: 5,
+  age30to50: 7,
+  over50: 2,
+  contractors: 2,
   hires: 2,
   leavers: 1,
   trainingHours: 56,
+  employeesTrained: 8,
   injuries: 0,
+  lostDays: 0,
+  nationalAvgWage: 51_900,
+  commuteKmOneWay: 7,
+  commuteShareCar: 30,
+  commuteSharePublic: 60,
+  businessAirKm: 1_600,
+  businessCarKm: 900,
   boardMembers: 3,
   independentBoard: 1,
   womenBoard: 1,
   antiCorruptionPolicy: true,
   codeOfConduct: true,
   dataProtectionPolicy: false,
+  environmentalPolicy: false,
+  hrPolicy: true,
+  customerComplaints: 3,
+  localSuppliersPct: 70,
+  donations: 25_000,
   esgOwner: "Финансовый директор",
 };
 

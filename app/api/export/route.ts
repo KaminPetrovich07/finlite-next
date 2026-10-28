@@ -5,6 +5,7 @@ import type { FormatKey, PackageKey } from "@/lib/reports/model";
 import { renderPdf } from "@/lib/reports/render-pdf";
 import { renderDocx } from "@/lib/reports/render-docx";
 import { renderXlsx } from "@/lib/reports/render-xlsx";
+import { normalizeEsgInput } from "@/lib/esg/input";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -25,7 +26,20 @@ const FILE: Record<PackageKey, string> = {
 
 /** GET /api/export?companyId=…&from=…&to=…&package=full|executive|audit|management|esg&format=pdf|docx|xlsx */
 export async function GET(req: NextRequest) {
-  const sp = req.nextUrl.searchParams;
+  return build(req.nextUrl.searchParams, null);
+}
+
+/**
+ * POST /api/export?…same query… with body { esg } — the ESG page sends the
+ * inputs currently on screen, so the file matches what the user sees even
+ * before saving (and for the demo company, which cannot be saved).
+ */
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => null);
+  return build(req.nextUrl.searchParams, body && typeof body === "object" && "esg" in body ? body.esg : null);
+}
+
+async function build(sp: URLSearchParams, esgOverride: unknown) {
   const companyId = sp.get("companyId");
   const from = sp.get("from") ?? "", to = sp.get("to") ?? "";
   const pkg = sp.get("package") as PackageKey | null;
@@ -36,6 +50,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const data = await loadCompanyPeriod(companyId, { from, to });
+    if (esgOverride) data.esg = normalizeEsgInput(esgOverride);
     const doc = BUILDERS[pkg](data);
     const buf = format === "pdf" ? await renderPdf(doc) : format === "docx" ? await renderDocx(doc) : await renderXlsx(doc);
     const name = `${FILE[pkg]} — ${data.company.name} — ${doc.period}.${format}`.replace(/[\\/:*?"<>|«»]/g, "");

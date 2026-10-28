@@ -93,6 +93,8 @@ export interface IncomeStatement {
   byLine: Record<PlRole, number>;
   /** expenses by nature (элементы затрат), positive */
   byNature: Partial<Record<Nature, number>>;
+  /** P&L account → amount for the period (income and expense both positive), closing entries excluded */
+  byAccount: Record<string, number>;
   revenueGross: number;
   returns: number;
   netRevenue: number;
@@ -274,6 +276,7 @@ function buildIncomeStatement(dr: Map<string, number>, cr: Map<string, number>):
   const byLine = Object.fromEntries(PL_LINES.map((r) => [r, 0])) as Record<PlRole, number>;
   const accountsBy = Object.fromEntries(PL_LINES.map((r) => [r, [] as string[]])) as Record<PlRole, string[]>;
   const byNature: Partial<Record<Nature, number>> = {};
+  const byAccount: Record<string, number> = {};
   let revenueGross = 0, returns = 0;
 
   for (const a of ACCOUNTS) {
@@ -281,6 +284,7 @@ function buildIncomeStatement(dr: Map<string, number>, cr: Map<string, number>):
     const d = dr.get(a.code) ?? 0, c = cr.get(a.code) ?? 0;
     if (Math.abs(d) < EPS && Math.abs(c) < EPS) { accountsBy[a.pl].push(a.code); continue; }
     const amount = a.type === "income" ? c - d : d - c;
+    byAccount[a.code] = round2(amount);
     byLine[a.pl] += amount;
     accountsBy[a.pl].push(a.code);
     if (a.pl === "revenue") {
@@ -329,7 +333,7 @@ function buildIncomeStatement(dr: Map<string, number>, cr: Map<string, number>):
   ];
 
   return {
-    lines, byLine, byNature,
+    lines, byLine, byNature, byAccount,
     revenueGross: round2(revenueGross), returns: round2(returns), netRevenue, revenueTotal,
     grossProfit, operatingProfit, ebt, incomeTax: b.incomeTax, ordinaryProfit, extraordinary, netProfit,
     margin: netRevenue > 0 ? round2((netProfit / netRevenue) * 100) : 0,
