@@ -4,6 +4,7 @@
 // Statements object as the tables below it, so a chart can never disagree
 // with the numbers it summarises.
 
+import { Info } from "@/components/Info";
 import {
   Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, LabelList, Area,
 } from "recharts";
@@ -14,10 +15,10 @@ import { formatNumber } from "@/lib/format";
 
 const tick = { fill: CHART.axis, fontSize: 12 };
 
-function Card({ title, sub, children, className = "" }: { title: string; sub?: string; children: React.ReactNode; className?: string }) {
+function Card({ title, sub, children, className = "", info }: { title: string; sub?: string; children: React.ReactNode; className?: string; info?: string }) {
   return (
     <section className={`rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5 ${className}`}>
-      <h3 className="font-display text-[15px] font-semibold text-fl-cream">{title}</h3>
+      <h3 className="font-display text-[15px] font-semibold text-fl-cream">{title}{info && <Info k={info} label={title} />}</h3>
       {sub && <p className="mt-0.5 text-xs text-fl-cream/50">{sub}</p>}
       <div className="mt-3">{children}</div>
     </section>
@@ -65,6 +66,7 @@ export function Dashboard({ s }: { s: Statements }) {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       <Card
         title="Доходы, расходы и прибыль по месяцам"
+        info="kpi:monthly"
         sub={hasTrend ? "Сом, по проводкам периода" : "Выберите квартал или год, чтобы увидеть динамику"}
         className="lg:col-span-7"
       >
@@ -100,7 +102,7 @@ export function Dashboard({ s }: { s: Statements }) {
         )}
       </Card>
 
-      <Card title="Остаток денег" sub="Касса и банк на конец месяца, сом" className="lg:col-span-5">
+      <Card title="Остаток денег" info="kpi:cashSeries" sub="Касса и банк на конец месяца, сом" className="lg:col-span-5">
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={cashSeries} margin={{ top: 16, right: 24, left: 0, bottom: 0 }}>
@@ -117,7 +119,7 @@ export function Dashboard({ s }: { s: Statements }) {
         </div>
       </Card>
 
-      <Card title="Структура расходов" sub="По элементам затрат, сом" className="lg:col-span-7">
+      <Card title="Структура расходов" info="kpi:costs" sub="По элементам затрат, сом" className="lg:col-span-7">
         {costs.length === 0 ? (
           <p className="py-8 text-sm text-fl-cream/50">Расходов за период нет.</p>
         ) : (
@@ -191,8 +193,8 @@ export function RatioList({ items }: { items: Ratio[] }) {
       {items.map((r) => {
         const st = ratioStatus(r);
         return (
-          <li key={r.key} className="flex items-center gap-3 py-2.5" title={r.hint}>
-            <span className="min-w-0 flex-1 text-sm text-fl-cream/80">{r.label}</span>
+          <li key={r.key} className="flex items-center gap-3 py-2.5">
+            <span className="min-w-0 flex-1 text-sm text-fl-cream/80">{r.label}<Info k={`ratio:${r.key}`} label={r.label} /></span>
             <span className="num text-sm font-semibold text-fl-cream">{formatRatio(r)}</span>
             <span className={`hidden whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline ${STATUS_STYLE[st]}`}>
               {STATUS_WORD[st]}

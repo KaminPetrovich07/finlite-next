@@ -1,68 +1,60 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { LedgerSource, type LedgerLoad } from "@/components/ledger/LedgerSource";
+import { Info } from "@/components/Info";
+import { Waterfall } from "@/components/charts/Waterfall";
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell,
-} from "recharts";
-import { useReportPicker, ReportPickerBar } from "@/components/ReportPicker";
-import {
-  calculate, compareRegimes, breakEven, safetyMargin, grossMargin, taxBurden, doForecast,
-  type CalculateResult, type RegimeKey,
+  calculate, comparableRegimes, compareRegimes, breakEven, safetyMargin, grossMargin, taxBurden, doForecast,
+  SOCIAL_EMPLOYER, type CalculateResult,
 } from "@/lib/tax-engine";
 import {
   computeRisks, computeRecommendations, waterfallSteps, waterfallChartData, cvpCurve,
   accountingStandard, continuityNote,
 } from "@/lib/executive";
+import { CHART, compactSom } from "@/lib/chart-theme";
 import { formatNumber, formatPercent } from "@/lib/format";
 
-const COLORS = { green: "#4F7942", red: "#B23B3B", gold: "#C9A227" };
+const card = "mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5";
 
 export default function ExecutivePage() {
-  const picker = useReportPicker();
-  const [fr, setFr] = useState<CalculateResult | null>(null);
-  const [periodLabel, setPeriodLabel] = useState("");
+  const [data, setData] = useState<{ fr: CalculateResult; load: LedgerLoad } | null>(null);
   const [scenarios, setScenarios] = useState({ pessimistic: -10, base: 4, optimistic: 15 });
 
-  useEffect(() => {
-    if (!picker.reportId) { setFr(null); return; }
-    fetch(`/api/reports/${picker.reportId}`).then((r) => r.json()).then((report) => {
-      const computed = calculate({
-        regimeKey: report.regimeKey as RegimeKey,
-        revenue: report.revenue, otherIncome: report.otherIncome, cogs: report.cogs,
-        salaries: report.salaries, rent: report.rent, sellingExp: report.sellingExp,
-        adminExp: report.adminExp, otherOpExp: report.otherOpExp, interestExp: report.interestExp,
-        otherNonOp: report.otherNonOp, investInc: report.investInc, cashPct: report.cashPct,
-        patentAmount: report.patentAmount,
-      });
-      setFr(computed);
-      setPeriodLabel(report.periodLabel);
-    });
-  }, [picker.reportId]);
+  const onLoad = useCallback((load: LedgerLoad) => {
+    setData({ fr: calculate(load.bridge.input), load });
+  }, []);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
-      <header className="mb-8">
-        <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">
-          Big 4 Executive Report
-        </h1>
-        <p className="mt-1 text-sm text-fl-cream/60">Сводка для руководителя · {periodLabel}</p>
+    <main className="mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6 sm:pt-8">
+      <header className="mb-6">
+        <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Сводка для руководителя</h1>
+        <p className="mt-1 max-w-3xl text-sm text-fl-cream/60">
+          Главные цифры, риски, безубыточность, сценарии и рекомендации — в формате, который аудиторские компании «большой
+          четвёрки» готовят для руководства. Все цифры берутся из журнала проводок выбранной компании за период.
+        </p>
       </header>
 
-      <ReportPickerBar {...picker} />
+      <div className="mb-6">
+        <LedgerSource auto onLoad={onLoad} title="Компания и период" />
+      </div>
 
-      {!fr ? (
-        <p className="text-sm text-fl-cream/50">Выберите отчёт для сводки.</p>
+      {!data ? (
+        <p className="text-sm text-fl-cream/50">Загружаю данные журнала…</p>
+      ) : data.load.entryCount === 0 || data.fr.totalRevenue <= 0 ? (
+        <p className="rounded-xl border border-fl-line bg-fl-gold/5 px-4 py-3 text-sm text-fl-cream/70">
+          За {data.load.periodLabel.toLowerCase()} у компании нет выручки в журнале. Выберите другой период или внесите операции в «Журнале».
+        </p>
       ) : (
-        <ExecutiveBody fr={fr} periodLabel={periodLabel} scenarios={scenarios} setScenarios={setScenarios} />
+        <ExecutiveBody fr={data.fr} load={data.load} scenarios={scenarios} setScenarios={setScenarios} />
       )}
     </main>
   );
 }
 
-function ExecutiveBody({
-  fr, periodLabel, scenarios, setScenarios,
-}: {
-  fr: CalculateResult; periodLabel: string;
+function ExecutiveBody({ fr, load, scenarios, setScenarios }: {
+  fr: CalculateResult; load: LedgerLoad;
   scenarios: { pessimistic: number; base: number; optimistic: number };
   setScenarios: (s: { pessimistic: number; base: number; optimistic: number }) => void;
 }) {
@@ -71,119 +63,123 @@ function ExecutiveBody({
   const be = breakEven(fr);
   const tb = taxBurden(fr);
   const risks = computeRisks(fr, sm);
-  const best = compareRegimes({
-    revenue: fr.revenue, otherIncome: fr.otherIncome, cogs: fr.cogs,
-    salaries: fr.salaries, rent: fr.rent, sellingExp: fr.sellingExp, adminExp: fr.adminExp,
-  })[0];
-  const recs = computeRecommendations(fr, best.name, best.tax);
+  const allowed = new Set(comparableRegimes(load.regime));
+  const i = load.bridge.input;
+  const regimes = compareRegimes({
+    revenue: i.revenue, otherIncome: i.otherIncome, cogs: i.cogs, salaries: i.salaries, rent: i.rent,
+    sellingExp: i.sellingExp, adminExp: i.adminExp, otherOpExp: i.otherOpExp, interestExp: i.interestExp,
+    otherNonOp: i.otherNonOp, investInc: i.investInc, cashPct: i.cashPct, patentAmount: i.patentAmount,
+  }).filter((r) => allowed.has(r.key));
+  const best = regimes[0];
+  const recs = best ? computeRecommendations(fr, best.name, best.tax) : [];
   const cvp = cvpCurve(fr);
   const bars = waterfallChartData(waterfallSteps(fr));
+  const pl = load.periodLabel;
+  const socialPct = `${String(Math.round(SOCIAL_EMPLOYER * 10000) / 100).replace(".", ",")}%`;
 
   return (
     <>
-      {/* Executive summary */}
-      <section className="mb-6 space-y-1.5 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 text-sm sm:p-5">
-        <p className="font-display text-base font-semibold text-fl-gold-bright">EXECUTIVE SUMMARY — {periodLabel}</p>
-        <p><b>Чистая прибыль:</b> {formatNumber(fr.netProfit)} сом (рентабельность {formatPercent(fr.profitability)})</p>
-        <p><b>Валовая маржа:</b> {formatPercent(gm)} | <b>Налоговая нагрузка:</b> {formatPercent(tb)} | <b>Запас прочности:</b> {formatPercent(sm)}</p>
-        <p><b>Режим:</b> {fr.regimeName} | <b>EBIT:</b> {formatNumber(fr.ebit)} сом | <b>EBT:</b> {formatNumber(fr.ebt)} сом</p>
-        <p><b>Точка безубыточности:</b> {formatNumber(be)} сом — {sm > 30 ? "устойчив" : sm > 15 ? "внимание" : "критично"}</p>
+      <section className={`${card} space-y-2 text-sm leading-relaxed`}>
+        <p className="font-display text-base font-semibold text-fl-gold">Главное за {pl.toLowerCase()} · {load.companyName}</p>
+        <p><b>Чистая прибыль:</b> {formatNumber(fr.netProfit)} сом — рентабельность продаж {formatPercent(fr.profitability)}.</p>
+        <p>
+          <b>Валовая маржа:</b> {formatPercent(gm)} <Info k="exec:gross" /> · <b>Налоговая нагрузка:</b> {formatPercent(tb)} <Info k="tax:burden" /> ·{" "}
+          <b>Запас прочности:</b> {formatPercent(sm)} <Info k="exec:safety" />
+        </p>
+        <p>
+          <b>Режим:</b> {fr.regimeName} · <b>Операционная прибыль (EBIT):</b> {formatNumber(fr.ebit)} сом <Info k="exec:ebit" /> ·{" "}
+          <b>Прибыль до налога (EBT):</b> {formatNumber(fr.ebt)} сом <Info k="exec:ebt" />
+        </p>
+        <p>
+          <b>Точка безубыточности:</b> {formatNumber(be)} сом <Info k="exec:breakEven" /> —{" "}
+          {sm > 30 ? "запас устойчивый" : sm > 15 ? "требует внимания" : "критически мал"}.
+        </p>
+        <p className="text-xs text-fl-cream/50">Источник: журнал проводок, {load.entryCount} проводок за период. Налоги пересчитаны по режиму компании.</p>
       </section>
 
-      {/* KPI dashboard */}
       <section className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Kpi label="Выручка" value={formatNumber(fr.totalRevenue)} />
-        <Kpi label="Валовая маржа" value={formatPercent(gm)} />
-        <Kpi label="EBIT" value={formatNumber(fr.ebit)} />
-        <Kpi label="Чист. прибыль" value={formatNumber(fr.netProfit)} gold />
+        <Kpi label="Выручка" value={formatNumber(fr.totalRevenue)} info="kpi:netRevenue" />
+        <Kpi label="Валовая маржа" value={formatPercent(gm)} info="exec:gross" />
+        <Kpi label="Операционная прибыль" value={formatNumber(fr.ebit)} info="exec:ebit" />
+        <Kpi label="Чистая прибыль" value={formatNumber(fr.netProfit)} info="kpi:netProfit" accent />
       </section>
 
-      {/* Risks */}
-      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Анализ рисков</h2>
+      <section className={card}>
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Анализ рисков<Info k="exec:risks" /></h2>
         <div className="space-y-1.5 text-sm">
           {risks.map((r, i) => (
-            <p key={i}><span className={r.level === "Высокий" ? "text-fl-red" : r.level === "Средний" ? "text-fl-amber" : "text-fl-green"}>{r.level}</span> · <b className="text-fl-cream">{r.title}</b> — <span className="text-fl-cream/60">{r.detail}</span></p>
+            <p key={i}>
+              <span className={`mr-1 rounded-full px-2 py-0.5 text-xs font-semibold ${r.level === "Высокий" ? "bg-fl-red/15 text-fl-red" : r.level === "Средний" ? "bg-fl-amber/15 text-fl-amber" : "bg-fl-green/15 text-fl-green"}`}>{r.level}</span>
+              <b className="text-fl-cream">{r.title}</b> — <span className="text-fl-cream/70">{r.detail}</span>
+            </p>
           ))}
         </div>
       </section>
 
-      {/* CVP chart */}
-      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-1 font-display text-base font-semibold text-fl-cream">CVP-анализ</h2>
+      <section className={card}>
+        <h2 className="mb-1 font-display text-base font-semibold text-fl-cream">Безубыточность: затраты — объём — прибыль<Info k="exec:cvp" /></h2>
+        <p className="mb-3 text-xs text-fl-cream/55">Прибыль при разной выручке, если структура расходов сохраняется. Пересечение с нулём — точка безубыточности.</p>
         <div className="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Metric label="Вал. маржа" value={formatPercent(gm)} />
-          <Metric label="Точка безубыточности" value={formatNumber(be)} />
-          <Metric label="Запас прочности" value={formatPercent(sm)} />
-          <Metric label="Нал. нагрузка" value={formatPercent(tb)} />
+          <Metric label="Валовая маржа" value={formatPercent(gm)} info="exec:gross" />
+          <Metric label="Точка безубыточности" value={`${formatNumber(be)} сом`} info="exec:breakEven" />
+          <Metric label="Запас прочности" value={formatPercent(sm)} info="exec:safety" />
+          <Metric label="Налоговая нагрузка" value={formatPercent(tb)} info="tax:burden" />
         </div>
         {cvp.length > 0 && (
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={cvp}>
-              <CartesianGrid stroke="#C9A22720" />
-              <XAxis dataKey="revenue" tickFormatter={(v) => formatNumber(v)} stroke="#F2EDE480" fontSize={11} />
-              <YAxis tickFormatter={(v) => formatNumber(v)} stroke="#F2EDE480" fontSize={11} width={70} />
-              <Tooltip formatter={(v: number) => formatNumber(v)} labelFormatter={(v) => `Выручка: ${formatNumber(Number(v))}`}
-                contentStyle={{ background: "#14110D", border: "1px solid #C9A22740" }} />
-              <ReferenceLine y={0} stroke="#B23B3B" strokeDasharray="4 4" label={{ value: "Точка безубыточности", fill: "#B23B3B", fontSize: 11 }} />
-              {be > 0 && <ReferenceLine x={be} stroke="#4F7942" strokeDasharray="2 2" />}
-              <Line type="monotone" dataKey="profit" stroke="#E8C547" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={cvp} margin={{ top: 24, right: 16, left: 0, bottom: 8 }}>
+                <CartesianGrid stroke={CHART.grid} />
+                <XAxis dataKey="revenue" type="number" domain={[0, "dataMax"]} tickFormatter={compactSom} tick={{ fill: CHART.axis, fontSize: 11 }} tickLine={false} axisLine={{ stroke: CHART.grid }}
+                  label={{ value: "Выручка, сом", position: "insideBottomRight", offset: -4, fill: CHART.axis, fontSize: 11 }} />
+                <YAxis tickFormatter={compactSom} tick={{ fill: CHART.axis, fontSize: 11 }} tickLine={false} axisLine={false} width={64} />
+                <Tooltip contentStyle={CHART.tooltip} labelStyle={{ color: CHART.ink, fontWeight: 600 }} itemStyle={{ color: CHART.ink }}
+                  formatter={(v: number) => [`${formatNumber(v)} сом`, "Прибыль"]} labelFormatter={(v) => `Выручка: ${formatNumber(Number(v))} сом`} />
+                <ReferenceLine y={0} stroke={CHART.neg} strokeDasharray="4 4" />
+                {be > 0 && <ReferenceLine x={be} stroke={CHART.pos} strokeDasharray="3 3"
+                  label={{ value: `Безубыточность ${compactSom(be)}`, position: "top", fill: CHART.pos, fontSize: 11 }} />}
+                <ReferenceLine x={fr.revenue} stroke={CHART.s1} strokeDasharray="3 3"
+                  label={{ value: `Факт ${compactSom(fr.revenue)}`, position: "insideTopLeft", fill: CHART.s1, fontSize: 11 }} />
+                <Line type="monotone" dataKey="profit" stroke={CHART.s1} strokeWidth={2.5} dot={false} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </section>
 
-      {/* Forecast scenarios */}
-      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Прогноз и сценарии</h2>
+      <section className={card}>
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Прогноз и сценарии<Info k="exec:scenario" /></h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <ScenarioCard label="Пессимистичный" growth={scenarios.pessimistic}
-            onChange={(v) => setScenarios({ ...scenarios, pessimistic: v })} fr={fr} />
-          <ScenarioCard label="Базовый" growth={scenarios.base}
-            onChange={(v) => setScenarios({ ...scenarios, base: v })} fr={fr} />
-          <ScenarioCard label="Оптимистичный" growth={scenarios.optimistic}
-            onChange={(v) => setScenarios({ ...scenarios, optimistic: v })} fr={fr} />
+          <ScenarioCard label="Пессимистичный" growth={scenarios.pessimistic} onChange={(v) => setScenarios({ ...scenarios, pessimistic: v })} fr={fr} />
+          <ScenarioCard label="Базовый" growth={scenarios.base} onChange={(v) => setScenarios({ ...scenarios, base: v })} fr={fr} />
+          <ScenarioCard label="Оптимистичный" growth={scenarios.optimistic} onChange={(v) => setScenarios({ ...scenarios, optimistic: v })} fr={fr} />
         </div>
       </section>
 
-      {/* Recommendations */}
-      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Рекомендации</h2>
+      <section className={card}>
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Рекомендации<Info k="exec:recs" /></h2>
         <div className="space-y-1.5 text-sm">
           {recs.map((r, i) => (
-            <p key={i}><b className="text-fl-gold-bright">{r.priority}</b> | <b className="text-fl-cream">{r.title}</b> — <span className="text-fl-cream/60">{r.detail}</span></p>
+            <p key={i}><b className="text-fl-gold">{r.priority}</b> · <b className="text-fl-cream">{r.title}</b> — <span className="text-fl-cream/70">{r.detail}</span></p>
           ))}
         </div>
       </section>
 
-      {/* Waterfall */}
-      <section className="mb-6 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Водопад: от выручки к прибыли</h2>
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={bars} margin={{ top: 20 }}>
-            <CartesianGrid stroke="#C9A22720" vertical={false} />
-            <XAxis dataKey="label" stroke="#F2EDE480" fontSize={10} interval={0} angle={-15} textAnchor="end" height={60} />
-            <YAxis tickFormatter={(v) => formatNumber(v)} stroke="#F2EDE480" fontSize={11} width={70} />
-            <Tooltip formatter={(_: number, _name: string, props: any) => formatNumber(props.payload.value)}
-              contentStyle={{ background: "#14110D", border: "1px solid #C9A22740" }} />
-            <Bar dataKey="base" stackId="wf" fill="transparent" />
-            <Bar dataKey="bar" stackId="wf">
-              {bars.map((b, i) => <Cell key={i} fill={COLORS[b.color]} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <section className={card}>
+        <h2 className="mb-1 font-display text-base font-semibold text-fl-cream">Водопад: от выручки к чистой прибыли<Info k="exec:waterfall" /></h2>
+        <p className="mb-2 text-xs text-fl-cream/55">Синие столбцы — итоги, красные уменьшают результат, зелёные увеличивают. Подписи — суммы, сом.</p>
+        <Waterfall bars={bars} />
       </section>
 
-      {/* Explanatory notes */}
-      <section className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 text-sm leading-relaxed sm:p-5">
-        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Пояснительная записка (IAS 1.112)</h2>
+      <section className={`${card} text-sm leading-relaxed`}>
+        <h2 className="mb-3 font-display text-base font-semibold text-fl-cream">Пояснительная записка (МСФО IAS 1, п. 112)<Info k="exec:notes" /></h2>
         <div className="space-y-3 text-fl-cream/80">
-          <p><b className="text-fl-cream">1. Основы подготовки отчётности.</b> Отчётность за <b>{periodLabel}</b> подготовлена по методу начисления (МСФО IAS 1.27). Применяемый стандарт: <b>{accountingStandard(fr.totalRevenue)}</b>.</p>
-          <p><b className="text-fl-cream">2. Учётная политика.</b> Выручка признаётся по мере выполнения обязательств (МСФО IFRS 15). Запасы оцениваются по средней себестоимости. Амортизация начисляется линейным способом.</p>
-          <p><b className="text-fl-cream">3. Налоговый режим и ставки.</b> Режим: <b>{fr.regimeName}</b>. Соцфонд (работодатель): <b>12.25%</b> от ФОТ = <b>{formatNumber(fr.social)}</b> сом (ГСЗН КР). Прямые налоги итого: <b>{formatNumber(fr.totalDirect)}</b> сом ({formatPercent(tb)} от выручки).{fr.vat > 0 && <> НДС: <b>{formatNumber(fr.vat)}</b> сом — косвенный налог (ст.254 НК КР), не уменьшает прибыль (IAS 1).</>}</p>
-          <p><b className="text-fl-cream">4. Ключевые оценки и допущения.</b> Точка безубыточности: <b>{formatNumber(be)}</b> сом. Запас финансовой прочности: <b>{formatPercent(sm)}</b>. Валовая маржа: <b>{formatPercent(gm)}</b>. Налоговая нагрузка: <b>{formatPercent(tb)}</b>.</p>
-          <p><b className="text-fl-cream">5. Допущение о непрерывности деятельности (IAS 1.25).</b> {continuityNote(fr.netProfit)}</p>
-          <p><b className="text-fl-cream">6. Связанные стороны (IAS 24).</b> Существенных операций со связанными сторонами в отчётном периоде не выявлено.</p>
+          <p><b className="text-fl-cream">1. Основы подготовки.</b> Отчётность за <b>{pl.toLowerCase()}</b> подготовлена по методу начисления (IAS 1, п. 27) на данных журнала проводок. Применимый стандарт: <b>{accountingStandard(fr.totalRevenue)}</b>.</p>
+          <p><b className="text-fl-cream">2. Учётная политика.</b> Выручка признаётся по мере выполнения обязательств перед покупателем (IFRS 15). Запасы оцениваются по средней себестоимости, амортизация начисляется линейным способом.</p>
+          <p><b className="text-fl-cream">3. Налоговый режим и ставки.</b> Режим: <b>{fr.regimeName}</b>. Страховые взносы работодателя: <b>{socialPct}</b> от фонда оплаты труда = <b>{formatNumber(fr.social)}</b> сом. Налоги из средств компании: <b>{formatNumber(fr.totalDirect)}</b> сом ({formatPercent(tb)} выручки).{fr.vat > 0 && <> НДС <b>{formatNumber(fr.vat)}</b> сом — косвенный налог (ст. 254 НК КР), прибыль не уменьшает.</>}</p>
+          <p><b className="text-fl-cream">4. Ключевые оценки.</b> Точка безубыточности — <b>{formatNumber(be)}</b> сом, запас финансовой прочности — <b>{formatPercent(sm)}</b>, валовая маржа — <b>{formatPercent(gm)}</b>.</p>
+          <p><b className="text-fl-cream">5. Непрерывность деятельности (IAS 1, п. 25).</b> {continuityNote(fr.netProfit)}</p>
+          <p><b className="text-fl-cream">6. Связанные стороны (IAS 24).</b> Существенных операций со связанными сторонами в периоде не выявлено.</p>
         </div>
       </section>
     </>
@@ -195,30 +191,31 @@ function ScenarioCard({ label, growth, onChange, fr }: { label: string; growth: 
   return (
     <div className="rounded-lg border border-fl-line bg-fl-charcoal p-3">
       <div className="mb-2 flex items-center justify-between text-sm">
-        <span className="text-fl-cream/70">{label}</span>
-        <span className="font-mono text-fl-gold-bright">{growth >= 0 ? "+" : ""}{growth}%</span>
+        <span className="text-fl-cream/75">{label}</span>
+        <span className="num font-semibold text-fl-gold">выручка {growth >= 0 ? "+" : ""}{growth}%</span>
       </div>
-      <input type="range" min={-30} max={30} value={growth} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-fl-gold" />
-      <div className="mt-2 font-mono text-base font-semibold tabular-nums text-fl-cream">{formatNumber(fct.net)} сом</div>
-      <div className="text-xs text-fl-cream/50">{formatPercent(fct.pct)} маржа</div>
+      <input type="range" min={-30} max={30} value={growth} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[rgb(var(--c-accent))]" aria-label={`${label}: изменение выручки`} />
+      <div className="num mt-2 text-base font-semibold text-fl-cream">{formatNumber(fct.net)} сом</div>
+      <div className="text-xs text-fl-cream/55">чистая прибыль · рентабельность {formatPercent(fct.pct)}</div>
     </div>
   );
 }
 
-function Kpi({ label, value, gold }: { label: string; value: string; gold?: boolean }) {
+function Kpi({ label, value, info, accent }: { label: string; value: string; info?: string; accent?: boolean }) {
   return (
-    <div className="rounded-lg border border-fl-line bg-fl-charcoal-2 p-3">
-      <div className="text-xs text-fl-cream/50">{label}</div>
-      <div className={`mt-1 font-mono text-lg font-semibold tabular-nums ${gold ? "text-fl-gold-bright" : "text-fl-cream"}`}>{value}</div>
+    <div className="rounded-lg border border-fl-line bg-fl-charcoal-2 p-3 shadow-card">
+      <div className="text-xs text-fl-cream/55">{label}{info && <Info k={info} label={label} />}</div>
+      <div className={`num mt-1 text-lg font-semibold ${accent ? "text-fl-gold" : "text-fl-cream"}`}>{value}</div>
+      <div className="text-[11px] text-fl-cream/45">сом</div>
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, info }: { label: string; value: string; info?: string }) {
   return (
     <div className="rounded-md border border-fl-line bg-fl-charcoal p-2">
-      <div className="text-[11px] text-fl-cream/50">{label}</div>
-      <div className="font-mono text-sm font-semibold text-fl-cream">{value}</div>
+      <div className="text-[11px] text-fl-cream/55">{label}{info && <Info k={info} label={label} />}</div>
+      <div className="num text-sm font-semibold text-fl-cream">{value}</div>
     </div>
   );
 }

@@ -56,6 +56,11 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("bs");
+  useEffect(() => {
+    // /reports#cf opens the cash-flow tab (old /balance, /cashflow, /equity links land here)
+    const h = window.location.hash.slice(1);
+    if (TABS.some((t) => t.key === h)) setTab(h as TabKey);
+  }, []);
   const [drill, setDrill] = useState<DrillRequest | null>(null);
   const [posting, setPosting] = useState(false);
   const toast = useToast();

@@ -1,6 +1,8 @@
 "use client";
 
 import { accountName } from "@/lib/ledger/accounts";
+import { Info } from "@/components/Info";
+import { accountTerm } from "@/lib/glossary";
 import { formatDate } from "@/lib/ledger/period";
 import { SOURCE_LABEL, type LedgerEntry } from "@/lib/ledger/types";
 import { formatNumber } from "@/lib/format";
@@ -55,7 +57,7 @@ export function EntryCard({ entry, highlight = [], onDelete }: Props) {
                 <td className="w-12 py-0.5 align-top num">{l.debit > 0 ? "Дт" : "Кт"}</td>
                 <td className="w-14 py-0.5 align-top num">{l.account}</td>
                 <td className="py-0.5 pr-2">
-                  {accountName(l.account)}
+                  {accountName(l.account)}<Info t={accountTerm(l.account)} label={accountName(l.account)} />
                   {l.memo && <span className="text-fl-cream/40"> — {l.memo}</span>}
                 </td>
                 <td className="py-0.5 text-right num whitespace-nowrap">{formatNumber(l.debit || l.credit, 2)}</td>

@@ -42,13 +42,13 @@ export function computeStockLoss(i: StockLossInputs): StockLossResult {
 // ── 2. Аудит потерь (7 видов муда) ──────────────────────────────────────────
 
 export const MUDA_CATEGORIES = [
-  { key: "overproduction", name: "1️⃣ Перепроизводство", desc: "Производите больше чем нужно прямо сейчас?", rec: "Внедрите Kanban и pull-систему" },
-  { key: "waiting", name: "2️⃣ Ожидание", desc: "Простои оборудования, работников, ожидание материалов?", rec: "Heijunka — выравнивание загрузки" },
-  { key: "transport", name: "3️⃣ Лишние перемещения", desc: "Ненужные перевозки материалов между операциями?", rec: "Перепланировка цеха по VSM" },
-  { key: "overprocessing", name: "4️⃣ Излишняя обработка", desc: "Операции не добавляющие ценность для клиента?", rec: "Стандартизация процессов" },
-  { key: "inventory", name: "5️⃣ Избыточные запасы", desc: "Сырьё, WIP или готовая продукция сверх нормы?", rec: "JIT — Just-In-Time" },
-  { key: "motion", name: "6️⃣ Лишние движения", desc: "Поиск инструментов, нерациональное расположение?", rec: "Система 5S" },
-  { key: "defects", name: "7️⃣ Дефекты и брак", desc: "Брак, переделки, возвраты?", rec: "Poka-Yoke — защита от ошибок" },
+  { key: "overproduction", name: "1. Перепроизводство", desc: "Производите больше чем нужно прямо сейчас?", rec: "Внедрите канбан — производство по фактическому заказу (вытягивающая система)" },
+  { key: "waiting", name: "2. Ожидание", desc: "Простои оборудования, работников, ожидание материалов?", rec: "Выравнивание загрузки (хейдзунка): равномерный план по дням и сменам" },
+  { key: "transport", name: "3. Лишние перемещения", desc: "Ненужные перевозки материалов между операциями?", rec: "Перепланировка цеха по карте потока создания ценности" },
+  { key: "overprocessing", name: "4. Излишняя обработка", desc: "Операции не добавляющие ценность для клиента?", rec: "Стандартизация процессов" },
+  { key: "inventory", name: "5. Избыточные запасы", desc: "Сырьё, незавершённое производство или готовая продукция сверх нормы?", rec: "Поставки «точно вовремя»: закупать под план, а не впрок" },
+  { key: "motion", name: "6. Лишние движения", desc: "Поиск инструментов, нерациональное расположение?", rec: "Система 5S: порядок и постоянные места для инструмента" },
+  { key: "defects", name: "7. Дефекты и брак", desc: "Брак, переделки, возвраты?", rec: "Защита от ошибок (пока-ёкэ): шаблоны, упоры, чек-листы на операциях" },
 ] as const;
 
 export type MudaKey = (typeof MUDA_CATEGORIES)[number]["key"];
@@ -58,13 +58,13 @@ export function defaultMudaScores(): MudaScores {
   return Object.fromEntries(MUDA_CATEGORIES.map((c) => [c.key, 3])) as MudaScores;
 }
 
-export interface Maturity { level: "🟢" | "🟡" | "🟠" | "🔴"; name: string; desc: string }
+export interface Maturity { level: "high" | "mid" | "low" | "critical"; name: string; desc: string }
 
 export function maturityFor(leanIdx: number): Maturity {
-  if (leanIdx >= 80) return { level: "🟢", name: "Lean-зрелое", desc: "Процессы оптимизированы. Переходите к Kaizen." };
-  if (leanIdx >= 60) return { level: "🟡", name: "Развивающееся", desc: "Устраните топ-3 потери по приоритету." };
-  if (leanIdx >= 40) return { level: "🟠", name: "Начинающее", desc: "Начните с 5S и VSM." };
-  return { level: "🔴", name: "Критическое", desc: "Нужен полный Lean-аудит." };
+  if (leanIdx >= 80) return { level: "high", name: "Зрелое производство", desc: "Процессы оптимизированы. Переходите к постоянным улучшениям (кайдзен): короткие ежедневные разборы, предложения сотрудников." };
+  if (leanIdx >= 60) return { level: "mid", name: "Развивающееся", desc: "Устраните три главные потери из списка приоритетов ниже." };
+  if (leanIdx >= 40) return { level: "low", name: "Начальный уровень", desc: "Начните с системы 5S и карты потока создания ценности." };
+  return { level: "critical", name: "Критическое", desc: "Нужен полный аудит потерь на производстве." };
 }
 
 export interface MudaResult { leanIdx: number; avg: number; maturity: Maturity }
@@ -139,13 +139,13 @@ export function channelComparison(
 export function unitEconomicsWaterfallSteps(i: UnitEconomicsInputs, r: UnitEconomicsResult) {
   return [
     { label: "Цена", value: i.price, isTotal: true },
-    { label: "−Сырьё", value: -i.raw, isTotal: false },
-    { label: "−Труд", value: -i.labor, isTotal: false },
-    { label: "−Накладные", value: -i.overhead, isTotal: false },
-    { label: "−Отходы", value: -i.wasteLoss, isTotal: false },
-    { label: "−Комиссия", value: -r.commission, isTotal: false },
-    { label: "−Доставка", value: -i.delivery, isTotal: false },
-    { label: "−Упаковка", value: -i.pack, isTotal: false },
-    { label: "=Маржа", value: r.marginUnit, isTotal: true },
+    { label: "− Сырьё", value: -i.raw, isTotal: false },
+    { label: "− Труд", value: -i.labor, isTotal: false },
+    { label: "− Накладные", value: -i.overhead, isTotal: false },
+    { label: "− Отходы и брак", value: -i.wasteLoss, isTotal: false },
+    { label: "− Комиссия канала", value: -r.commission, isTotal: false },
+    { label: "− Доставка", value: -i.delivery, isTotal: false },
+    { label: "− Упаковка", value: -i.pack, isTotal: false },
+    { label: "= Маржа с единицы", value: r.marginUnit, isTotal: true },
   ];
 }

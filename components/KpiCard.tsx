@@ -1,5 +1,7 @@
 "use client";
 
+import { Info } from "@/components/Info";
+
 interface KpiCardProps {
   label: string;
   value: string;
@@ -7,9 +9,11 @@ interface KpiCardProps {
   trend?: "up" | "down" | "neutral";
   plan?: string; // plan value for comparison
   highlight?: boolean;
+  /** glossary key for the «i» explanation */
+  info?: string;
 }
 
-export function KpiCard({ label, value, sub, trend, plan, highlight }: KpiCardProps) {
+export function KpiCard({ label, value, sub, trend, plan, highlight, info }: KpiCardProps) {
   const trendColor = trend === "up" ? "text-fl-green" : trend === "down" ? "text-fl-red" : "text-fl-cream/50";
   const trendIcon = trend === "up" ? "▲" : trend === "down" ? "▼" : null;
 
@@ -19,10 +23,10 @@ export function KpiCard({ label, value, sub, trend, plan, highlight }: KpiCardPr
         ? "border-fl-gold/40 bg-fl-gold/5"
         : "border-fl-line bg-fl-charcoal-2"}`}
     >
-      <p className="text-xs font-medium text-fl-cream/55 mb-1">{label}</p>
+      <p className="text-xs font-medium text-fl-cream/55 mb-1">{label}{info && <Info k={info} label={label} />}</p>
       <div className="flex items-baseline gap-2">
         <span className={`font-mono text-xl font-semibold tabular-nums leading-none
-          ${highlight ? "text-fl-gold-bright" : "text-fl-cream"}`}>
+          ${highlight ? "text-fl-gold" : "text-fl-cream"}`}>
           {value}
         </span>
         {trendIcon && (

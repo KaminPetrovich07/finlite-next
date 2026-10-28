@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MoneyInput } from "@/components/MoneyInput";
 import { Collapsible } from "@/components/Collapsible";
 import { StickyBar } from "@/components/StickyBar";
 import { KpiCard } from "@/components/KpiCard";
 import { useToast } from "@/components/Toast";
+import { Info } from "@/components/Info";
+import { LedgerSource, type LedgerLoad } from "@/components/ledger/LedgerSource";
+import { periodLabel as ledgerPeriodLabel } from "@/lib/ledger/period";
 import {
   calculate, REGIMES, MONTHS,
   breakEven, safetyMargin, grossMargin, taxBurden, validateInputs,
@@ -13,7 +16,6 @@ import {
 } from "@/lib/tax-engine";
 import { formatNumber, formatPercent } from "@/lib/format";
 
-interface Company { id: string; name: string; }
 type PeriodType = "Месяц" | "Квартал" | "Год";
 
 const emptyInputs = {
@@ -45,10 +47,10 @@ function periodDates(ptype: PeriodType, year: number, monthIdx: number, quarter:
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 
-function FieldRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function FieldRow({ label, value, sub, info }: { label: string; value: string; sub?: string; info?: string }) {
   return (
     <div className="flex items-start justify-between gap-2 py-2.5 border-t border-fl-line first:border-0">
-      <span className="text-sm text-fl-cream/60 flex-1">{label}</span>
+      <span className="text-sm text-fl-cream/70 flex-1">{label}{info && <Info k={info} label={label} />}</span>
       <div className="text-right">
         <span className="num text-sm text-fl-cream tabular-nums">{value}</span>
         {sub && <p className="text-xs text-fl-cream/40">{sub}</p>}
@@ -74,69 +76,58 @@ function Badge({ label, variant }: { label: string; variant: "ok" | "warn" | "er
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function CalculatorPage() {
-  const [companies, setCompanies]     = useState<Company[]>([]);
   const [companyId, setCompanyId]     = useState("");
-  const [newName, setNewName]         = useState("");
+  const [isDemo, setIsDemo]           = useState(false);
+  const [sel, setSel]                 = useState<{ from: string; to: string } | null>(null);
+  const [source, setSource]           = useState<string | null>(null);
   const [regimeKey, setRegimeKey]     = useState<RegimeKey>("general");
-  const [ptype, setPtype]             = useState<PeriodType>("Месяц");
-  const [year, setYear]               = useState(new Date().getFullYear());
-  const [monthIdx, setMonthIdx]       = useState(new Date().getMonth());
-  const [quarter, setQuarter]         = useState(Math.ceil((new Date().getMonth() + 1) / 3));
   const [inputs, setInputs]           = useState(emptyInputs);
   const [result, setResult]           = useState<CalculateResult | null>(null);
   const [history, setHistory]         = useState<any[]>([]);
   const [saving, setSaving]           = useState(false);
   const { show: showToast, ToastContainer } = useToast();
 
-  useEffect(() => {
-    fetch("/api/companies").then((r) => r.json()).then((d) => {
-      setCompanies(d);
-      if (d[0]) setCompanyId(d[0].id);
-    }).catch(() => {});
+  const onSelect = useCallback((x: { companyId: string; demo: boolean; period: { from: string; to: string } }) => {
+    setCompanyId(x.companyId); setIsDemo(x.demo); setSel(x.period);
+  }, []);
+  const onLoad = useCallback((d: LedgerLoad) => {
+    const i = d.bridge.input;
+    // the form shows «прочие внереализационные расходы» as a positive number
+    setInputs({ ...i, otherNonOp: -i.otherNonOp });
+    setRegimeKey(d.regime);
+    setSource(`${d.companyName}, ${d.periodLabel.toLowerCase()} — ${d.entryCount} проводок`);
+    setResult(null);
   }, []);
 
   useEffect(() => {
-    if (!companyId) return;
+    if (!companyId || isDemo) { setHistory([]); return; }
     fetch(`/api/reports?companyId=${companyId}&limit=10`)
-      .then((r) => r.json()).then(setHistory).catch(() => {});
-  }, [companyId]);
+      .then((r) => r.json()).then((d) => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [companyId, isDemo]);
 
   const warnings = useMemo(
     () => validateInputs(inputs.revenue, inputs.cogs, inputs.salaries),
     [inputs.revenue, inputs.cogs, inputs.salaries],
   );
 
-  const period = periodDates(ptype, year, monthIdx, quarter);
+  const period = sel
+    ? { from: new Date(sel.from + "T00:00:00Z"), to: new Date(sel.to + "T00:00:00Z"), label: ledgerPeriodLabel(sel.from, sel.to) }
+    : periodDates("Месяц", new Date().getFullYear(), new Date().getMonth(), 1);
 
   function set(k: keyof typeof inputs) {
     return (v: number) => setInputs((s) => ({ ...s, [k]: v }));
   }
 
   function handleCalculate() {
-    setResult(calculate({ regimeKey, ...inputs }));
-  }
-
-  async function createCompany() {
-    const name = newName.trim();
-    if (!name) return;
-    const res = await fetch("/api/companies", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const c = await res.json().catch(() => ({}));
-    if (!res.ok) { showToast(c.error ?? "Не удалось создать компанию", "error"); return; }
-    setCompanies((prev) => [c, ...prev]);
-    setCompanyId(c.id);
-    setNewName("");
-    showToast(`Компания «${name}» создана`, "success");
+    setResult(calculate({ regimeKey, ...inputs, otherNonOp: -inputs.otherNonOp }));
   }
 
   async function saveReport() {
     if (!result || !companyId) return;
+    if (isDemo) { showToast("Демо-компанию нельзя изменить — расчёт не сохраняется", "info"); return; }
     setSaving(true);
     try {
-      await fetch("/api/reports", {
+      const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -144,12 +135,13 @@ export default function CalculatorPage() {
           periodLabel: period.label,
           periodFrom: period.from.toISOString(),
           periodTo: period.to.toISOString(),
-          regimeKey, ...inputs,
+          regimeKey, ...inputs, otherNonOp: -inputs.otherNonOp,
         }),
       });
-      showToast("Отчёт успешно сформирован", "success");
+      if (!res.ok) throw new Error();
+      showToast("Расчёт сохранён в истории компании", "success");
       fetch(`/api/reports?companyId=${companyId}&limit=10`)
-        .then((r) => r.json()).then(setHistory).catch(() => {});
+        .then((r) => r.json()).then((d) => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
     } catch {
       showToast("Ошибка при сохранении", "error");
     } finally {
@@ -187,119 +179,39 @@ export default function CalculatorPage() {
 
         <div className="space-y-4">
 
-          {/* ── Компания ────────────────────────────────────────────────── */}
+          {/* ── Данные из журнала ───────────────────────────────────────── */}
+          <LedgerSource onLoad={onLoad} onSelect={onSelect}
+            note="Подставит в поля суммы из проводок выбранной компании за период и её налоговый режим. Цифры можно менять — для сценария «что если»." />
+          {source && <p className="-mt-2 px-1 text-xs text-fl-cream/55">Заполнено из журнала: {source}.</p>}
+
           <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-            <p className="label-caps mb-3">Организация</p>
-            <div className="flex flex-wrap gap-2">
+            <label className="block">
+              <span className="label-caps">Налоговый режим<Info k="calc:regime" /></span>
               <select
-                value={companyId}
-                onChange={(e) => setCompanyId(e.target.value)}
-                className="flex-1 min-w-[180px] rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
+                value={regimeKey}
+                onChange={(e) => setRegimeKey(e.target.value as RegimeKey)}
+                className="mt-2 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
               >
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-                {companies.length === 0 && <option value="">Нет компаний</option>}
+                {Object.entries(REGIMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && createCompany()}
-                placeholder="Новая компания..."
-                className="flex-1 min-w-[180px] rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream placeholder:text-fl-cream/25 focus:border-fl-gold focus:outline-none"
-              />
-              <button
-                onClick={createCompany}
-                className="rounded-lg border border-fl-gold/30 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10 transition-colors"
-              >
-                Добавить
-              </button>
-            </div>
-          </div>
-
-          {/* ── Период и режим ──────────────────────────────────────────── */}
-          <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-            <p className="label-caps mb-3">Период и налоговый режим</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <label className="block">
-                <span className="text-xs text-fl-cream/50">Период</span>
-                <select
-                  value={ptype}
-                  onChange={(e) => setPtype(e.target.value as PeriodType)}
-                  className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
-                >
-                  {(["Месяц","Квартал","Год"] as PeriodType[]).map(p => <option key={p}>{p}</option>)}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="text-xs text-fl-cream/50">Год</span>
-                <select
-                  value={year}
-                  onChange={(e) => setYear(+e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
-                >
-                  {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
-                </select>
-              </label>
-
-              {ptype === "Месяц" && (
-                <label className="block">
-                  <span className="text-xs text-fl-cream/50">Месяц</span>
-                  <select
-                    value={monthIdx}
-                    onChange={(e) => setMonthIdx(+e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
-                  >
-                    {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                  </select>
-                </label>
-              )}
-
-              {ptype === "Квартал" && (
-                <label className="block">
-                  <span className="text-xs text-fl-cream/50">Квартал</span>
-                  <select
-                    value={quarter}
-                    onChange={(e) => setQuarter(+e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
-                  >
-                    {[1,2,3,4].map(q => <option key={q} value={q}>Q{q}</option>)}
-                  </select>
-                </label>
-              )}
-
-              <label className="block col-span-2 sm:col-span-1">
-                <span className="text-xs text-fl-cream/50">Налоговый режим</span>
-                <select
-                  value={regimeKey}
-                  onChange={(e) => setRegimeKey(e.target.value as RegimeKey)}
-                  className="mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
-                >
-                  {Object.entries(REGIMES).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            </label>
           </div>
 
           {/* ── Доходы ──────────────────────────────────────────────────── */}
           <Collapsible title="Доходы" defaultOpen={true}>
             <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-              <MoneyInput label="Выручка от реализации" value={inputs.revenue} onChange={set("revenue")} required />
-              <MoneyInput label="Прочие операционные доходы" value={inputs.otherIncome} onChange={set("otherIncome")} />
+              <MoneyInput label="Выручка от реализации" info="calc:revenue" value={inputs.revenue} onChange={set("revenue")} required />
+              <MoneyInput label="Прочие операционные доходы" info="calc:otherIncome" value={inputs.otherIncome} onChange={set("otherIncome")} />
             </div>
           </Collapsible>
 
           {/* ── Себестоимость и ФОТ ─────────────────────────────────────── */}
           <Collapsible title="Себестоимость и ФОТ" defaultOpen={true}>
             <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-              <MoneyInput label="Себестоимость (материалы, производство)" value={inputs.cogs} onChange={set("cogs")} />
-              <MoneyInput label="Фонд оплаты труда (до налогов)" value={inputs.salaries} onChange={set("salaries")}
+              <MoneyInput label="Себестоимость (материалы, производство)" info="calc:cogs" value={inputs.cogs} onChange={set("cogs")} />
+              <MoneyInput label="Фонд оплаты труда (до удержаний)" info="calc:salaries" value={inputs.salaries} onChange={set("salaries")}
                 hint="Страховые взносы работодателя 2,25% начисляются автоматически; 10% взносов и 10% подоходного налога удерживаются из зарплаты" />
-              <MoneyInput label="Аренда" value={inputs.rent} onChange={set("rent")} />
+              <MoneyInput label="Аренда" info="calc:rent" value={inputs.rent} onChange={set("rent")} />
             </div>
           </Collapsible>
 
@@ -309,11 +221,11 @@ export default function CalculatorPage() {
             badge={expensesTotal > 0 ? formatNumber(expensesTotal) + " сом" : undefined}
           >
             <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-              <MoneyInput label="Коммерческие расходы" value={inputs.sellingExp} onChange={set("sellingExp")}
+              <MoneyInput label="Коммерческие расходы" info="calc:sellingExp" value={inputs.sellingExp} onChange={set("sellingExp")}
                 hint="Маркетинг, реклама, доставка" />
-              <MoneyInput label="Административные расходы" value={inputs.adminExp} onChange={set("adminExp")}
+              <MoneyInput label="Административные расходы" info="calc:adminExp" value={inputs.adminExp} onChange={set("adminExp")}
                 hint="Офис, связь, канцелярия" />
-              <MoneyInput label="Прочие операционные расходы" value={inputs.otherOpExp} onChange={set("otherOpExp")} />
+              <MoneyInput label="Прочие операционные расходы" info="calc:otherOpExp" value={inputs.otherOpExp} onChange={set("otherOpExp")} />
             </div>
           </Collapsible>
 
@@ -323,9 +235,9 @@ export default function CalculatorPage() {
             badge={nonOpTotal > 0 ? formatNumber(nonOpTotal) + " сом" : undefined}
           >
             <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-              <MoneyInput label="Проценты к уплате" value={inputs.interestExp} onChange={set("interestExp")} />
-              <MoneyInput label="Прочие внереализационные расходы" value={inputs.otherNonOp} onChange={set("otherNonOp")} />
-              <MoneyInput label="Инвестиционные доходы" value={inputs.investInc} onChange={set("investInc")} />
+              <MoneyInput label="Проценты к уплате" info="calc:interestExp" value={inputs.interestExp} onChange={set("interestExp")} />
+              <MoneyInput label="Прочие внереализационные расходы" info="calc:otherNonOp" value={inputs.otherNonOp} onChange={set("otherNonOp")} />
+              <MoneyInput label="Инвестиционные доходы" info="calc:investInc" value={inputs.investInc} onChange={set("investInc")} />
             </div>
           </Collapsible>
 
@@ -335,17 +247,17 @@ export default function CalculatorPage() {
               <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
                 {regimeKey.startsWith("unified_") && (
                   <label className="block">
-                    <span className="text-xs text-fl-cream/50">Доля наличной выручки (%)</span>
+                    <span className="text-xs text-fl-cream/60">Доля наличной выручки (%)<Info k="calc:cashPct" /></span>
                     <div className="mt-2 flex items-center gap-3">
                       <input type="range" min={0} max={100} value={inputs.cashPct}
                         onChange={(e) => setInputs(s => ({ ...s, cashPct: +e.target.value }))}
                         className="flex-1" />
-                      <span className="num w-10 text-right text-sm text-fl-cream">{inputs.cashPct}%</span>
+                      <span className="num w-12 text-right text-sm text-fl-cream">{Math.round(inputs.cashPct)}%</span>
                     </div>
                   </label>
                 )}
                 {regimeKey === "patent" && (
-                  <MoneyInput label="Стоимость патента" value={inputs.patentAmount} onChange={set("patentAmount")} />
+                  <MoneyInput label="Стоимость патента в месяц" info="calc:patentAmount" value={inputs.patentAmount} onChange={set("patentAmount")} />
                 )}
               </div>
             </Collapsible>
@@ -423,7 +335,7 @@ export default function CalculatorPage() {
                   />
                 )}
                 <div className="mt-3 flex items-center justify-between border-t border-fl-line pt-3">
-                  <span className="text-sm font-semibold text-fl-cream">Прямые налоги итого</span>
+                  <span className="text-sm font-semibold text-fl-cream">Налоги из средств компании<Info k="calc:compareTax" /></span>
                   <div className="flex items-center gap-2">
                     <span className="num text-sm font-bold text-fl-cream">{formatNumber(result.totalDirect)} сом</span>
                     <Badge
@@ -437,14 +349,14 @@ export default function CalculatorPage() {
               {/* ОПУ */}
               <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
                 <p className="label-caps mb-3">Отчёт о прибылях и убытках (сокр.)</p>
-                <FieldRow label="Выручка" value={`${formatNumber(result.totalRevenue)} сом`} />
-                <FieldRow label="Себестоимость" value={`(${formatNumber(result.cogs)}) сом`} />
-                <FieldRow label="Валовая прибыль" value={`${formatNumber(result.grossProfit)} сом`} sub={`маржа ${formatPercent(gm!)}`} />
-                <FieldRow label="Операционные расходы" value={`(${formatNumber(result.totalOpExp)}) сом`} />
-                <FieldRow label="EBIT" value={`${formatNumber(result.ebit)} сом`} />
-                <FieldRow label="Внереализационные расходы" value={`(${formatNumber(result.interestExp + result.otherNonOp)}) сом`} />
-                <FieldRow label="EBT (прибыль до налога)" value={`${formatNumber(result.ebt)} сом`} />
-                <FieldRow label="Налог на прибыль" value={`(${formatNumber(result.incomeTax)}) сом`} />
+                <FieldRow info="kpi:netRevenue" label="Выручка" value={`${formatNumber(result.totalRevenue)} сом`} />
+                <FieldRow info="calc:cogs" label="Себестоимость" value={`(${formatNumber(result.cogs)}) сом`} />
+                <FieldRow info="is:gross" label="Валовая прибыль" value={`${formatNumber(result.grossProfit)} сом`} sub={`маржа ${formatPercent(gm!)}`} />
+                <FieldRow info="calc:opex" label="Операционные расходы" value={`(${formatNumber(result.totalOpExp)}) сом`} />
+                <FieldRow info="exec:ebit" label="Операционная прибыль (EBIT)" value={`${formatNumber(result.ebit)} сом`} />
+                <FieldRow info="calc:otherNonOp" label="Внереализационные доходы и расходы (сальдо)" value={`${formatNumber(result.nonOpNet)} сом`} />
+                <FieldRow info="exec:ebt" label="Прибыль до налогообложения (EBT)" value={`${formatNumber(result.ebt)} сом`} />
+                <FieldRow info="tax:profit" label="Налог на прибыль / единый налог" value={`(${formatNumber(result.incomeTax)}) сом`} />
                 <div className="mt-2 flex items-center justify-between border-t-2 border-fl-gold/30 pt-3">
                   <span className="font-display text-sm font-bold text-fl-cream">Чистая прибыль</span>
                   <span className={`num text-lg font-bold ${result.netProfit >= 0 ? "text-fl-green" : "text-fl-red"}`}>
@@ -455,16 +367,17 @@ export default function CalculatorPage() {
 
               {/* CVP-метрики */}
               <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-                <p className="label-caps mb-3">CVP-анализ</p>
+                <p className="label-caps mb-3">Безубыточность и запас прочности<Info k="exec:cvp" /></p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <KpiCard label="Точка безубыточности" value={`${formatNumber(be!)} сом`} />
+                  <KpiCard info="exec:breakEven" label="Точка безубыточности" value={`${formatNumber(be!)} сом`} />
                   <KpiCard
                     label="Запас прочности"
+                    info="exec:safety"
                     value={formatPercent(sm!)}
                     trend={sm! > 30 ? "up" : sm! > 15 ? "neutral" : "down"}
                   />
-                  <KpiCard label="Валовая маржа" value={formatPercent(gm!)} />
-                  <KpiCard label="Налоговая нагрузка" value={formatPercent(tb!)} />
+                  <KpiCard info="exec:gross" label="Валовая маржа" value={formatPercent(gm!)} />
+                  <KpiCard info="tax:burden" label="Налоговая нагрузка" value={formatPercent(tb!)} />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Badge

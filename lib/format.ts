@@ -33,5 +33,5 @@ export function parseFormattedNumber(input: string): number {
 
 export function formatPercent(value: number, decimals = 1): string {
   if (!Number.isFinite(value)) return "—";
-  return `${value.toFixed(decimals)}%`;
+  return `${value.toFixed(decimals).replace(".", ",")}%`;
 }

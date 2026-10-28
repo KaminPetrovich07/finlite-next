@@ -5,6 +5,8 @@
 // number. Small «→ Баланс 541» links jump to the statement the row ties to.
 
 import { useState } from "react";
+import { Info } from "@/components/Info";
+import { accountTerm, balanceTerm } from "@/lib/glossary";
 import { BALANCE_ROWS } from "@/lib/balance-sheet";
 import { CF_TABLE } from "@/lib/cash-flow";
 import { EQUITY_COLUMNS, EQUITY_ROWS, equityKey } from "@/lib/equity";
@@ -111,7 +113,7 @@ export function TrialBalanceTable({ s, onDrill }: StatementProps) {
               className={rowClass(true, "line")}
               {...clickProps(true, () => onDrill({ title: `${r.account} ${r.name}`, subtitle: "Проводки по счёту за период", accounts: [r.account] }))}
             >
-              <td className={td}><span className="num mr-2 text-fl-cream/50">{r.account}</span>{r.name}</td>
+              <td className={td}><span className="num mr-2 text-fl-cream/50">{r.account}</span>{r.name}<Info t={accountTerm(r.account)} label={r.name} /></td>
               <td className={tdNum}>{money(r.openingDr)}</td>
               <td className={tdNum}>{money(r.openingCr)}</td>
               <td className={tdNum}>{money(r.turnoverDr)}</td>
@@ -155,6 +157,7 @@ export function IncomeStatementTable({ s, onDrill, onGoto }: StatementProps) {
               >
                 <td className={`${td} ${l.kind === "sub" ? "pl-8" : ""}`}>
                   {l.label}
+                  <Info k={`is:${l.key}`} label={l.label} />
                   {l.key === "net" && (<><Link to="eq" label="→ Капитал, стр. 080" onGoto={onGoto} /><Link to="bs" label="→ Баланс, стр. 530" onGoto={onGoto} /></>)}
                   {l.key === "incomeTax" && <Link to="tax" label="→ Налоги" onGoto={onGoto} />}
                 </td>
@@ -217,6 +220,7 @@ export function BalanceSheetTable({ s, onDrill, onGoto }: StatementProps) {
                   <td className={`${td} num text-fl-cream/45`}>{code}</td>
                   <td className={`${td} ${row.isSub ? "pl-6" : ""}`}>
                     {row.label.replace(/^\s*—\s*/, "")}
+                    <Info t={balanceTerm(code, row.label)} label={row.label.replace(/^\s*—\s*/, "")} />
                     {link && <Link to={link.to} label={link.label} onGoto={onGoto} />}
                   </td>
                   <td className={tdNum}>{money(o)}</td>
@@ -265,6 +269,7 @@ export function CashFlowTable({ s, onDrill, onGoto }: StatementProps) {
                   <td className={`${td} num text-fl-cream/45`}>{String(code).padStart(3, "0")}</td>
                   <td className={td}>
                     {row.label}
+                    <Info k={`cf:${code}`} label={row.label} />
                     {(code === 710 || code === 720) && <Link to="bs" label="= Баланс, стр. 110 + 120" onGoto={onGoto} />}
                   </td>
                   <td className={tdNum}>{money(v)}</td>
@@ -305,6 +310,7 @@ export function EquityTable({ s, onDrill, onGoto }: StatementProps) {
                 <td className={`${td} num text-fl-cream/45`}>{String(row.code).padStart(3, "0")}</td>
                 <td className={td}>
                   {row.label}
+                  <Info k={`eq:${row.code}`} label={row.label} />
                   {row.code === 80 && <Link to="is" label="= ОПиУ" onGoto={onGoto} />}
                   {row.code === 120 && <Link to="bs" label="= Баланс, стр. 541" onGoto={onGoto} />}
                 </td>
@@ -337,7 +343,7 @@ export function TaxPanel({ s, onDrill, onGoto, canPost, posting, onPost }: State
           <tbody>
             {c.lines.map((l, i) => (
               <tr key={i} className={rowClass(false, "line")}>
-                <td className={td}>{l.label}</td>
+                <td className={td}>{l.label}<Info k={taxKey(l.label)} label={l.label} /></td>
                 <td className={tdNum}>{l.rate === null ? `${l.base} мес.` : money(l.base)}</td>
                 <td className={tdNum}>{l.rate === null ? "фикс." : `${Number((l.rate * 100).toPrecision(3))}%`}</td>
                 <td className={tdNum}>{money(l.amount)}</td>
@@ -386,6 +392,18 @@ export function TaxPanel({ s, onDrill, onGoto, canPost, posting, onPost }: State
       </div>
     </div>
   );
+}
+
+/** Glossary key for a line of the tax accrual by its wording. */
+function taxKey(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes("ндс")) return "tax:vat";
+  if (l.includes("с продаж")) return "tax:sales";
+  if (l.includes("единый")) return "tax:unified";
+  if (l.includes("патент")) return "tax:patent";
+  if (l.includes("взнос")) return "tax:social";
+  if (l.includes("подоходн")) return "tax:pit";
+  return "tax:profit";
 }
 
 // ── Сверки ─────────────────────────────────────────────────────────────────

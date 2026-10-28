@@ -121,3 +121,15 @@ test("payroll entry: withholdings and employer contributions", () => {
   const bal = p.lines.reduce((s, l) => s + l.debit - l.credit, 0);
   assert.ok(Math.abs(bal) < 0.005, "balanced");
 });
+
+test("calculator bridge: ledger P&L reproduces EBT and net profit", async () => {
+  const { calcInputFromStatements } = await import("@/lib/ledger/calc-bridge");
+  const { calculate } = await import("@/lib/tax-engine");
+  const d = await loadCompanyPeriod("demo", Q3);
+  const b = calcInputFromStatements(d.statements, d.company.regime!, 0);
+  const r = calculate(b.input);
+  const is = d.statements.incomeStatement;
+  assert.ok(Math.abs(r.ebt - is.ebt) < 0.01, `EBT ${r.ebt} vs ${is.ebt}`);
+  assert.ok(Math.abs(r.netProfit - is.netProfit) < 0.01, `net ${r.netProfit} vs ${is.netProfit}`);
+  assert.ok(b.skipped.some((x) => x.account === "9910"), "accrued tax is not double counted");
+});

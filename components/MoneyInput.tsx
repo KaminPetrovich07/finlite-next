@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { formatNumber, parseFormattedNumber } from "@/lib/format";
+import { Info } from "@/components/Info";
 
 interface MoneyInputProps {
   label: string;
@@ -9,6 +10,8 @@ interface MoneyInputProps {
   onChange: (value: number) => void;
   hint?: string;
   required?: boolean;
+  /** glossary key for the «i» explanation, e.g. "calc:revenue" */
+  info?: string;
 }
 
 /**
@@ -17,7 +20,7 @@ interface MoneyInputProps {
  * the numeric pad while we keep full control over display formatting —
  * native <input type="number"> cannot show grouped digits at all.
  */
-export function MoneyInput({ label, value, onChange, hint, required }: MoneyInputProps) {
+export function MoneyInput({ label, value, onChange, hint, required, info }: MoneyInputProps) {
   const [display, setDisplay] = useState(value ? formatNumber(value) : "");
   const [focused, setFocused] = useState(false);
 
@@ -30,6 +33,7 @@ export function MoneyInput({ label, value, onChange, hint, required }: MoneyInpu
       <span className="text-sm font-medium text-fl-cream/80">
         {label}
         {required && <span className="text-fl-gold ml-1">*</span>}
+        {info && <Info k={info} label={label} />}
       </span>
       <input
         type="text"

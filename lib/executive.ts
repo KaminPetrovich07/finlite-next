@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════════
 // lib/executive.ts — risk flags + recommendations, ported from the
-// "Big 4 Executive Report" tab (app.py ~lines 1095-1152).
+// «Сводка для руководителя» (бывшая вкладка "Big 4 Executive Report" (app.py ~lines 1095-1152).
 // ════════════════════════════════════════════════════════════════════════
 
 import type { CalculateResult } from "@/lib/tax-engine";
@@ -25,7 +25,7 @@ export function computeRisks(fr: CalculateResult, safetyMarginPct: number): Risk
     risks.push({ level: "Средний", title: "Высокий ФОТ", detail: "Расходы на персонал превышают 50% выручки" });
   }
   if (fr.cogs > fr.revenue * 0.7) {
-    risks.push({ level: "Средний", title: "Высокая себестоимость", detail: "Себестоимость >70% выручки" });
+    risks.push({ level: "Средний", title: "Высокая себестоимость", detail: "Себестоимость больше 70% выручки — проверьте закупочные цены и потери" });
   }
   if (safetyMarginPct < 20) {
     risks.push({ level: "Средний", title: "Малый запас прочности", detail: `Запас ${safetyMarginPct.toFixed(1)}% — риск убытка при снижении продаж` });
@@ -52,11 +52,13 @@ export function computeRecommendations(
     recs.push({
       priority: "Высокий",
       title: "Оптимизация налогового режима",
-      detail: `Перейдите на «${bestRegimeName}» — экономия ${Math.round(fr.totalDirect - bestRegimeTax).toLocaleString("ru-RU")} сом`,
+      detail: `Рассмотрите режим «${bestRegimeName}» — налоги из средств компании меньше на ${Math.round(fr.totalDirect - bestRegimeTax).toLocaleString("ru-RU")} сом за период`
+        + (/НДС/.test(bestRegimeName) ? ". Учтите: при общем режиме появляется обязанность начислять НДС 12% — он входит в цену для покупателей, а также растёт объём учёта и отчётности" : "")
+        + ". Перед переходом проверьте условия применения режима в НК КР",
     });
   }
   if (fr.sellingExp > fr.revenue * 0.1) {
-    recs.push({ priority: "Средний", title: "Контроль коммерческих расходов", detail: "Расходы >10% выручки. Аудит маркетинга" });
+    recs.push({ priority: "Средний", title: "Контроль коммерческих расходов", detail: "Коммерческие расходы больше 10% выручки — проверьте отдачу от рекламы и доставки" });
   }
   if (fr.profitability > 15) {
     recs.push({ priority: "Низкий", title: "Реинвестирование", detail: "Высокая рентабельность — направьте прибыль в развитие" });
@@ -69,16 +71,22 @@ export function computeRecommendations(
 
 /** Waterfall chart data: revenue → costs (negative steps) → net profit (total). */
 export function waterfallSteps(fr: CalculateResult): Array<{ label: string; value: number; isTotal: boolean }> {
-  return [
+  // Every step of the bridge from revenue to net profit, so the bars add up exactly.
+  const steps = [
     { label: "Выручка", value: fr.revenue, isTotal: true },
+    { label: "+ Прочие доходы", value: fr.otherIncome, isTotal: false },
     { label: "− Себестоимость", value: -fr.cogs, isTotal: false },
-    { label: "− ФОТ", value: -fr.fotFull, isTotal: false },
+    { label: "− Зарплата и взносы", value: -fr.fotFull, isTotal: false },
     { label: "− Аренда", value: -fr.rent, isTotal: false },
-    { label: "− Коммерч.", value: -fr.sellingExp, isTotal: false },
-    { label: "− Адм.", value: -fr.adminExp, isTotal: false },
-    { label: "− Налоги", value: -fr.incomeTax, isTotal: false },
-    { label: "= Прибыль", value: fr.netProfit, isTotal: true },
+    { label: "− Коммерческие", value: -fr.sellingExp, isTotal: false },
+    { label: "− Административные", value: -fr.adminExp, isTotal: false },
+    { label: "− Налог с продаж", value: -fr.salesTax, isTotal: false },
+    { label: "− Прочие операционные", value: -fr.otherOpExp, isTotal: false },
+    { label: "± Внереализационные", value: fr.nonOpNet, isTotal: false },
+    { label: "− Налог на прибыль", value: -fr.incomeTax, isTotal: false },
+    { label: "= Чистая прибыль", value: fr.netProfit, isTotal: true },
   ];
+  return steps.filter((x) => x.isTotal || Math.abs(x.value) >= 0.5);
 }
 
 export interface WaterfallBar {

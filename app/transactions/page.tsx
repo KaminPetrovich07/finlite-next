@@ -22,14 +22,18 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     fetch("/api/companies").then((r) => r.json()).then((data) => {
-      setCompanies(data);
-      if (data[0]) setCompanyId(data[0].id);
-    });
+      const list: Company[] = Array.isArray(data) ? data : [];
+      setCompanies(list);
+      let saved: string | null = null;
+      try { saved = localStorage.getItem("finlite:companyId"); } catch { /* storage blocked */ }
+      setCompanyId(list.find((c) => c.id === saved)?.id ?? list[0]?.id ?? "");
+    }).catch(() => setCompanies([]));
   }, []);
 
   useEffect(() => {
     if (!companyId) return;
-    fetch(`/api/transactions?companyId=${companyId}`).then((r) => r.json()).then(setTransactions);
+    fetch(`/api/transactions?companyId=${companyId}`).then((r) => r.json())
+      .then((d) => setTransactions(Array.isArray(d) ? d : [])).catch(() => setTransactions([]));
   }, [companyId, uploadResult]);
 
   async function handleUpload() {
@@ -79,9 +83,15 @@ export default function TransactionsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <label>
             <span className="text-sm text-fl-cream/70">Компания</span>
-            <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}
+            <select value={companyId} onChange={(e) => {
+                if (e.target.value === "__new") { window.location.href = "/companies?new=1"; return; }
+                setCompanyId(e.target.value);
+                try { localStorage.setItem("finlite:companyId", e.target.value); } catch { /* storage blocked */ }
+              }}
               className="mt-1 w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2.5 text-fl-cream">
+              {companies.length === 0 && <option value="">Сначала создайте компанию</option>}
               {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value="__new">+ Добавить компанию…</option>
             </select>
           </label>
           <label>

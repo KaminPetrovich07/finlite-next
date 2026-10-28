@@ -271,7 +271,7 @@ export function calculate(input: CalculateInput): CalculateResult {
 
 export function compareRegimes(
   base: Omit<CalculateInput, "regimeKey" | "otherOpExp" | "interestExp" | "otherNonOp" | "investInc" | "cashPct" | "patentAmount">
-    & Partial<Pick<CalculateInput, "cashPct" | "patentAmount">>
+    & Partial<Pick<CalculateInput, "cashPct" | "patentAmount" | "otherOpExp" | "interestExp" | "otherNonOp" | "investInc">>
 ): Array<{ key: RegimeKey; name: string; net: number; tax: number; pct: number; note?: string }> {
   return (Object.keys(REGIME_INFO) as RegimeKey[])
     .filter((rk) => rk !== "patent" || (base.patentAmount ?? 0) > 0)
