@@ -228,6 +228,9 @@ model JournalLine {
   debit       Decimal      @default(0) @db.Decimal(18, 2)
   credit      Decimal      @default(0) @db.Decimal(18, 2)
   memo        String?
+  /// контрагент (субконто): наименование и ИНН — для расчётов, актов сверки, первички
+  party       String?
+  partyInn    String?
 
   @@index([entryId])
   @@index([accountCode])

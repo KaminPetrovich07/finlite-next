@@ -6,6 +6,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { RegimeKey } from "@/lib/tax-engine";
+import { partyFromRaw } from "@/lib/bank-parser";
 import { bankTxToLines } from "./posting";
 import { isRegimeKey } from "./taxes";
 import type { EntrySource, LedgerEntry, LedgerLine } from "./types";
@@ -36,6 +37,8 @@ export function toLedgerEntry(row: EntryRow): LedgerEntry {
       debit: Number(l.debit),
       credit: Number(l.credit),
       memo: l.memo,
+      ...(l.party ? { party: l.party } : {}),
+      ...(l.partyInn ? { partyInn: l.partyInn } : {}),
     })),
   };
 }
@@ -75,11 +78,20 @@ export async function createEntry(db: Db, e: NewEntry) {
           debit: l.debit,
           credit: l.credit,
           memo: l.memo ?? null,
+          party: l.party?.trim() || null,
+          partyInn: l.partyInn?.replace(/\D/g, "") || null,
         })),
       },
     },
     include: entryInclude,
   });
+}
+
+/** The statement's payer/recipient goes on the non-bank lines (not on taxes). */
+function withParty(lines: LedgerLine[], raw: unknown, amount: number): LedgerLine[] {
+  const p = partyFromRaw(raw, amount);
+  if (!p) return lines;
+  return lines.map((l) => (/^1[12]\d\d/.test(l.account) || /^34/.test(l.account) ? l : { ...l, party: p.party || null, partyInn: p.partyInn || null }));
 }
 
 export async function companyRegime(companyId: string): Promise<{ regime: RegimeKey | null; patentAmount: number }> {
@@ -99,7 +111,7 @@ export async function postBankTransactions(companyId: string, importBatch?: stri
   });
   let posted = 0;
   for (const tx of pending) {
-    const lines = bankTxToLines({ amount: tx.amount, description: tx.description, category: tx.category }, regime);
+    const lines = withParty(bankTxToLines({ amount: tx.amount, description: tx.description, category: tx.category }, regime), tx.rawRow, tx.amount);
     if (lines.length === 0) continue;
     await createEntry(prisma, {
       companyId,
@@ -119,7 +131,7 @@ export async function repostBankTransaction(bankTransactionId: string): Promise<
   const tx = await prisma.bankTransaction.findUnique({ where: { id: bankTransactionId } });
   if (!tx) return;
   const { regime } = await companyRegime(tx.companyId);
-  const lines = bankTxToLines({ amount: tx.amount, description: tx.description, category: tx.category }, regime);
+  const lines = withParty(bankTxToLines({ amount: tx.amount, description: tx.description, category: tx.category }, regime), tx.rawRow, tx.amount);
   await prisma.$transaction(async (db) => {
     await db.journalEntry.deleteMany({ where: { bankTransactionId } });
     if (lines.length > 0) {

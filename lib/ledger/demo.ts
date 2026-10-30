@@ -87,6 +87,18 @@ export const DEMO_ESG: Partial<EsgInput> = {
 
 const dr = (account: string, amount: number, memo?: string): LedgerLine => ({ account, debit: round2(amount), credit: 0, memo });
 const cr = (account: string, amount: number, memo?: string): LedgerLine => ({ account, debit: 0, credit: round2(amount), memo });
+/** строка с контрагентом (субконто) */
+const pt = (l: LedgerLine, party: string, partyInn?: string): LedgerLine => ({ ...l, party, partyInn: partyInn ?? null });
+export const DEMO_PARTIES = {
+  alaToo: ["ОсОО «Ала-Тоо Отель»", "01504200510187"],
+  dordoi: ["ОсОО «Дордой Плаза»", "02108201310044"],
+  bos: ["ОсОО «Бишкек Офис Сервис»", ""],
+  stroydom: ["ОсОО «СтройДом»", "00911201610239"],
+  techno: ["ОсОО «ТехноМебель»", "01811201210351"],
+  kedr: ["ОсОО «Кедр Импорт»", "02203201910078"],
+  bakai: ["Бакай Банк", ""],
+} as const;
+const P = (l: LedgerLine, k: keyof typeof DEMO_PARTIES) => pt(l, DEMO_PARTIES[k][0], DEMO_PARTIES[k][1] || undefined);
 
 let seq = 0;
 function entry(date: string, description: string, lines: LedgerLine[], source: LedgerEntry["source"] = "demo"): LedgerEntry {
@@ -110,18 +122,19 @@ interface MonthPlan {
   energy: number;
   marketing: number;
   transport: number;
+  payer: keyof typeof DEMO_PARTIES;
 }
 
 const MONTHS: MonthPlan[] = [
   { m: "07", name: "июль", cashSales: 380_000, bankSales: 1_120_000, creditSales: 700_000, collected: 900_000,
     materials: 820_000, consumed: 860_000, cogs: 1_180_000, prodWages: 310_000, adminWages: 140_000,
-    kwh: 13_600, energy: 41_000, marketing: 45_000, transport: 38_000 },
+    kwh: 13_600, energy: 41_000, marketing: 45_000, transport: 38_000, payer: "alaToo" },
   { m: "08", name: "август", cashSales: 420_000, bankSales: 1_310_000, creditSales: 560_000, collected: 650_000,
     materials: 960_000, consumed: 930_000, cogs: 1_290_000, prodWages: 320_000, adminWages: 140_000,
-    kwh: 14_100, energy: 42_300, marketing: 60_000, transport: 41_000 },
+    kwh: 14_100, energy: 42_300, marketing: 60_000, transport: 41_000, payer: "bos" },
   { m: "09", name: "сентябрь", cashSales: 360_000, bankSales: 1_480_000, creditSales: 820_000, collected: 760_000,
     materials: 1_010_000, consumed: 990_000, cogs: 1_420_000, prodWages: 330_000, adminWages: 145_000,
-    kwh: 14_100, energy: 42_300, marketing: 52_000, transport: 47_000 },
+    kwh: 14_100, energy: 42_300, marketing: 52_000, transport: 47_000, payer: "dordoi" },
 ];
 
 function payroll(date: string, label: string, gross: number, expense: string, social: string): LedgerEntry[] {
@@ -147,12 +160,13 @@ export function demoEntries(): LedgerEntry[] {
   seq = 0;
   const openingLines: LedgerLine[] = [
     dr("1110", 380_000), dr("1210", 6_500_000),
-    dr("1410", 3_200_000), dr("1620", 2_800_000), dr("1640", 4_000_000),
+    P(dr("1410", 1_400_000), "alaToo"), P(dr("1410", 1_100_000), "dordoi"), P(dr("1410", 700_000), "bos"),
+    dr("1620", 2_800_000), dr("1640", 4_000_000),
     dr("2130", 9_000_000), cr("2193", 1_350_000),
     dr("2140", 14_000_000), cr("2194", 1_600_000),
     dr("2960", 1_200_000), cr("2996", 240_000),
     dr("2850", 4_500_000),
-    cr("3110", 4_000_000), cr("3310", 2_000_000), cr("3410", 480_000),
+    P(cr("3110", 2_600_000), "techno"), P(cr("3110", 1_400_000), "kedr"), P(cr("3310", 2_000_000), "bakai"), cr("3410", 480_000),
     cr("3520", 395_000), cr("3530", 61_000), cr("3420", 54_000),
     cr("4120", 5_000_000),
     cr("5130", 15_000_000),
@@ -170,21 +184,21 @@ export function demoEntries(): LedgerEntry[] {
     entry("2026-08-12", "Покупка кромкооблицовочного станка", [dr("2140", 640_000), cr("1210", 640_000)]),
     entry("2026-08-26", "Объявлены дивиденды участникам за I полугодие", [dr("5300", 500_000), cr("3540", 500_000)]),
     entry("2026-08-30", "Выплата дивидендов", [dr("3540", 500_000), cr("1210", 500_000)]),
-    entry("2026-09-10", "Аванс от ОсОО «СтройДом» за кухонные гарнитуры", [dr("1210", 600_000), cr("3210", 600_000)]),
+    entry("2026-09-10", "Аванс от ОсОО «СтройДом» за кухонные гарнитуры", [dr("1210", 600_000), P(cr("3210", 600_000), "stroydom")]),
     entry("2026-09-30", "Отчисление в резервный капитал", [dr("5300", 150_000), cr("5400", 150_000)]),
   );
 
   for (const p of MONTHS) {
     const d = (day: number) => `2026-${p.m}-${String(day).padStart(2, "0")}`;
     entries.push(
-      entry(d(3), `Закупка ЛДСП и фурнитуры у ОсОО «ТехноМебель», ${p.name}`, [dr("1620", p.materials), cr("1210", p.materials)]),
+      entry(d(3), `Закупка ЛДСП и фурнитуры у ОсОО «ТехноМебель», ${p.name}`, [P(dr("1620", p.materials), "techno"), cr("1210", p.materials)]),
       entry(d(8), `Розничные продажи в салоне за наличные, ${p.name}`, [dr("1110", p.cashSales), cr("6110", p.cashSales)]),
       entry(d(9), "Инкассация: сдача наличной выручки в банк", [dr("1210", round2(p.cashSales * 0.8)), cr("1110", round2(p.cashSales * 0.8))]),
       entry(d(14), `Безналичная оплата заказов, ${p.name}`, [dr("1210", p.bankSales), cr("6110", p.bankSales)]),
       entry(d(18), "Аренда выставочного салона", [dr("8030", 90_000), cr("1210", 90_000)]),
-      entry(d(20), `Отгрузка партии ОсОО «Ала-Тоо Отель» с отсрочкой оплаты, ${p.name}`, [dr("1410", p.creditSales), cr("6110", p.creditSales)]),
-      entry(d(22), "Оплата от покупателей по ранее выставленным счетам", [dr("1210", p.collected), cr("1410", p.collected)]),
-      entry(d(24), "Погашение кредита и процентов, Бакай Банк", [dr("3310", 150_000), dr("9510", round2(2_000_000 * 0.18 / 12)), cr("1210", round2(150_000 + 2_000_000 * 0.18 / 12))]),
+      entry(d(20), `Отгрузка партии ОсОО «Ала-Тоо Отель» с отсрочкой оплаты, ${p.name}`, [P(dr("1410", p.creditSales), "alaToo"), P(cr("6110", p.creditSales), "alaToo")]),
+      entry(d(22), "Оплата от покупателей по ранее выставленным счетам", [dr("1210", p.collected), P(cr("1410", p.collected), p.payer)]),
+      entry(d(24), "Погашение кредита и процентов, Бакай Банк", [P(dr("3310", 150_000), "bakai"), P(dr("9510", round2(2_000_000 * 0.18 / 12)), "bakai"), cr("1210", round2(150_000 + 2_000_000 * 0.18 / 12))]),
       entry(d(25), "Оплата электроэнергии цеха", [dr("7140", p.energy, `${p.kwh.toLocaleString("ru-RU")} кВт·ч`), cr("1210", p.energy)]),
       entry(d(26), "Реклама в Instagram и на 2ГИС", [dr("7510", p.marketing), cr("1210", p.marketing)]),
       entry(d(27), "Доставка мебели покупателям", [dr("7540", p.transport), cr("1210", p.transport)]),

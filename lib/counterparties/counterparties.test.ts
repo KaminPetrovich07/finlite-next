@@ -43,6 +43,7 @@ test("ручная привязка и отвязка операции", () => {
   assert.equal(analyze(es, base, "2026-01-01", "2026-03-31", rates).rows[0].balances["1410"], -50);
   const off = analyze(es, { ...base, links: { x: UNASSIGNED } }, "2026-01-01", "2026-03-31", rates);
   assert.equal(off.unassigned.balances["1410"], -50);
+  assert.ok(!off.advice.some((a) => /распределено больше/.test(a.title)), "оплата без имени — не ошибка ввода остатков");
 });
 
 test("демо: просрочка, резерв по политике и рекомендации", () => {
@@ -78,4 +79,18 @@ test("normalizeStore отбрасывает мусор", () => {
   assert.deepEqual(s.list[0].opening, { "1410": 100 });
   assert.equal(s.list[0].recon, null);
   assert.deepEqual(s.links, { ok: "gamma" });
+});
+
+test("поле «контрагент» в строке важнее текста и привязки; ИНН находит карточку", () => {
+  const store: CpStore = { list: [{ ...emptyCounterparty("ОсОО «Омега Трейд»"), id: "omega", inn: "01234567890123" }], links: { p: "omega" } };
+  const line = (account: string, debit: number, credit: number, party?: string, partyInn?: string) => ({ account, debit, credit, party, partyInn });
+  const r = analyze([
+    { id: "o", date: "2026-01-01", description: "Начальные остатки", source: "opening", lines: [line("1410", 300, 0, "Омега", "01234567890123"), line("1410", 200, 0), line("5300", 0, 500)] },
+    // описание называет другого, но поле строки — главное
+    { id: "p", date: "2026-01-15", description: "Оплата от ОсОО «Сигма»", source: "bank", lines: [line("1210", 100, 0), line("1410", 0, 100, "ИП Садыков")] },
+  ], store, "2026-01-01", "2026-03-31", rates);
+  assert.equal(r.rows.find((x) => x.id === "omega")!.balances["1410"], 300);
+  const sad = r.rows.find((x) => /Садыков/.test(x.name))!;
+  assert.equal(sad.balances["1410"], -100);
+  assert.equal(r.unassigned.balances["1410"], 200);
 });

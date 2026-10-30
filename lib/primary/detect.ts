@@ -125,6 +125,8 @@ export function corrAccount(e: LedgerEntry, kind: DocKind): string {
 
 /** «ОсОО «ТехноМебель»» from «Закупка ЛДСП у ОсОО «ТехноМебель», июль». */
 export function counterpartyOf(e: LedgerEntry): string {
+  const own = e.lines.find((l) => l.party)?.party;
+  if (own) return own;
   const text = [e.description, ...e.lines.map((l) => l.memo ?? "")].join(" ");
   const m = text.match(/(?:ОсОО|ООО|ОАО|ЗАО|ИП|АО|ОФ)\s*«[^»]+»|(?:ИП)\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ]\.\s?[А-ЯЁ]\.)?|(?:ИП)\s+[А-ЯЁ][а-яё]+/);
   if (m) return m[0];

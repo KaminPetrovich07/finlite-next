@@ -122,12 +122,25 @@ export default function CounterpartiesPage() {
     setOpenId(null); setDraft(null);
   }
 
-  function link(entryId: string, cpId: string) {
+  /** Real company: the counterparty is written into the journal lines. Demo: kept as a link on screen. */
+  async function link(entryId: string, cpId: string) {
+    const card = store.list.find((c) => c.id === cpId);
+    const row = result?.rows.find((r) => r.id === cpId);
+    const name = card?.name ?? row?.name;
+    if (!name) return;
+    if (!demo) {
+      try {
+        const r = await fetch("/api/ledger/party", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, entryIds: [entryId], party: name, partyInn: card?.inn || undefined }) });
+        const b = await r.json();
+        if (!r.ok) throw new Error(b.error ?? "Не удалось записать");
+        show(`${name} — записано в проводку`);
+        recalc(store);
+      } catch (e: any) { show(e.message, "error"); }
+      return;
+    }
     if (cpId.startsWith("auto-")) {
-      const row = result?.rows.find((r) => r.id === cpId);
-      if (!row) return;
-      const id = slug(row.name);
-      const list = store.list.some((c) => c.id === id) ? store.list : [...store.list, { ...emptyCounterparty(row.name), id }];
+      const id = slug(name);
+      const list = store.list.some((c) => c.id === id) ? store.list : [...store.list, { ...emptyCounterparty(name), id }];
       update({ list, links: { ...store.links, [entryId]: id } });
       return;
     }
@@ -184,7 +197,7 @@ export default function CounterpartiesPage() {
             <Kpi label="Нам должны" v={t.receivable} sub={t.overdueRecv ? `просрочено ${formatNumber(t.overdueRecv)}` : "просрочки нет"} bad={t.overdueRecv > 0} />
             <Kpi label="Мы должны" v={t.payable} sub={t.overduePay ? `просрочено ${formatNumber(t.overduePay)}` : "просрочки нет"} bad={t.overduePay > 0} />
             <Kpi label="Резерв по сомнительным долгам" v={t.allowance} sub={`в учёте ${formatNumber(t.allowanceBooked)}`} bad={t.allowance - t.allowanceBooked > 0.5} />
-            <Kpi label="Без контрагента" v={unTotal} sub={result.unassigned.entries.length ? `${result.unassigned.entries.length} операций за период` : unTotal > 0.5 ? "начальные остатки не распределены" : "всё разнесено"} bad={unTotal > 0.5} />
+            <Kpi label="Без контрагента" v={unTotal} sub={result.unassigned.entries.length ? `${result.unassigned.entries.length} операций без контрагента` : unTotal > 0.5 ? "начальные остатки не распределены" : "всё разнесено"} bad={unTotal > 0.5} />
           </section>
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
@@ -239,7 +252,7 @@ export default function CounterpartiesPage() {
               {result.unassigned.entries.length > 0 && (
                 <div className="mt-6">
                   <h3 className="mb-1 font-display text-[14px] font-semibold text-fl-cream">Операции без контрагента</h3>
-                  <p className="mb-2 text-xs text-fl-cream/55">По этим проводкам на счетах расчётов не видно, с кем они. Выберите контрагента — привязка сохранится в справочнике.</p>
+                  <p className="mb-2 text-xs text-fl-cream/55">По этим проводкам на счетах расчётов не видно, с кем они. Выберите контрагента — он запишется в поле «контрагент» самой проводки и будет виден в журнале.</p>
                   <ul className="divide-y divide-fl-line/60">
                     {result.unassigned.entries.slice(0, 50).map((u) => (
                       <li key={u.entryId} className="flex flex-wrap items-center justify-between gap-2 py-2">

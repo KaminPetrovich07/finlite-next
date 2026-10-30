@@ -4,7 +4,7 @@
 // резерв по сомнительным долгам по учётной политике и рекомендации.
 // Pure functions — no database.
 // ════════════════════════════════════════════════════════════════════════
-import type { LedgerEntry } from "@/lib/ledger/types";
+import type { LedgerEntry, LedgerLine } from "@/lib/ledger/types";
 import { counterpartyOf } from "@/lib/primary/detect";
 import { DEFAULT_TERMS, SETTLE, slug, type Counterparty, type CpRole, type CpStore } from "./types";
 
@@ -72,7 +72,7 @@ export interface CpResult {
   asOf: string;
   from: string;
   rows: CpRow[];
-  unassigned: { balances: Record<string, number>; entries: Array<{ entryId: string; date: string; text: string; amount: number; accounts: string[] }> };
+  unassigned: { balances: Record<string, number>; opening: Record<string, number>; entries: Array<{ entryId: string; date: string; text: string; amount: number; accounts: string[] }> };
   ledger: Record<string, number>;
   totals: { receivable: number; payable: number; overdueRecv: number; overduePay: number; sales: number; allowance: number; allowanceBooked: number };
   advice: Advice[];
@@ -82,7 +82,10 @@ export interface AllowanceRates { method: "aging" | "specific" | "none"; d90: nu
 
 const norm = (s: string) => s.toLowerCase().replace(/[«»"'`“”„]/g, "").replace(/ё/g, "е").replace(/\s+/g, " ").trim();
 
-/** Who is the counterparty of an entry: link → directory → pattern. */
+/**
+ * Who is the counterparty: the line's own «контрагент» field first, then a
+ * manual link of the entry, then the name / ИНН found in the text.
+ */
 export function makeResolver(store: CpStore) {
   const keys: Array<[string, string]> = [];
   for (const c of store.list) {
@@ -91,17 +94,32 @@ export function makeResolver(store: CpStore) {
   keys.sort((a, b) => b[0].length - a[0].length);
   const inns = store.list.filter((c) => c.inn.length >= 10).map((c) => [c.inn, c.id] as const);
   const known = new Set(store.list.map((c) => c.id));
-  return (e: LedgerEntry): { id: string; name?: string } | null => {
+  const byText = (raw: string): string | null => {
+    const text = norm(raw);
+    for (const [inn, id] of inns) if (raw.includes(inn)) return id;
+    for (const [k, id] of keys) if (text.includes(k)) return id;
+    return null;
+  };
+  /** the line's «контрагент» field */
+  const line = (l: LedgerLine): { id: string; name?: string } | null => {
+    const inn = (l.partyInn ?? "").replace(/\D/g, "");
+    const name = (l.party ?? "").trim();
+    if (!inn && !name) return null;
+    const hit = (inn && inns.find(([i]) => i === inn)?.[1]) || (name && (keys.find(([k]) => k === norm(name))?.[1] ?? byText(name)));
+    if (hit) return { id: hit };
+    return { id: `auto-${slug(name || inn)}`, name: name || `ИНН ${inn}` };
+  };
+  const entry = (e: LedgerEntry): { id: string; name?: string } | null => {
+    for (const l of e.lines) { const r = line(l); if (r) return r; }
     const link = store.links[e.id];
     if (link && (known.has(link) || link === UNASSIGNED)) return link === UNASSIGNED ? null : { id: link };
     if (NO_PARTY.has(e.source)) return null;
-    const raw = [e.description, ...e.lines.map((l) => l.memo ?? "")].join(" ");
-    const text = norm(raw);
-    for (const [inn, id] of inns) if (raw.includes(inn)) return { id };
-    for (const [k, id] of keys) if (text.includes(k)) return { id };
+    const hit = byText([e.description, ...e.lines.map((l) => l.memo ?? "")].join(" "));
+    if (hit) return { id: hit };
     const found = counterpartyOf(e);
     return found ? { id: `auto-${slug(found)}`, name: found } : null;
   };
+  return Object.assign(entry, { line });
 }
 
 function fifo(items: Array<{ date: string; amount: number }>, pays: Array<{ date: string; amount: number }>) {
@@ -127,6 +145,8 @@ export function analyze(entries: LedgerEntry[], store: CpStore, from: string, as
   const rows = new Map<string, CpRow>();
   const ledger: Record<string, number> = {};
   const unBal: Record<string, number> = {};
+  /** opening balances not split by counterparty (journal line without party minus card allocations) */
+  const openUn: Record<string, number> = {};
   const unEntries: CpResult["unassigned"]["entries"] = [];
 
   const row = (id: string, name?: string): CpRow => {
@@ -167,7 +187,13 @@ export function analyze(entries: LedgerEntry[], store: CpStore, from: string, as
     const settle = e.lines.filter((l) => SETTLE[l.account]);
     for (const l of settle) ledger[l.account] = r2((ledger[l.account] ?? 0) + l.debit - l.credit);
     if (e.source === "opening") {
-      for (const l of settle) unBal[l.account] = r2((unBal[l.account] ?? 0) + l.debit - l.credit);
+      for (const l of settle) {
+        const p = resolve.line(l);
+        if (!p) { unBal[l.account] = r2((unBal[l.account] ?? 0) + l.debit - l.credit); openUn[l.account] = r2((openUn[l.account] ?? 0) + l.debit - l.credit); continue; }
+        const r = row(p.id, p.name);
+        r.balances[l.account] = r2((r.balances[l.account] ?? 0) + l.debit - l.credit);
+        r.movements.push({ date: dir.get(p.id)?.openingDate || e.date, entryId: "opening", text: "Сальдо на начало (ввод остатков)", account: l.account, debit: l.debit, credit: l.credit });
+      }
       continue;
     }
     const who = resolve(e);
@@ -193,8 +219,11 @@ export function analyze(entries: LedgerEntry[], store: CpStore, from: string, as
     }
     if (settle.length) {
       for (const l of settle) {
-        r.balances[l.account] = r2((r.balances[l.account] ?? 0) + l.debit - l.credit);
-        r.movements.push({ date: e.date, entryId: e.id, text: e.description, account: l.account, debit: l.debit, credit: l.credit });
+        const own = resolve.line(l);
+        const t = own && own.id !== r.id ? row(own.id, own.name) : r;
+        if (t !== r) { t.ops += 1; t.lastDate = e.date; }
+        t.balances[l.account] = r2((t.balances[l.account] ?? 0) + l.debit - l.credit);
+        t.movements.push({ date: e.date, entryId: e.id, text: e.description, account: l.account, debit: l.debit, credit: l.credit });
       }
     } else {
       // settled on the spot: a delivery and its payment in one operation
@@ -204,7 +233,7 @@ export function analyze(entries: LedgerEntry[], store: CpStore, from: string, as
       r.movements.push({ date: e.date, entryId: e.id, text: `${e.description} — ${cashIn ? "оплата получена" : "поставка"}`, account: "", debit: 0, credit: amt });
     }
   }
-  for (const [acc, amt] of Object.entries(allocated)) unBal[acc] = r2((unBal[acc] ?? 0) - amt);
+  for (const [acc, amt] of Object.entries(allocated)) { unBal[acc] = r2((unBal[acc] ?? 0) - amt); openUn[acc] = r2((openUn[acc] ?? 0) - amt); }
 
   // ── per-counterparty figures
   let allowanceTotal = 0;
@@ -260,7 +289,7 @@ export function analyze(entries: LedgerEntry[], store: CpStore, from: string, as
     allowance: allowanceTotal,
     allowanceBooked,
   };
-  const unassigned = { balances: Object.fromEntries(Object.entries(unBal).filter(([, v]) => Math.abs(v) > 0.004)), entries: unEntries.filter((u) => u.date >= from).reverse() };
+  const unassigned = { balances: Object.fromEntries(Object.entries(unBal).filter(([, v]) => Math.abs(v) > 0.004)), entries: unEntries.reverse(), opening: Object.fromEntries(Object.entries(openUn).filter(([, v]) => Math.abs(v) > 0.004)) };
   const result: CpResult = { asOf, from, rows: list, unassigned, ledger, totals, advice: [] };
   result.advice = advise(result, rates);
   return result;
@@ -272,9 +301,9 @@ function advise(res: CpResult, rates: AllowanceRates): Advice[] {
   const unTotal = Object.values(res.unassigned.balances).reduce((s, v) => s + Math.abs(v), 0);
   if (unTotal > 0.5) {
     const parts = Object.entries(res.unassigned.balances).map(([acc, v]) => `${acc} — ${money(Math.abs(v))}`).join(", ");
-    a.push({ level: "warn", title: "Часть расчётов без контрагента", detail: `Сальдо без привязки: ${parts} сом. Укажите контрагентов у операций ниже и распределите начальные остатки в карточках — иначе акт сверки и инвентаризация расчётов будут неполными.` });
+    a.push({ level: "warn", title: "Часть расчётов без контрагента", detail: `Сальдо без привязки: ${parts} сом. Укажите контрагентов у операций ниже, а начальные остатки введите по контрагентам (строками с полем «контрагент» в журнале или в карточке) — иначе акт сверки и инвентаризация расчётов будут неполными.` });
   }
-  for (const [acc, v] of Object.entries(res.unassigned.balances)) {
+  for (const [acc, v] of Object.entries(res.unassigned.opening)) {
     const grp = SETTLE[acc]?.group;
     if ((grp === "recv" && v < -0.5) || (grp === "pay" && v > 0.5)) a.push({ level: "error", title: `Счёт ${acc}: распределено больше, чем в журнале`, detail: `Сумма начальных остатков по контрагентам превышает остаток журнала на ${money(Math.abs(v))} сом. Проверьте ввод остатков.` });
   }
@@ -303,7 +332,7 @@ function advise(res: CpResult, rates: AllowanceRates): Advice[] {
       a.push({ level: "warn", cpId: r.id, title: `${r.name}: просрочен долг поставщику`, detail: `Не оплачено в срок ${money(r.overduePay)} сом (отсрочка ${r.terms} дн.).${direct ? " При этом текущие поставки оплачиваются сразу — старый долг не гасится. Согласуйте график погашения, чтобы не попасть на пени по договору." : " Согласуйте график погашения, чтобы не попасть на пени по договору."}` });
     }
     for (const [acc, bal] of Object.entries(r.balances)) {
-      const grp = SETTLE[acc].group, un = res.unassigned.balances[acc] ?? 0;
+      const grp = SETTLE[acc].group, un = res.unassigned.opening[acc] ?? 0;
       const wrong = (grp === "recv" && bal < -0.5 && un > 0.5) || (grp === "pay" && bal > 0.5 && un < -0.5);
       if (wrong) a.push({ level: "tip", cpId: r.id, title: `${r.name}: сальдо ${acc} на «чужой» стороне`, detail: `По счёту ${acc} ${grp === "pay" ? "оплачено больше, чем начислено" : "получено больше, чем отгружено"} на ${money(Math.abs(bal))} сом, а начальный остаток по счёту не распределён. Скорее всего, долг был на начало — укажите его в карточке контрагента.` });
     }

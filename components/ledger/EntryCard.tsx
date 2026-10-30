@@ -59,6 +59,7 @@ export function EntryCard({ entry, highlight = [], onDelete }: Props) {
                 <td className="py-0.5 pr-2">
                   {accountName(l.account)}<Info t={accountTerm(l.account)} label={accountName(l.account)} />
                   {l.memo && <span className="text-fl-cream/40"> — {l.memo}</span>}
+                  {l.party && <span className="text-fl-gold/80"> · {l.party}</span>}
                 </td>
                 <td className="py-0.5 text-right num whitespace-nowrap">{formatNumber(l.debit || l.credit, 2)}</td>
               </tr>

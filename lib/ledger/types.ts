@@ -20,6 +20,10 @@ export interface LedgerLine {
   debit: number;
   credit: number;
   memo?: string | null;
+  /** контрагент по строке (субконто): наименование */
+  party?: string | null;
+  /** ИНН контрагента */
+  partyInn?: string | null;
 }
 
 export interface LedgerEntry {

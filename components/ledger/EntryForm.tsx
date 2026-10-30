@@ -2,18 +2,23 @@
 
 import { useMemo, useState } from "react";
 import { ACCOUNTS } from "@/lib/ledger/accounts";
+import { SETTLE } from "@/lib/counterparties/types";
 import { formatNumber, parseFormattedNumber } from "@/lib/format";
 
-interface Line { account: string; debit: string; credit: string; memo: string }
+interface Line { account: string; debit: string; credit: string; memo: string; party: string }
 
 interface Props {
   mode: "manual" | "opening";
   defaultDate: string;
-  onSubmit: (entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string }> }) => Promise<boolean>;
+  onSubmit: (entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string }> }) => Promise<boolean>;
   onCancel: () => void;
+  /** контрагенты, уже встречавшиеся в журнале — подсказки для поля */
+  parties?: string[];
 }
 
-const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "" });
+const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "", party: "" });
+/** Счета расчётов, по которым нужен контрагент; выручка и закупки — по желанию. */
+const wantsParty = (acc: string) => !!SETTLE[acc] || /^(61|16|17)/.test(acc);
 /** Postable accounts grouped under their group header (1100, 1200 …), in chart order. */
 const GROUPS: Array<{ title: string; accounts: typeof ACCOUNTS }> = (() => {
   const out: Array<{ title: string; accounts: typeof ACCOUNTS }> = [];
@@ -36,7 +41,7 @@ const GROUPS: Array<{ title: string; accounts: typeof ACCOUNTS }> = (() => {
 })();
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 
-export function EntryForm({ mode, defaultDate, onSubmit, onCancel }: Props) {
+export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [] }: Props) {
   const [date, setDate] = useState(defaultDate);
   const [description, setDescription] = useState(mode === "opening" ? "Начальные остатки" : "");
   const [lines, setLines] = useState<Line[]>(mode === "opening" ? [blank(), blank(), blank(), blank()] : [blank(), blank()]);
@@ -65,6 +70,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel }: Props) {
         debit: parseFormattedNumber(l.debit),
         credit: parseFormattedNumber(l.credit),
         memo: l.memo.trim() || undefined,
+        party: l.party.trim() || undefined,
       })),
     });
     setSaving(false);
@@ -136,8 +142,17 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel }: Props) {
             >
               ×
             </button>
+            {(wantsParty(l.account) || l.party) && (
+              <input
+                aria-label={`Контрагент, строка ${i + 1}`} list="fl-parties"
+                placeholder={SETTLE[l.account] ? "Контрагент — ОсОО «…», ИП …, банк" : "Контрагент (необязательно)"}
+                value={l.party} onChange={(e) => set(i, { party: e.target.value })}
+                className={`${field} col-span-2 md:col-span-4`}
+              />
+            )}
           </div>
         ))}
+        <datalist id="fl-parties">{parties.map((p) => <option key={p} value={p} />)}</datalist>
         <button type="button" onClick={() => setLines((ls) => [...ls, blank()])} className="text-sm text-fl-gold underline-offset-4 hover:underline">
           Добавить строку
         </button>

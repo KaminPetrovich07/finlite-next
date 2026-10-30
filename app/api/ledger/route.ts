@@ -42,6 +42,8 @@ const LineSchema = z.object({
   debit: z.number().min(0),
   credit: z.number().min(0),
   memo: z.string().max(200).optional().nullable(),
+  party: z.string().trim().max(200).optional().nullable(),
+  partyInn: z.string().trim().regex(/^\d{0,14}$/, "ИНН — до 14 цифр").optional().nullable(),
 });
 
 const EntrySchema = z.object({

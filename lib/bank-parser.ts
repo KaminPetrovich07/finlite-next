@@ -188,3 +188,26 @@ export function parseStatementFile(filename: string, buffer: ArrayBuffer): Parse
   if (ext === "txt") return parseTxt(new TextDecoder("utf-8").decode(buffer));
   throw new Error(`Неподдерживаемый формат файла: .${ext}`);
 }
+
+// ── Контрагент из строки выписки ──────────────────────────────────────────
+// Выписки банков КР обычно содержат наименование и ИНН плательщика или
+// получателя. Колонка ищется по заголовку; если есть обе — для прихода берём
+// плательщика, для расхода получателя. Колонки банка, счёта и БИК пропускаются.
+const PARTY_ALIASES = ["контрагент", "плательщик", "получатель", "корреспондент", "отправитель", "наименование", "counterparty", "beneficiary", "payer", "кому", "от кого"];
+const SKIP_PARTY = /банк|сч[её]т|бик|инн|код|bank|account|дата|сумма|назнач/;
+
+export function partyFromRaw(raw: unknown, amount: number): { party: string; partyInn: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const cols = Object.keys(raw as Record<string, unknown>);
+  const val = (k: string) => String((raw as Record<string, unknown>)[k] ?? "").trim();
+  const norm = (h: string) => normalizeHeader(h);
+  const names = cols.filter((h) => PARTY_ALIASES.some((a) => norm(h).includes(a)) && !SKIP_PARTY.test(norm(h)) && val(h));
+  const inns = cols.filter((h) => /инн|inn|tin/.test(norm(h)) && /^\d{10,14}$/.test(val(h).replace(/\s/g, "")));
+  const side = amount >= 0 ? /плательщ|отправит|от кого|payer/ : /получат|кому|beneficiar/;
+  const pick = (list: string[]) => list.find((h) => side.test(norm(h))) ?? (list.length === 1 || !list.some((h) => /плательщ|получат/.test(norm(h))) ? list[0] : undefined);
+  const nameCol = pick(names);
+  const innCol = pick(inns);
+  const party = nameCol ? val(nameCol).slice(0, 200) : "";
+  const partyInn = innCol ? val(innCol).replace(/\s/g, "") : "";
+  return party || partyInn ? { party, partyInn } : null;
+}
