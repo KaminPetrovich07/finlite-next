@@ -62,6 +62,7 @@ model Company {
   bankTransactions BankTransaction[]
   journalEntries   JournalEntry[]
   esgReports       EsgReport[]
+  records          CompanyRecord[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -245,4 +246,23 @@ model EsgReport {
   updatedAt  DateTime @updatedAt
 
   @@unique([companyId, periodFrom, periodTo])
+}
+
+// ── Company records: settings and reference data of one company ───────────
+// One flexible table for everything that is a document rather than a
+// posting: accounting policy, counterparties, costing cards, products…
+// kind = "policy" | "counterparty" | "costing" | "product" | …;
+// key  = "main" for singletons, otherwise the record's own id.
+model CompanyRecord {
+  id        String   @id @default(cuid())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+  kind      String
+  key       String
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, kind, key])
+  @@index([companyId, kind])
 }
