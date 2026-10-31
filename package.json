@@ -10,7 +10,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "test": "tsx --test lib/ledger/engine.test.ts lib/reports/reports.test.ts lib/policy/policy.test.ts lib/primary/primary.test.ts lib/costing/costing.test.ts lib/counterparties/counterparties.test.ts",
+    "test": "tsx --test lib/ledger/engine.test.ts lib/reports/reports.test.ts lib/policy/policy.test.ts lib/primary/primary.test.ts lib/costing/costing.test.ts lib/counterparties/counterparties.test.ts lib/import1c/import1c.test.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
