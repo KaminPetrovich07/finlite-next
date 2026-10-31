@@ -229,6 +229,31 @@ export default function CostingPage() {
                   </div>
                 </section>
               )}
+              {result.usage.length > 0 && (
+                <section className={card}>
+                  <h2 className="mb-1 font-display text-[15px] font-semibold text-fl-cream">Расход материалов в натуре<Info t={{ what: "Сколько материала списано в производство по журналу против нормы на фактический выпуск.", how: "Влияние количества = (факт − норма) × нормативная цена; влияние цены = (средняя цена списания − нормативная) × фактическое количество. Сумма двух влияний — отклонение материальных затрат." }} /></h2>
+                  <p className="mb-3 text-xs text-fl-cream/55">По строкам журнала с номенклатурой и количеством. Наименования сопоставляются с нормами изделий.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead><tr className="text-xs text-fl-cream/55"><th className="py-1.5 text-left font-medium">Материал</th><th className="text-right font-medium">Норма на выпуск</th><th className="text-right font-medium">Списано</th><th className="text-right font-medium">Отклонение</th><th className="text-right font-medium">Цена: норма / факт</th><th className="text-right font-medium">Влияние количества</th><th className="text-right font-medium">Влияние цены</th></tr></thead>
+                      <tbody>
+                        {result.usage.map((u) => (
+                          <tr key={u.name} className="border-t border-fl-line">
+                            <td className="py-2 text-fl-cream/90">{u.name} <span className="text-xs text-fl-cream/45">{u.unit}</span></td>
+                            <td className="num text-right text-fl-cream/75">{u.normQty ? formatNumber(u.normQty, 1) : "нет нормы"}</td>
+                            <td className="num text-right text-fl-cream">{formatNumber(u.actualQty, 1)}</td>
+                            <td className={`num text-right ${u.qtyPct !== null && u.qtyPct > 5 ? "text-fl-red" : "text-fl-cream/75"}`}>{u.qtyPct === null ? "—" : `${u.qtyPct > 0 ? "+" : ""}${u.qtyPct.toFixed(1).replace(".", ",")}%`}</td>
+                            <td className="num text-right text-fl-cream/75">{u.normPrice ? formatNumber(u.normPrice) : "—"} / {u.actualPrice === null ? "—" : formatNumber(u.actualPrice)}</td>
+                            <td className={`num text-right ${u.qtyEffect > Math.max(1, u.normAmount * 0.01) ? "text-fl-red" : "text-fl-cream/75"}`}>{u.qtyEffect ? `${u.qtyEffect > 0 ? "+" : ""}${formatNumber(u.qtyEffect)}` : "—"}</td>
+                            <td className={`num text-right ${u.priceEffect > Math.max(1, u.normAmount * 0.01) ? "text-fl-red" : "text-fl-cream/75"}`}>{u.priceEffect ? `${u.priceEffect > 0 ? "+" : ""}${formatNumber(u.priceEffect)}` : "—"}</td>
+                          </tr>
+                        ))}
+                        <tr className="border-t border-fl-line font-semibold"><td className="py-2 text-fl-cream">Итого</td><td /><td /><td /><td /><td className="num text-right text-fl-cream">{formatNumber(result.usage.reduce((a, u) => a + u.qtyEffect, 0))}</td><td className="num text-right text-fl-cream">{formatNumber(result.usage.reduce((a, u) => a + u.priceEffect, 0))}</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
             </div>
 
             <aside className="flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start">

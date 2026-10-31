@@ -63,7 +63,7 @@ export default function LedgerPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function save(entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string }> }) {
+  async function save(entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string }> }) {
     const res = await fetch("/api/ledger", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...entry, companyId, source: form }),
@@ -135,6 +135,7 @@ export default function LedgerPage() {
 
   const opening = entries.filter((e) => e.source === "opening");
   const parties = [...new Set(entries.flatMap((e) => e.lines.map((l) => l.party ?? "")).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru")).slice(0, 300);
+  const items = [...new Set(entries.flatMap((e) => e.lines.map((l) => l.item ?? "")).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru")).slice(0, 500);
   const inPeriod = entries.filter((e) => e.source !== "opening");
 
   return (
@@ -201,7 +202,7 @@ export default function LedgerPage() {
         <div className="mb-6">
           {form === "payroll"
             ? <PayrollForm defaultDate={period.to} onSubmit={savePayroll} onCancel={() => setForm(null)} />
-            : <EntryForm key={form} mode={form} defaultDate={period.from} onSubmit={save} onCancel={() => setForm(null)} parties={parties} />}
+            : <EntryForm key={form} mode={form} defaultDate={period.from} onSubmit={save} onCancel={() => setForm(null)} parties={parties} items={items} />}
         </div>
       )}
 

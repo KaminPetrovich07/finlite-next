@@ -3,22 +3,26 @@
 import { useMemo, useState } from "react";
 import { ACCOUNTS } from "@/lib/ledger/accounts";
 import { SETTLE } from "@/lib/counterparties/types";
+import { wantsItem } from "@/lib/ledger/stock";
 import { formatNumber, parseFormattedNumber } from "@/lib/format";
 
-interface Line { account: string; debit: string; credit: string; memo: string; party: string }
+interface Line { account: string; debit: string; credit: string; memo: string; party: string; item: string; qty: string; unit: string }
 
 interface Props {
   mode: "manual" | "opening";
   defaultDate: string;
-  onSubmit: (entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string }> }) => Promise<boolean>;
+  onSubmit: (entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string }> }) => Promise<boolean>;
   onCancel: () => void;
   /** контрагенты, уже встречавшиеся в журнале — подсказки для поля */
   parties?: string[];
+  /** номенклатура из журнала — подсказки */
+  items?: string[];
 }
 
-const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "", party: "" });
+const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "", party: "", item: "", qty: "", unit: "" });
 /** Счета расчётов, по которым нужен контрагент; выручка и закупки — по желанию. */
 const wantsParty = (acc: string) => !!SETTLE[acc] || /^(61|16|17)/.test(acc);
+const UNITS = ["шт.", "кг", "т", "м", "м²", "м³", "л", "лист", "компл.", "упак.", "час", "усл."];
 /** Postable accounts grouped under their group header (1100, 1200 …), in chart order. */
 const GROUPS: Array<{ title: string; accounts: typeof ACCOUNTS }> = (() => {
   const out: Array<{ title: string; accounts: typeof ACCOUNTS }> = [];
@@ -41,7 +45,7 @@ const GROUPS: Array<{ title: string; accounts: typeof ACCOUNTS }> = (() => {
 })();
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 
-export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [] }: Props) {
+export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [], items = [] }: Props) {
   const [date, setDate] = useState(defaultDate);
   const [description, setDescription] = useState(mode === "opening" ? "Начальные остатки" : "");
   const [lines, setLines] = useState<Line[]>(mode === "opening" ? [blank(), blank(), blank(), blank()] : [blank(), blank()]);
@@ -71,6 +75,9 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [] 
         credit: parseFormattedNumber(l.credit),
         memo: l.memo.trim() || undefined,
         party: l.party.trim() || undefined,
+        item: l.item.trim() || undefined,
+        qty: parseFormattedNumber(l.qty) > 0 ? parseFormattedNumber(l.qty) : undefined,
+        unit: l.unit.trim() || undefined,
       })),
     });
     setSaving(false);
@@ -142,17 +149,30 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [] 
             >
               ×
             </button>
-            {(wantsParty(l.account) || l.party) && (
-              <input
-                aria-label={`Контрагент, строка ${i + 1}`} list="fl-parties"
-                placeholder={SETTLE[l.account] ? "Контрагент — ОсОО «…», ИП …, банк" : "Контрагент (необязательно)"}
-                value={l.party} onChange={(e) => set(i, { party: e.target.value })}
-                className={`${field} col-span-2 md:col-span-4`}
-              />
+            {(wantsParty(l.account) || l.party || wantsItem(l.account) || l.item) && (
+              <div className="col-span-2 grid grid-cols-2 gap-2 md:col-span-4 md:grid-cols-[1fr_1fr_110px_90px]">
+                {(wantsParty(l.account) || l.party) && (
+                  <input
+                    aria-label={`Контрагент, строка ${i + 1}`} list="fl-parties"
+                    placeholder={SETTLE[l.account] ? "Контрагент — ОсОО «…», ИП …, банк" : "Контрагент (необязательно)"}
+                    value={l.party} onChange={(e) => set(i, { party: e.target.value })}
+                    className={`${field} col-span-2 md:col-span-1 ${wantsItem(l.account) || l.item ? "" : "md:col-span-4"}`}
+                  />
+                )}
+                {(wantsItem(l.account) || l.item) && (
+                  <>
+                    <input aria-label={`Номенклатура, строка ${i + 1}`} list="fl-items" placeholder="Номенклатура — ЛДСП 16 мм, товар…" value={l.item} onChange={(e) => set(i, { item: e.target.value })} className={`${field} col-span-2 md:col-span-1`} />
+                    <input aria-label={`Количество, строка ${i + 1}`} inputMode="decimal" placeholder="Кол-во" value={l.qty} onChange={(e) => set(i, { qty: e.target.value })} className={`${field} num text-right`} />
+                    <input aria-label={`Единица, строка ${i + 1}`} list="fl-units" placeholder="Ед." value={l.unit} onChange={(e) => set(i, { unit: e.target.value })} className={field} />
+                  </>
+                )}
+              </div>
             )}
           </div>
         ))}
         <datalist id="fl-parties">{parties.map((p) => <option key={p} value={p} />)}</datalist>
+        <datalist id="fl-items">{items.map((p) => <option key={p} value={p} />)}</datalist>
+        <datalist id="fl-units">{UNITS.map((u) => <option key={u} value={u} />)}</datalist>
         <button type="button" onClick={() => setLines((ls) => [...ls, blank()])} className="text-sm text-fl-gold underline-offset-4 hover:underline">
           Добавить строку
         </button>

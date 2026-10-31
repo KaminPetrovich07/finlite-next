@@ -90,3 +90,19 @@ test("контрагент из выписки: плательщик для пр
   assert.deepEqual(partyFromRaw({ "Контрагент": "ИП Асанов", "Сумма": 5 }, -5), { party: "ИП Асанов", partyInn: "" });
   assert.equal(partyFromRaw({ "Назначение": "комиссия" }, -5), null);
 });
+
+
+test("документы берут номенклатуру, количество и цену из строки журнала; ИНВ-3 по номенклатуре", async () => {
+  const { buildEntryDoc, buildRegister } = await import("./build");
+  const e = { id: "m", date: "2026-07-03", description: "Поступление материалов", source: "manual" as const, lines: [
+    { account: "1620", debit: 128000, credit: 0, item: "ЛДСП 16 мм", qty: 40, unit: "лист" },
+    { account: "3110", debit: 0, credit: 128000, party: "ОсОО «ТехноМебель»" },
+  ] };
+  const ctx = { companyName: "ОсОО «Т»", inn: "", people: { director: "", directorTitle: "Директор", chief: "", cashier: "", storekeeper: "" }, policy: null, entries: [e] };
+  const txt = JSON.stringify(buildEntryDoc("m4", e, 1, ctx));
+  assert.match(txt, /ЛДСП 16 мм/);
+  assert.match(txt, /"лист","40","40","3 200,00"/);
+  assert.match(txt, /ОсОО «ТехноМебель»/);
+  const inv = JSON.stringify(buildRegister("inv3", ctx, { from: "2026-07-01", to: "2026-07-31" }));
+  assert.match(inv, /"ЛДСП 16 мм","1620","лист","40","128 000,00"/);
+});

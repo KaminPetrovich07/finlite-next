@@ -44,6 +44,9 @@ const LineSchema = z.object({
   memo: z.string().max(200).optional().nullable(),
   party: z.string().trim().max(200).optional().nullable(),
   partyInn: z.string().trim().regex(/^\d{0,14}$/, "ИНН — до 14 цифр").optional().nullable(),
+  item: z.string().trim().max(200).optional().nullable(),
+  qty: z.number().min(0).max(1e12).optional().nullable(),
+  unit: z.string().trim().max(20).optional().nullable(),
 });
 
 const EntrySchema = z.object({

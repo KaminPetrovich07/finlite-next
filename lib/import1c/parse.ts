@@ -26,6 +26,9 @@ export interface RawPair {
   amount: number;
   drSub: string[];
   crSub: string[];
+  /** количество по дебету / кредиту (колонки «Количество Дт/Кт», «Кол.») */
+  drQty: number;
+  crQty: number;
 }
 
 export interface OsvRow {
@@ -197,6 +200,9 @@ export function parseRows(rows: Cell[][]): ParseResult {
     crAmount: col(n, /(кредит|кт).*сумма|сумма.*(кредит|кт)/, /вал/),
     drSub: col(n, /(субконто|аналитика).*(дт|дебет)|(дт|дебет).*(субконто|аналитика)/),
     crSub: col(n, /(субконто|аналитика).*(кт|кредит)|(кт|кредит).*(субконто|аналитика)/),
+    drQty: col(n, /(количество|кол-во|кол\.).*(дт|дебет)|(дт|дебет).*(количество|кол-во|кол\.)/),
+    crQty: col(n, /(количество|кол-во|кол\.).*(кт|кредит)|(кт|кредит).*(количество|кол-во|кол\.)/),
+    qty: col(n, /^(количество|кол-во|кол\.)$/),
   };
   if (c.date < 0 || c.dr < 0 || c.cr < 0 || (c.amount < 0 && c.drAmount < 0 && c.crAmount < 0)) {
     warnings.push(`Не распознаны колонки: ${[c.date < 0 && "дата", c.dr < 0 && "счёт дебета", c.cr < 0 && "счёт кредита", c.amount < 0 && c.drAmount < 0 && "сумма"].filter(Boolean).join(", ")}. Подходят «Журнал проводок», «Отчёт по проводкам», «Карточка счёта», «Оборотно-сальдовая ведомость».`);
@@ -221,6 +227,8 @@ export function parseRows(rows: Cell[][]): ParseResult {
       dr, cr, amount: Math.round(Math.abs(amount) * 100) / 100,
       drSub: c.drSub >= 0 ? subs(r[c.drSub]) : [],
       crSub: c.crSub >= 0 ? subs(r[c.crSub]) : [],
+      drQty: Math.abs(num(r[c.drQty >= 0 ? c.drQty : c.qty])) || 0,
+      crQty: Math.abs(num(r[c.crQty >= 0 ? c.crQty : c.qty])) || 0,
     });
   });
   if (skipped) warnings.push(`Пропущено строк без счёта, даты или суммы: ${skipped}.`);

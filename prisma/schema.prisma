@@ -231,6 +231,10 @@ model JournalLine {
   /// контрагент (субконто): наименование и ИНН — для расчётов, актов сверки, первички
   party       String?
   partyInn    String?
+  /// номенклатура: наименование ценностей, количество, единица измерения
+  item        String?
+  qty         Decimal?     @db.Decimal(18, 3)
+  unit        String?
 
   @@index([entryId])
   @@index([accountCode])

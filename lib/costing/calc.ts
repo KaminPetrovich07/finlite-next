@@ -16,6 +16,7 @@
 // ════════════════════════════════════════════════════════════════════════
 
 import type { LedgerEntry } from "@/lib/ledger/types";
+import { itemKey } from "@/lib/ledger/stock";
 import type { CostingMethod, OverheadBase } from "@/lib/policy/types";
 
 export interface MaterialNorm { name: string; unit: string; qty: number; price: number }
@@ -38,6 +39,25 @@ export interface Pools {
   overheadBy: Record<string, number>;
   /** оприходовано готовой продукции в журнале (Дт 1640) — для сверки */
   outputPosted: number;
+  /** списано в производство по номенклатуре (если в журнале есть наименование и количество) */
+  usage?: Record<string, { name: string; unit: string; qty: number; amount: number }>;
+}
+
+/** Расход материала в натуре: факт против нормы на фактический выпуск, отклонение по количеству и по цене. */
+export interface MaterialUse {
+  name: string;
+  unit: string;
+  normQty: number;
+  actualQty: number;
+  normPrice: number;
+  actualPrice: number | null;
+  normAmount: number;
+  actualAmount: number;
+  qtyPct: number | null;
+  /** влияние количества: (Qф − Qн) × Цн */
+  qtyEffect: number;
+  /** влияние цены: (Цф − Цн) × Qф */
+  priceEffect: number;
 }
 
 export interface ProductCost {
@@ -65,6 +85,8 @@ export interface CostingResult {
   products: ProductCost[];
   totals: { materials: number; labor: number; social: number; overhead: number; total: number };
   unallocated: number;
+  /** расход материалов в натуре — пусто, если в журнале не ведётся количество */
+  usage: MaterialUse[];
   advice: Array<{ level: "error" | "warn" | "tip"; title: string; detail: string }>;
 }
 
@@ -85,7 +107,17 @@ export function costPools(entries: LedgerEntry[], from: string, to: string): Poo
     if (e.source === "opening" || e.source === "closing" || e.date < from || e.date > to) continue;
     const prodDebit = e.lines.some((l) => l.debit > 0 && PROD_DR.test(l.account));
     for (const l of e.lines) {
-      if (l.credit > 0 && STOCK.test(l.account) && prodDebit) p.materials += l.credit;
+      if (l.credit > 0 && STOCK.test(l.account) && prodDebit) {
+        p.materials += l.credit;
+        if (l.item) {
+          const k = itemKey(l.item);
+          const u = (p.usage ??= {})[k] ?? { name: l.item.trim(), unit: l.unit ?? "", qty: 0, amount: 0 };
+          u.qty = Math.round((u.qty + Number(l.qty ?? 0)) * 1000) / 1000;
+          u.amount = r2(u.amount + l.credit);
+          if (!u.unit && l.unit) u.unit = l.unit;
+          p.usage![k] = u;
+        }
+      }
       if (l.debit > 0) {
         if (l.account === "7110") p.materials += l.debit;
         else if (l.account === "7120") p.labor += l.debit;
@@ -161,7 +193,54 @@ export function calculate(products: Product[], outputs: Record<string, number>, 
   };
   const poolTotal = r2(pools.materials + pools.labor + pools.social + pools.overhead);
   const unallocated = r2(poolTotal - totals.total);
-  return { pools, base, method, products: out, totals, unallocated, advice: advise(out, pools, totals, unallocated, method) };
+  const usage = materialUsage(items, outputs, pools);
+  const money = (n: number) => Math.round(n).toLocaleString("ru-RU");
+  const extra: CostingResult["advice"] = [];
+  for (const u of usage) {
+    if (u.qtyPct !== null && u.qtyPct > 5 && u.qtyEffect > 0) extra.push({ level: "warn", title: `${u.name}: перерасход ${u.qtyPct.toFixed(1).replace(".", ",")}% в натуре`, detail: `Списано ${qn(u.actualQty)} ${u.unit} при норме ${qn(u.normQty)} ${u.unit} на фактический выпуск. Перерасход по количеству стоит ${money(u.qtyEffect)} сом — ищите причину в раскрое, браке или неточных нормах.` });
+    if (u.actualPrice !== null && u.normPrice > 0 && u.priceEffect > 0 && (u.actualPrice / u.normPrice - 1) * 100 > 5) extra.push({ level: "tip", title: `${u.name}: цена выше нормативной`, detail: `Средняя цена списания ${money(u.actualPrice)} сом за ${u.unit} против ${money(u.normPrice)} в норме: +${money(u.priceEffect)} сом к себестоимости. Обновите норму цены или сравните поставщиков.` });
+  }
+  const rank = { error: 0, warn: 1, tip: 2 } as const;
+  // с данными в натуре видно, какой материал перерасходован; одинаковый % по каждому изделию — следствие распределения, его не повторяем
+  const base0 = advise(out, pools, totals, unallocated, method).filter((a) => !(usage.length && /перерасход материалов|материалов ушло меньше нормы/.test(a.title)));
+  const advice = [...base0.filter((a) => !(extra.length && a.title === "Калькуляция сходится")), ...extra]
+    .map((a, k) => [a, k] as const).sort((x, y) => rank[x[0].level] - rank[y[0].level] || x[1] - y[1]).map(([a]) => a);
+  return { pools, base, method, products: out, totals, unallocated, usage, advice };
+}
+
+const qn = (n: number) => String(Math.round(n * 10) / 10).replace(".", ",");
+
+/** Норма расхода на фактический выпуск против списанного по журналу, по наименованиям материалов. */
+export function materialUsage(items: Product[], outputs: Record<string, number>, pools: Pools): MaterialUse[] {
+  if (!pools.usage || !Object.keys(pools.usage).length) return [];
+  const norm = new Map<string, { name: string; unit: string; qty: number; amount: number }>();
+  for (const p of items) {
+    const q = outputs[p.id] ?? 0;
+    for (const m of p.materials) {
+      const k = itemKey(m.name);
+      const n = norm.get(k) ?? { name: m.name, unit: m.unit, qty: 0, amount: 0 };
+      n.qty += m.qty * q; n.amount += m.qty * q * m.price;
+      norm.set(k, n);
+    }
+  }
+  const keys = new Set([...norm.keys(), ...Object.keys(pools.usage)]);
+  const out: MaterialUse[] = [];
+  for (const k of keys) {
+    const n = norm.get(k), a = pools.usage[k];
+    const normQty = n?.qty ?? 0, actualQty = a?.qty ?? 0;
+    const normPrice = n && n.qty > 0 ? n.amount / n.qty : 0;
+    const actualPrice = a && a.qty > 0 ? a.amount / a.qty : null;
+    out.push({
+      name: n?.name ?? a!.name, unit: n?.unit || a?.unit || "",
+      normQty: Math.round(normQty * 1000) / 1000, actualQty,
+      normPrice: r2(normPrice), actualPrice: actualPrice === null ? null : r2(actualPrice),
+      normAmount: r2(n?.amount ?? 0), actualAmount: r2(a?.amount ?? 0),
+      qtyPct: normQty > 0 && a && a.qty > 0 ? r2((actualQty / normQty - 1) * 100) : null,
+      qtyEffect: normPrice > 0 ? r2((actualQty - normQty) * normPrice) : 0,
+      priceEffect: actualPrice !== null && normPrice > 0 ? r2((actualPrice - normPrice) * actualQty) : 0,
+    });
+  }
+  return out.sort((x, y) => Math.abs(y.qtyEffect) + Math.abs(y.priceEffect) - (Math.abs(x.qtyEffect) + Math.abs(x.priceEffect)));
 }
 
 function advise(out: ProductCost[], pools: Pools, totals: CostingResult["totals"], unallocated: number, method: CostingMethod): CostingResult["advice"] {

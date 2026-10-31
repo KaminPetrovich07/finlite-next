@@ -4,6 +4,8 @@ import { dateShort, sum, type DocBlock, type OfficialDoc } from "@/lib/docs/mode
 import { COSTING_METHOD, OVERHEAD_BASE } from "@/lib/policy/types";
 import { OVERHEAD_LABEL, type CostingResult } from "./calc";
 
+const q = (n: number) => (n ? String(Math.round(n * 10) / 10).replace(".", ",") : "");
+
 export function buildCostingDoc(company: string, from: string, to: string, r: CostingResult, people: { director: string; chief: string }, only?: string): OfficialDoc {
   const b: DocBlock[] = [];
   const period = `с ${dateShort(from)} по ${dateShort(to)}`;
@@ -28,6 +30,13 @@ export function buildCostingDoc(company: string, from: string, to: string, r: Co
       { t: "table", head: ["Изделие", "Выпуск", "Материалы", "Оплата труда", "Взносы СФ", "ОПР", "Всего", "На единицу"], widths: [4, 1.4, 2, 2, 1.6, 1.8, 2, 1.8], align: ["l", "r", "r", "r", "r", "r", "r", "r"], small: true, total: true,
         rows: [...r.products.map((p) => [p.name, `${p.qty} ${p.unit}`, sum(p.materials), sum(p.labor), sum(p.social), sum(p.overhead), sum(p.total), sum(p.unit_.total)]),
           ["Итого", "", sum(r.totals.materials), sum(r.totals.labor), sum(r.totals.social), sum(r.totals.overhead), sum(r.totals.total), ""]] },
+      ...(r.usage.length ? [
+        { t: "h", text: "Расход материалов в натуре: норма на фактический выпуск и факт", level: 2 } as DocBlock,
+        { t: "table", head: ["Материал", "Ед.", "Норма", "Списано", "Откл., %", "Влияние количества, сом", "Влияние цены, сом"], widths: [4, 1, 1.6, 1.6, 1.3, 2.2, 2.2], align: ["l", "c", "r", "r", "r", "r", "r"], small: true, total: true,
+          rows: [...r.usage.map((u) => [u.name, u.unit, q(u.normQty), q(u.actualQty), u.qtyPct === null ? "" : u.qtyPct.toFixed(1).replace(".", ","), sum(u.qtyEffect), sum(u.priceEffect)]),
+            ["Итого", "", "", "", "", sum(r.usage.reduce((a, u) => a + u.qtyEffect, 0)), sum(r.usage.reduce((a, u) => a + u.priceEffect, 0))]] } as DocBlock,
+        { t: "note", text: "Влияние количества = (факт − норма) × нормативная цена; влияние цены = (фактическая цена − нормативная) × фактическое количество." } as DocBlock,
+      ] : []),
       { t: "sign", items: [{ role: "Главный бухгалтер", name: people.chief }, { role: "Руководитель", name: people.director }] },
     );
   }

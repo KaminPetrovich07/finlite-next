@@ -8,7 +8,8 @@
 // ════════════════════════════════════════════════════════════════════════
 
 import { accountName } from "@/lib/ledger/accounts";
-import type { LedgerEntry } from "@/lib/ledger/types";
+import type { LedgerEntry, LedgerLine } from "@/lib/ledger/types";
+import { qtyText, stockByItem, unitPrice } from "@/lib/ledger/stock";
 import type { PolicyInput } from "@/lib/policy/types";
 import { DEP_METHOD } from "@/lib/policy/types";
 import { dateLong, dateShort, sum, sumInWords, type DocBlock } from "@/lib/docs/model";
@@ -49,6 +50,19 @@ export function peopleFromPolicy(p: PolicyInput | null): People {
     chief: p?.chiefAccountant || find(/бухгалтер/i),
     cashier: find(/касс/i),
     storekeeper: find(/склад|кладов/i),
+  };
+}
+
+/** Строка товарного документа: наименование, ед., кол-во, цена — из строки журнала, правки пользователя важнее. */
+function itemRow(l: LedgerLine, o: Overrides, only: boolean): { name: string; unit: string; qty: string; price: string } {
+  const amount = l.debit || l.credit;
+  const qtyOver = only && o.qty ? Number(String(o.qty).replace(",", ".")) : NaN;
+  const q = Number.isFinite(qtyOver) && qtyOver > 0 ? qtyOver : Number(l.qty ?? 0);
+  return {
+    name: (only && o.item) || l.item || l.memo || accountName(l.account),
+    unit: (only && o.unit) || l.unit || "",
+    qty: q > 0 ? qtyText(q) : (only ? o.qty ?? "" : ""),
+    price: q > 0 ? sum(amount / q) : "",
   };
 }
 
@@ -124,7 +138,7 @@ export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: 
         { t: "title", text: `Приходный ордер № ${no}` },
         { t: "table", head: ["Дата составления", "Склад", "Поставщик", "Корр. счёт", "Сопроводительный документ"], rows: [[dateShort(e.date), "", party, corr, o.attachment ?? ""]], widths: [2, 2, 4, 1.5, 3], align: ["c", "c", "l", "c", "l"] },
         { t: "table", head: ["Счёт", "Наименование ценностей", "Ед. изм.", "Кол-во по документу", "Принято", "Цена", "Сумма, сом"], widths: [1, 5, 1, 1.5, 1.5, 1.5, 2], align: ["c", "l", "c", "r", "r", "r", "r"], total: lines.length > 1,
-          rows: [...lines.map((l) => [l.account, o.item || l.memo || accountName(l.account), o.unit ?? "", o.qty ?? "", o.qty ?? "", "", sum(l.debit)]), ...(lines.length > 1 ? [["", "Итого", "", "", "", "", sum(amount)]] : [])] },
+          rows: [...lines.map((l) => { const r = itemRow(l, o, lines.length === 1); return [l.account, r.name, r.unit, r.qty, r.qty, r.price, sum(l.debit)]; }), ...(lines.length > 1 ? [["", "Итого", "", "", "", "", sum(amount)]] : [])] },
         { t: "sign", items: [{ role: "Принял (заведующий складом)", name: ppl.storekeeper }, { role: "Сдал (экспедитор)", name: "" }] },
       ];
     }
@@ -139,7 +153,7 @@ export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: 
         { t: "title", text: title },
         { t: "table", head: ["Дата составления", "Отправитель", "Получатель", "Корр. счёт"], rows: [[dateShort(e.date), "Склад", kind === "m11" ? "Производство (цех)" : party, to]], widths: [2, 3, 4, 1.5], align: ["c", "l", "l", "c"] },
         { t: "table", head: ["Счёт", "Наименование ценностей", "Ед. изм.", "Затребовано", "Отпущено", "Цена", "Сумма, сом"], widths: [1, 5, 1, 1.5, 1.5, 1.5, 2], align: ["c", "l", "c", "r", "r", "r", "r"],
-          rows: lines.map((l) => [l.account, o.item || l.memo || accountName(l.account), o.unit ?? "", o.qty ?? "", o.qty ?? "", "", sum(l.credit)]) },
+          rows: lines.map((l) => { const r = itemRow(l, o, lines.length === 1); return [l.account, r.name, r.unit, r.qty, r.qty, r.price, sum(l.credit)]; }) },
         { t: "fields", items: [["Основание", basis]] },
         { t: "sign", items: [{ role: "Затребовал", name: "" }, { role: "Разрешил", name: ppl.director }, { role: "Отпустил", name: ppl.storekeeper }, { role: "Получил", name: "" }] },
       ];
@@ -205,13 +219,17 @@ export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: 
     case "act":
     case "invoice": {
       const title = kind === "waybill" ? `Накладная на отпуск товаров (продукции) № ${no}` : kind === "act" ? `Акт выполненных работ (оказанных услуг) № ${no}` : `Счёт на оплату № ${no}`;
+      const sold = e.lines.filter((l) => l.credit > 0 && /^61\d\d$/.test(l.account) && (l.item || l.qty));
+      const goods = sold.length
+        ? sold.map((l, i) => { const r = itemRow(l, o, sold.length === 1); return [String(i + 1), r.name, r.unit, r.qty, r.price, sum(l.credit)]; })
+        : [["1", o.item || basis, o.unit ?? "", o.qty ?? "", "", sum(amount)]];
       return [
         orgLine(c),
         { t: "title", text: title },
         { t: "p", text: `от ${dateLong(e.date)}`, align: "c" },
         { t: "fields", items: [[kind === "act" ? "Исполнитель" : "Поставщик", `${c.companyName}${c.inn ? `, ИНН ${c.inn}` : ""}`], [kind === "act" ? "Заказчик" : "Покупатель", party], ["Основание", o.attachment || "договор №____ от «___» ____ 20__ г."]] },
         { t: "table", head: ["№", "Наименование", "Ед. изм.", "Количество", "Цена", "Сумма, сом"], widths: [0.6, 6, 1.2, 1.5, 1.8, 2.2], align: ["c", "l", "c", "r", "r", "r"], total: true,
-          rows: [["1", o.item || basis, o.unit ?? "", o.qty ?? "", "", sum(amount)], ["", "Итого", "", "", "", sum(amount)]] },
+          rows: [...goods, ["", "Итого", "", "", "", sum(amount)]] },
         { t: "p", text: `Всего на сумму: ${sumInWords(amount)}.${c.policy?.vatPayer ? " В том числе НДС — по счёту-фактуре (ЭСФ)." : " Без НДС."}` },
         ...(kind === "invoice"
           ? [{ t: "p", text: "Оплата по счёту в течение 5 банковских дней. Реквизиты для оплаты: ____________________________.", small: true } as DocBlock,
@@ -324,18 +342,21 @@ export function buildRegister(kind: RegisterKind, c: PrimaryCtx, p: Period, serv
     case "inv1": {
       const test = kind === "inv3" ? (a: string) => STOCK_RE.test(a) || a === "1630" || a === "1640" || a === "1650" : (a: string) => FA_RE.test(a);
       const codes = Array.from(new Set(c.entries.flatMap((e) => e.lines.map((l) => l.account)).filter(test))).sort();
-      const rows = codes.map((code, i) => {
-        const b = balanceOn(c.entries, (a) => a === code, p.to, true);
-        return [String(i + 1), accountName(code), code, "", "", sum(b), ""];
-      }).filter((r) => r[5] !== "0,00");
+      // ИНВ-3: по номенклатуре с количеством, если оно ведётся в журнале
+      const rows = kind === "inv3"
+        ? stockByItem(c.entries, p.to, test).map((b, i) => [String(i + 1), b.item || accountName(b.account), b.account, b.unit, qtyText(b.qty), sum(b.amount), "", ""])
+        : codes.map((code, i) => {
+          const b = balanceOn(c.entries, (a) => a === code, p.to, true);
+          return [String(i + 1), accountName(code), code, "", "", sum(b), "", ""];
+        }).filter((r) => r[5] !== "0,00");
       const title = kind === "inv3" ? REGISTER_INFO.inv3.title : REGISTER_INFO.inv1.title;
       return [
         formHead([`Унифицированная форма ${kind === "inv3" ? "ИНВ-3" : "ИНВ-1"}`]),
         orgLine(c),
         { t: "title", text: title },
         { t: "p", text: `по состоянию на ${dateLong(p.to)}`, align: "c" },
-        { t: "table", head: ["№", "Наименование (группа)", "Счёт", "Ед. изм.", "Фактически (кол-во / сумма)", "По учёту, сом", "Отклонение"], widths: [0.6, 5, 1, 1, 2.5, 2, 2], align: ["c", "l", "c", "c", "r", "r", "r"], small: true,
-          rows: rows.length ? rows : [["", "Остатков по учёту нет", "", "", "", "", ""]] },
+        { t: "table", head: ["№", "Наименование", "Счёт", "Ед. изм.", "По учёту: кол-во", "По учёту: сумма, сом", "Фактически: кол-во", "Отклонение"], widths: [0.6, 5, 1, 1, 1.6, 2, 1.8, 1.6], align: ["c", "l", "c", "c", "r", "r", "r", "r"], small: true,
+          rows: rows.length ? rows : [["", "Остатков по учёту нет", "", "", "", "", "", ""]] },
         { t: "note", text: "Комиссия пересчитывает ценности по местам хранения и вписывает фактическое наличие; учётные остатки — из журнала проводок (ПП № 609, пп. 33–34)." },
         { t: "sign", items: [{ role: "Председатель комиссии", name: "" }, { role: "Член комиссии", name: "" }, { role: "Материально ответственное лицо", name: kind === "inv3" ? ppl.storekeeper : "" }] },
       ];

@@ -119,3 +119,16 @@ test("выгрузка в формате 1С читается обратно т�
   const withParty = p.pairs.filter((x) => x.drSub.length || x.crSub.length).length;
   assert.ok(withParty > 5);
 });
+
+test("номенклатура и количество из 1С на счетах запасов", () => {
+  const rows: Cell[][] = [
+    ["Период", "Документ", "Счет Дт", "Субконто Дт", "Количество Дт", "Счет Кт", "Субконто Кт", "Количество Кт", "Сумма"],
+    ["03.07.2026", "Поступление 41", "1620", "ЛДСП 16 мм\nОсновной склад", 40, "3110", "ОсОО «ТехноМебель»\nДоговор П-7", "", 128000],
+    ["28.07.2026", "Требование-накладная 9", "1640", "", "", "1620", "ЛДСП 16 мм", "38,5", 123200],
+  ];
+  const p = parseRows(rows);
+  const b = buildEntries(p, { mapping: { "1620": "1620", "3110": "3110", "1640": "1640" } });
+  assert.deepEqual([b.entries[0].lines[0].item, b.entries[0].lines[0].qty, b.entries[0].lines[1].party], ["ЛДСП 16 мм", 40, "ОсОО «ТехноМебель»"]);
+  assert.deepEqual([b.entries[1].lines[1].item, b.entries[1].lines[1].qty], ["ЛДСП 16 мм", 38.5]);
+  assert.equal(b.entries[1].lines[0].item, undefined);
+});

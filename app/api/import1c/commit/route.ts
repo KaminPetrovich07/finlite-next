@@ -15,6 +15,9 @@ const Line = z.object({
   debit: z.number().min(0), credit: z.number().min(0),
   memo: z.string().max(200).optional().nullable(),
   party: z.string().max(200).optional().nullable(),
+  item: z.string().max(200).optional().nullable(),
+  qty: z.number().min(0).max(1e12).optional().nullable(),
+  unit: z.string().max(20).optional().nullable(),
 });
 const Entry = z.object({
   date: z.string().regex(ISO),
@@ -60,6 +63,7 @@ export const POST = route(async (req: NextRequest) => {
       data: rows.flatMap(({ id, e }) => e.lines.map((l) => ({
         entryId: id, accountCode: l.account, debit: Math.round(l.debit * 100) / 100, credit: Math.round(l.credit * 100) / 100,
         memo: l.memo ?? null, party: l.party?.trim() || null,
+        item: l.item?.trim() || null, qty: l.qty && l.qty > 0 ? Math.round(l.qty * 1000) / 1000 : null, unit: l.unit?.trim() || null,
       }))),
     }),
   ]);

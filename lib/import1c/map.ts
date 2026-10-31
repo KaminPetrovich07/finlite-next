@@ -6,6 +6,7 @@
 import { ACCOUNTS, getAccount } from "@/lib/ledger/accounts";
 import type { EntrySource, LedgerEntry, LedgerLine } from "@/lib/ledger/types";
 import { SETTLE } from "@/lib/counterparties/types";
+import { ITEM_ACCOUNT } from "@/lib/ledger/stock";
 import type { OsvRow, ParseResult, RawPair } from "./parse";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -133,8 +134,13 @@ export function buildEntries(p: ParseResult, o: BuildOptions): BuildResult {
     for (const x of g) {
       const dr = check(x.dr), cr = check(x.cr);
       const dp = wantsParty(dr) ? partyOf(x.drSub) : "", cp = wantsParty(cr) ? partyOf(x.crSub) : "";
-      lines.push({ account: dr, debit: x.amount, credit: 0, ...(dp ? { party: dp } : {}) });
-      lines.push({ account: cr, debit: 0, credit: x.amount, ...(cp ? { party: cp } : {}) });
+      const item = (acc: string, sub: string[], qty: number) => {
+        if (!ITEM_ACCOUNT.test(acc)) return {};
+        const name = partyOf(sub);
+        return { ...(name ? { item: name } : {}), ...(qty > 0 ? { qty: Math.round(qty * 1000) / 1000 } : {}) };
+      };
+      lines.push({ account: dr, debit: x.amount, credit: 0, ...(dp ? { party: dp } : {}), ...item(dr, x.drSub, x.drQty) });
+      lines.push({ account: cr, debit: 0, credit: x.amount, ...(cp ? { party: cp } : {}), ...item(cr, x.crSub, x.crQty) });
     }
     const key = `${g[0].date}|${g[0].doc}|${g.map((x) => `${x.dr}>${x.cr}:${x.amount.toFixed(2)}`).sort().join(",")}`;
     const nth = (seen.get(key) ?? 0) + 1;

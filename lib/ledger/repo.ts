@@ -39,6 +39,9 @@ export function toLedgerEntry(row: EntryRow): LedgerEntry {
       memo: l.memo,
       ...(l.party ? { party: l.party } : {}),
       ...(l.partyInn ? { partyInn: l.partyInn } : {}),
+      ...(l.item ? { item: l.item } : {}),
+      ...(l.qty !== null && l.qty !== undefined ? { qty: Number(l.qty) } : {}),
+      ...(l.unit ? { unit: l.unit } : {}),
     })),
   };
 }
@@ -80,6 +83,9 @@ export async function createEntry(db: Db, e: NewEntry) {
           memo: l.memo ?? null,
           party: l.party?.trim() || null,
           partyInn: l.partyInn?.replace(/\D/g, "") || null,
+          item: l.item?.trim() || null,
+          qty: typeof l.qty === "number" && Number.isFinite(l.qty) && l.qty > 0 ? Math.round(l.qty * 1000) / 1000 : null,
+          unit: l.unit?.trim() || null,
         })),
       },
     },

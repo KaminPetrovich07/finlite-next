@@ -98,6 +98,31 @@ export const DEMO_PARTIES = {
   kedr: ["ОсОО «Кедр Импорт»", "02203201910078"],
   bakai: ["Бакай Банк", ""],
 } as const;
+/** Материалы демо-мебельщика: единица, цена и доля в месячной норме расхода. */
+const MATERIALS: Array<{ name: string; unit: string; price: number; weight: number }> = [
+  { name: "ЛДСП 16 мм", unit: "лист", price: 3_200, weight: 633_600 },
+  { name: "Фасады МДФ", unit: "м²", price: 1_800, weight: 129_600 },
+  { name: "Фурнитура кухонная", unit: "компл.", price: 3_600, weight: 64_800 },
+  { name: "Зеркало", unit: "шт.", price: 1_600, weight: 35_200 },
+  { name: "Система купе", unit: "компл.", price: 800, weight: 17_600 },
+  { name: "Кромка ПВХ", unit: "м", price: 30, weight: 14_400 },
+  { name: "Фурнитура", unit: "компл.", price: 220, weight: 8_800 },
+];
+/**
+ * Splits an amount between the materials; `boost` raises the share of ЛДСП
+ * (перерасход на раскрое), `ldspPrice` — its price that month.
+ */
+function materialLines(side: "dr" | "cr", total: number, boost = 1, ldspPrice = 3_200): LedgerLine[] {
+  const w = MATERIALS.map((m, i) => m.weight * (i === 0 ? boost : 1));
+  const sw = w.reduce((a, b) => a + b, 0);
+  const amounts = w.map((x) => round2((total * x) / sw));
+  amounts[0] = round2(amounts[0] + total - amounts.reduce((a, b) => a + b, 0));
+  return MATERIALS.map((m, i) => {
+    const price = i === 0 ? ldspPrice : m.price;
+    const l = side === "dr" ? dr("1620", amounts[i]) : cr("1620", amounts[i]);
+    return { ...l, item: m.name, unit: m.unit, qty: Math.round((amounts[i] / price) * 10) / 10 };
+  });
+}
 const P = (l: LedgerLine, k: keyof typeof DEMO_PARTIES) => pt(l, DEMO_PARTIES[k][0], DEMO_PARTIES[k][1] || undefined);
 
 let seq = 0;
@@ -123,18 +148,21 @@ interface MonthPlan {
   marketing: number;
   transport: number;
   payer: keyof typeof DEMO_PARTIES;
+  /** перерасход ЛДСП на раскрое и цена листа в месяце */
+  ldspWaste: number;
+  ldspPrice: number;
 }
 
 const MONTHS: MonthPlan[] = [
   { m: "07", name: "июль", cashSales: 380_000, bankSales: 1_120_000, creditSales: 700_000, collected: 900_000,
-    materials: 820_000, consumed: 860_000, cogs: 1_180_000, prodWages: 310_000, adminWages: 140_000,
-    kwh: 13_600, energy: 41_000, marketing: 45_000, transport: 38_000, payer: "alaToo" },
+    materials: 820_000, consumed: 880_000, cogs: 1_180_000, prodWages: 310_000, adminWages: 140_000,
+    kwh: 13_600, energy: 41_000, marketing: 45_000, transport: 38_000, payer: "alaToo", ldspWaste: 1.05, ldspPrice: 3_200 },
   { m: "08", name: "август", cashSales: 420_000, bankSales: 1_310_000, creditSales: 560_000, collected: 650_000,
-    materials: 960_000, consumed: 930_000, cogs: 1_290_000, prodWages: 320_000, adminWages: 140_000,
-    kwh: 14_100, energy: 42_300, marketing: 60_000, transport: 41_000, payer: "bos" },
+    materials: 960_000, consumed: 960_000, cogs: 1_290_000, prodWages: 320_000, adminWages: 140_000,
+    kwh: 14_100, energy: 42_300, marketing: 60_000, transport: 41_000, payer: "bos", ldspWaste: 1.08, ldspPrice: 3_200 },
   { m: "09", name: "сентябрь", cashSales: 360_000, bankSales: 1_480_000, creditSales: 820_000, collected: 760_000,
-    materials: 1_010_000, consumed: 990_000, cogs: 1_420_000, prodWages: 330_000, adminWages: 145_000,
-    kwh: 14_100, energy: 42_300, marketing: 52_000, transport: 47_000, payer: "dordoi" },
+    materials: 1_010_000, consumed: 1_030_000, cogs: 1_420_000, prodWages: 330_000, adminWages: 145_000,
+    kwh: 14_100, energy: 42_300, marketing: 52_000, transport: 47_000, payer: "dordoi", ldspWaste: 1.12, ldspPrice: 3_400 },
 ];
 
 function payroll(date: string, label: string, gross: number, expense: string, social: string): LedgerEntry[] {
@@ -161,7 +189,7 @@ export function demoEntries(): LedgerEntry[] {
   const openingLines: LedgerLine[] = [
     dr("1110", 380_000), dr("1210", 6_500_000),
     P(dr("1410", 1_400_000), "alaToo"), P(dr("1410", 1_100_000), "dordoi"), P(dr("1410", 700_000), "bos"),
-    dr("1620", 2_800_000), dr("1640", 4_000_000),
+    ...materialLines("dr", 2_800_000), dr("1640", 4_000_000),
     dr("2130", 9_000_000), cr("2193", 1_350_000),
     dr("2140", 14_000_000), cr("2194", 1_600_000),
     dr("2960", 1_200_000), cr("2996", 240_000),
@@ -191,7 +219,7 @@ export function demoEntries(): LedgerEntry[] {
   for (const p of MONTHS) {
     const d = (day: number) => `2026-${p.m}-${String(day).padStart(2, "0")}`;
     entries.push(
-      entry(d(3), `Закупка ЛДСП и фурнитуры у ОсОО «ТехноМебель», ${p.name}`, [P(dr("1620", p.materials), "techno"), cr("1210", p.materials)]),
+      entry(d(3), `Закупка ЛДСП и фурнитуры у ОсОО «ТехноМебель», ${p.name}`, [...materialLines("dr", p.materials, 1, p.ldspPrice).map((l) => P(l, "techno")), cr("1210", p.materials)]),
       entry(d(8), `Розничные продажи в салоне за наличные, ${p.name}`, [dr("1110", p.cashSales), cr("6110", p.cashSales)]),
       entry(d(9), "Инкассация: сдача наличной выручки в банк", [dr("1210", round2(p.cashSales * 0.8)), cr("1110", round2(p.cashSales * 0.8))]),
       entry(d(14), `Безналичная оплата заказов, ${p.name}`, [dr("1210", p.bankSales), cr("6110", p.bankSales)]),
@@ -203,7 +231,7 @@ export function demoEntries(): LedgerEntry[] {
       entry(d(26), "Реклама в Instagram и на 2ГИС", [dr("7510", p.marketing), cr("1210", p.marketing)]),
       entry(d(27), "Доставка мебели покупателям", [dr("7540", p.transport), cr("1210", p.transport)]),
       entry(d(28), "Комиссия банка за обслуживание счёта", [dr("8040", 4_500), cr("1210", 4_500)]),
-      entry(d(28), "Списание материалов в производство, выпуск готовой продукции", [dr("1640", p.consumed), cr("1620", p.consumed)]),
+      entry(d(28), "Списание материалов в производство, выпуск готовой продукции", [dr("1640", p.consumed), ...materialLines("cr", p.consumed, p.ldspWaste, p.ldspPrice)]),
       entry(d(28), "Себестоимость реализованной мебели", [dr("7000", p.cogs), cr("1640", p.cogs)]),
       entry(d(30), "Амортизация оборудования и цеха", [dr("7150", 98_000), cr("2194", 68_000), cr("2193", 30_000)]),
       entry(d(30), "Амортизация программного обеспечения", [dr("8480", 10_000), cr("2996", 10_000)]),

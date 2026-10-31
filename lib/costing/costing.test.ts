@@ -72,3 +72,17 @@ test("normalizeProducts отбрасывает мусор", () => {
   assert.equal(p[0].price, 0);
   assert.deepEqual(p[0].materials, [{ name: "ЛДСП", unit: "", qty: 2, price: 3 }]);
 });
+
+test("расход в натуре: норма на выпуск, факт по журналу, влияние количества и цены", () => {
+  const products: Product[] = [{ id: "a", name: "A", unit: "шт.", price: 1000, laborPerUnit: 0, machineHours: 0, materials: [{ name: "ЛДСП 16 мм", unit: "лист", qty: 2, price: 100 }] }];
+  const pools = costPools([
+    { id: "w", date: "2026-03-10", description: "Списание", source: "manual", lines: [{ account: "1630", debit: 2420, credit: 0 }, { account: "1620", debit: 0, credit: 2420, item: "ЛДСП  16 мм", qty: 22, unit: "лист" }] },
+  ], "2026-03-01", "2026-03-31");
+  const r = calculate(products, { a: 10 }, pools, "output", "actual");
+  const u = r.usage[0];
+  assert.deepEqual([u.normQty, u.actualQty, u.actualPrice], [20, 22, 110]);
+  assert.equal(u.qtyEffect, 200);    // (22 − 20) × 100
+  assert.equal(u.priceEffect, 220);  // (110 − 100) × 22
+  assert.ok(r.advice.some((a) => /ЛДСП 16 мм: перерасход 10,0% в натуре/.test(a.title)));
+  assert.ok(!r.advice.some((a) => /A: перерасход материалов/.test(a.title)));
+});
