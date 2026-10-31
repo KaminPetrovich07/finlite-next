@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/auth/server";
 
-export type RecordKind = "policy" | "counterparty" | "costing" | "product" | "import1c";
+export type RecordKind = "policy" | "counterparty" | "costing" | "product" | "import1c" | "taxreports";
 
 /** The table is new: tell the user how to create it instead of a bare 500. */
 function rethrow(e: unknown): never {

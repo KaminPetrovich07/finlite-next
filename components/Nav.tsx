@@ -31,6 +31,7 @@ const GROUPS: Array<{ title: string; links: NavLink[] }> = [
     title: "Отчёты",
     links: [
       { href: "/reports", label: "Финансовая отчётность", desc: "Баланс, ОПиУ, ОДДС, капитал, ОСВ, налоги" },
+      { href: "/taxreports", label: "Налоговые отчёты ГНС", desc: "Единый налог, STI-161, налог с продаж, НДС, ЕНД — суммы и сроки" },
       { href: "/packages", label: "Пакеты и выгрузка", desc: "PDF, Word, Excel: полный, руководителю, аудитору" },
       { href: "/esg", label: "ESG-отчёт", desc: "Устойчивое развитие по GRI и IFRS S2" },
     ],
