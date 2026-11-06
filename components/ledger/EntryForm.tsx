@@ -5,6 +5,7 @@ import { ACCOUNTS } from "@/lib/ledger/accounts";
 import { SETTLE } from "@/lib/counterparties/types";
 import { wantsItem } from "@/lib/ledger/stock";
 import { formatNumber, parseFormattedNumber } from "@/lib/format";
+import { OkeiDatalist, UnitInput } from "@/components/okei/UnitInput";
 
 interface Line { account: string; debit: string; credit: string; memo: string; party: string; item: string; qty: string; unit: string }
 
@@ -22,7 +23,6 @@ interface Props {
 const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "", party: "", item: "", qty: "", unit: "" });
 /** Счета расчётов, по которым нужен контрагент; выручка и закупки — по желанию. */
 const wantsParty = (acc: string) => !!SETTLE[acc] || /^(61|16|17)/.test(acc);
-const UNITS = ["шт.", "кг", "т", "м", "м²", "м³", "л", "лист", "компл.", "упак.", "час", "усл."];
 /** Postable accounts grouped under their group header (1100, 1200 …), in chart order. */
 const GROUPS: Array<{ title: string; accounts: typeof ACCOUNTS }> = (() => {
   const out: Array<{ title: string; accounts: typeof ACCOUNTS }> = [];
@@ -150,7 +150,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
               ×
             </button>
             {(wantsParty(l.account) || l.party || wantsItem(l.account) || l.item) && (
-              <div className="col-span-2 grid grid-cols-2 gap-2 md:col-span-4 md:grid-cols-[1fr_1fr_110px_90px]">
+              <div className="col-span-2 grid grid-cols-2 gap-2 md:col-span-4 md:grid-cols-[1fr_1fr_110px_130px]">
                 {(wantsParty(l.account) || l.party) && (
                   <input
                     aria-label={`Контрагент, строка ${i + 1}`} list="fl-parties"
@@ -163,7 +163,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
                   <>
                     <input aria-label={`Номенклатура, строка ${i + 1}`} list="fl-items" placeholder="Номенклатура — ЛДСП 16 мм, товар…" value={l.item} onChange={(e) => set(i, { item: e.target.value })} className={`${field} col-span-2 md:col-span-1`} />
                     <input aria-label={`Количество, строка ${i + 1}`} inputMode="decimal" placeholder="Кол-во" value={l.qty} onChange={(e) => set(i, { qty: e.target.value })} className={`${field} num text-right`} />
-                    <input aria-label={`Единица, строка ${i + 1}`} list="fl-units" placeholder="Ед." value={l.unit} onChange={(e) => set(i, { unit: e.target.value })} className={field} />
+                    <UnitInput aria-label={`Единица, строка ${i + 1}`} value={l.unit} onChange={(v) => set(i, { unit: v })} className={field} />
                   </>
                 )}
               </div>
@@ -172,7 +172,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
         ))}
         <datalist id="fl-parties">{parties.map((p) => <option key={p} value={p} />)}</datalist>
         <datalist id="fl-items">{items.map((p) => <option key={p} value={p} />)}</datalist>
-        <datalist id="fl-units">{UNITS.map((u) => <option key={u} value={u} />)}</datalist>
+        <OkeiDatalist />
         <button type="button" onClick={() => setLines((ls) => [...ls, blank()])} className="text-sm text-fl-gold underline-offset-4 hover:underline">
           Добавить строку
         </button>

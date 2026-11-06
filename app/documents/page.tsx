@@ -11,6 +11,10 @@ import { monthPeriod } from "@/lib/ledger/period";
 import { formatNumber } from "@/lib/format";
 import type { DocKind } from "@/lib/primary/detect";
 import type { Overrides } from "@/lib/primary/build";
+import { OKEI_LIST_ID, OkeiDatalist } from "@/components/okei/UnitInput";
+import { findUnit, normalizeUnit, unitName } from "@/lib/okei";
+
+const unitHint = (v?: string) => { const u = findUnit(v); return u ? `Код по ОКЕИ ${u.code} · ${unitName(u)}` : v ? "Нет в классификаторе ОКЕИ" : ""; };
 
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 const card = "rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5";
@@ -198,7 +202,8 @@ export default function DocumentsPage() {
             {(FIELDS[open.doc.kind] ?? []).map(([k, label]) => (
               <label key={k} className="block">
                 <span className="mb-1 block text-xs text-fl-cream/60">{label}</span>
-                <input className={field} value={ov[k] ?? ""} placeholder={k === "party" ? open.row.counterparty || "" : k === "basis" ? open.row.description : ""} onChange={(e) => setOv((o) => ({ ...o, [k]: e.target.value }))} />
+                <input className={field} value={ov[k] ?? ""} list={k === "unit" ? OKEI_LIST_ID : undefined} title={k === "unit" ? unitHint(ov[k]) : undefined} placeholder={k === "party" ? open.row.counterparty || "" : k === "basis" ? open.row.description : ""} onChange={(e) => setOv((o) => ({ ...o, [k]: e.target.value }))} onBlur={k === "unit" ? () => setOv((o) => (o.unit ? { ...o, unit: normalizeUnit(o.unit) } : o)) : undefined} />
+                {k === "unit" && ov.unit && <span className="mt-1 block text-[11px] text-fl-cream/45">{unitHint(ov.unit)}</span>}
               </label>
             ))}
             <div className="mt-2 grid grid-cols-2 gap-2">
@@ -208,6 +213,7 @@ export default function DocumentsPage() {
           </div>
         )}
       </Drawer>
+      <OkeiDatalist />
     </main>
   );
 }

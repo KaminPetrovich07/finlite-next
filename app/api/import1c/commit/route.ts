@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { HttpError, logActivity, requireCompany, route } from "@/lib/auth/server";
 import { validateEntry } from "@/lib/ledger/engine";
 import { fromIsoDate } from "@/lib/ledger/repo";
+import { normalizeUnit } from "@/lib/okei";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -63,7 +64,7 @@ export const POST = route(async (req: NextRequest) => {
       data: rows.flatMap(({ id, e }) => e.lines.map((l) => ({
         entryId: id, accountCode: l.account, debit: Math.round(l.debit * 100) / 100, credit: Math.round(l.credit * 100) / 100,
         memo: l.memo ?? null, party: l.party?.trim() || null,
-        item: l.item?.trim() || null, qty: l.qty && l.qty > 0 ? Math.round(l.qty * 1000) / 1000 : null, unit: l.unit?.trim() || null,
+        item: l.item?.trim() || null, qty: l.qty && l.qty > 0 ? Math.round(l.qty * 1000) / 1000 : null, unit: normalizeUnit(l.unit) || null,
       }))),
     }),
   ]);

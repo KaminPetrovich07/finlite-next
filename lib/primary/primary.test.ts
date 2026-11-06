@@ -101,8 +101,8 @@ test("документы берут номенклатуру, количеств
   const ctx = { companyName: "ОсОО «Т»", inn: "", people: { director: "", directorTitle: "Директор", chief: "", cashier: "", storekeeper: "" }, policy: null, entries: [e] };
   const txt = JSON.stringify(buildEntryDoc("m4", e, 1, ctx));
   assert.match(txt, /ЛДСП 16 мм/);
-  assert.match(txt, /"лист","40","40","3 200,00"/);
+  assert.match(txt, /"лист \(625\)","40","40","3 200,00"/);
   assert.match(txt, /ОсОО «ТехноМебель»/);
   const inv = JSON.stringify(buildRegister("inv3", ctx, { from: "2026-07-01", to: "2026-07-31" }));
-  assert.match(inv, /"ЛДСП 16 мм","1620","лист","40","128 000,00"/);
+  assert.match(inv, /"ЛДСП 16 мм","1620","лист \(625\)","40","128 000,00"/);
 });

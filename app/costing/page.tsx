@@ -12,6 +12,7 @@ import { monthPeriod } from "@/lib/ledger/period";
 import { formatNumber } from "@/lib/format";
 import { normMaterials, OVERHEAD_LABEL, type CostingResult, type Product } from "@/lib/costing/calc";
 import { COSTING_METHOD, OVERHEAD_BASE } from "@/lib/policy/types";
+import { OkeiDatalist, UnitInput } from "@/components/okei/UnitInput";
 
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-1.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 const card = "rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5";
@@ -160,7 +161,7 @@ export default function CostingPage() {
                         {open && (
                           <div className="mt-3 border-t border-fl-line pt-3">
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                              <label className="block"><span className="mb-1 block text-xs text-fl-cream/55">Ед. изм.</span><input className={field} value={p.unit} onChange={(e) => updP(p.id, { unit: e.target.value })} /></label>
+                              <label className="block"><span className="mb-1 block text-xs text-fl-cream/55">Ед. изм.</span><UnitInput aria-label="Единица измерения изделия" className={field} value={p.unit} onChange={(v) => updP(p.id, { unit: v })} /></label>
                               <label className="block"><span className="mb-1 block text-xs text-fl-cream/55">Зарплата на ед., сом</span><input type="number" min={0} className={`${field} num`} value={p.laborPerUnit} onChange={(e) => updP(p.id, { laborPerUnit: Math.max(0, Number(e.target.value) || 0) })} /></label>
                               <label className="block"><span className="mb-1 block text-xs text-fl-cream/55">Машино-часы на ед.</span><input type="number" min={0} step="0.1" className={`${field} num`} value={p.machineHours} onChange={(e) => updP(p.id, { machineHours: Math.max(0, Number(e.target.value) || 0) })} /></label>
                               <div className="flex items-end"><button type="button" onClick={() => updProducts(products.filter((x) => x.id !== p.id))} className="pb-2 text-xs text-fl-red hover:underline">Удалить изделие</button></div>
@@ -168,9 +169,9 @@ export default function CostingPage() {
                             <p className="mb-1 mt-3 text-xs text-fl-cream/55">Нормы расхода материалов на единицу</p>
                             <div className="flex flex-col gap-1.5">
                               {p.materials.map((m, i) => (
-                                <div key={i} className="grid grid-cols-[1fr_70px_80px_90px_auto] gap-1.5">
+                                <div key={i} className="grid grid-cols-[1fr_110px_80px_90px_auto] gap-1.5">
                                   <input className={field} placeholder="Материал" value={m.name} onChange={(e) => updP(p.id, { materials: p.materials.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                                  <input className={field} placeholder="ед." value={m.unit} onChange={(e) => updP(p.id, { materials: p.materials.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)) })} />
+                                  <UnitInput aria-label="Единица измерения материала" className={field} placeholder="ед." value={m.unit} onChange={(v) => updP(p.id, { materials: p.materials.map((x, j) => (j === i ? { ...x, unit: v } : x)) })} />
                                   <input type="number" min={0} step="0.01" className={`${field} num`} placeholder="кол-во" value={m.qty} onChange={(e) => updP(p.id, { materials: p.materials.map((x, j) => (j === i ? { ...x, qty: Math.max(0, Number(e.target.value) || 0) } : x)) })} />
                                   <input type="number" min={0} className={`${field} num`} placeholder="цена" value={m.price} onChange={(e) => updP(p.id, { materials: p.materials.map((x, j) => (j === i ? { ...x, price: Math.max(0, Number(e.target.value) || 0) } : x)) })} />
                                   <button type="button" aria-label="Убрать материал" onClick={() => updP(p.id, { materials: p.materials.filter((_, j) => j !== i) })} className="px-1 text-fl-cream/40 hover:text-fl-red">×</button>
@@ -281,6 +282,7 @@ export default function CostingPage() {
           </div>
         </>
       )}
+      <OkeiDatalist />
     </main>
   );
 }

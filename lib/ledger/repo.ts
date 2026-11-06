@@ -10,6 +10,7 @@ import { partyFromRaw } from "@/lib/bank-parser";
 import { bankTxToLines } from "./posting";
 import { isRegimeKey } from "./taxes";
 import type { EntrySource, LedgerEntry, LedgerLine } from "./types";
+import { normalizeUnit } from "@/lib/okei";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -85,7 +86,7 @@ export async function createEntry(db: Db, e: NewEntry) {
           partyInn: l.partyInn?.replace(/\D/g, "") || null,
           item: l.item?.trim() || null,
           qty: typeof l.qty === "number" && Number.isFinite(l.qty) && l.qty > 0 ? Math.round(l.qty * 1000) / 1000 : null,
-          unit: l.unit?.trim() || null,
+          unit: normalizeUnit(l.unit) || null,
         })),
       },
     },
