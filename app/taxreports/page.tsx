@@ -8,6 +8,7 @@ import { downloadPost } from "@/components/download";
 import { DEMO_PERIOD } from "@/lib/ledger/demo";
 import { monthPeriod } from "@/lib/ledger/period";
 import { formatNumber } from "@/lib/format";
+import { useAccountView } from "@/components/AccountView";
 import { SIZE_LABEL, filedKey, type RLine, type Size, type TaxReportsResult } from "@/lib/taxreports/build";
 
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
@@ -24,6 +25,7 @@ export default function TaxReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const { show, ToastContainer } = useToast();
+  const [accView] = useAccountView();
 
   const setPeriod = useCallback((p: { from: string; to: string }) => {
     setPeriodState((cur) => (cur && cur.from === p.from && cur.to === p.to ? cur : p));
@@ -170,7 +172,7 @@ export default function TaxReportsPage() {
                   <tbody>
                     {data.budget.map((b) => (
                       <tr key={b.account} className="border-t border-fl-line/60">
-                        <td className="py-1.5 pr-1 text-fl-cream/80">{b.name}<span className="block text-[10px] text-fl-cream/40">сч. {b.account}</span></td>
+                        <td className="py-1.5 pr-1 text-fl-cream/80">{b.name}{accView === "codes" && <span className="block text-[10px] text-fl-cream/40">сч. {b.account}</span>}</td>
                         <td className="num text-right text-fl-cream/80">{formatNumber(b.accrued)}</td>
                         <td className="num text-right text-fl-cream/80">{formatNumber(b.paid)}</td>
                         <td className={`num text-right font-semibold ${b.closing > 0.5 ? "text-fl-amber" : "text-fl-cream"}`}>{formatNumber(b.closing)}</td>

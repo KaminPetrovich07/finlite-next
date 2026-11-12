@@ -7,7 +7,7 @@ import { DEMO_PERIOD } from "@/lib/ledger/demo";
 import { monthPeriod, periodLabel } from "@/lib/ledger/period";
 import { PACKAGE_INFO, type FormatKey, type PackageKey } from "@/lib/reports/model";
 
-const ORDER: PackageKey[] = ["full", "executive", "audit", "management", "esg"];
+const ORDER: PackageKey[] = ["full", "ifrs", "executive", "audit", "management", "esg"];
 const FORMATS: Array<{ key: FormatKey; label: string; hint: string }> = [
   { key: "pdf", label: "PDF", hint: "для печати и отправки" },
   { key: "docx", label: "Word", hint: "можно дописать и поправить" },
@@ -157,6 +157,7 @@ function PackageGlyph({ k }: { k: PackageKey }) {
   const ink = "rgb(var(--c-ink) / 0.7)", gold = "rgb(var(--c-gold-fill))";
   switch (k) {
     case "full": return <svg {...common}>{bg}<rect x="11" y="9" width="18" height="22" rx="2" fill="none" stroke={ink} strokeWidth="2" /><path d="M15 15h10M15 19h10M15 23h6" stroke={ink} strokeWidth="2" strokeLinecap="round" /><path d="M15 27h10" stroke={gold} strokeWidth="2.5" strokeLinecap="round" /></svg>;
+    case "ifrs": return <svg {...common}>{bg}<rect x="10" y="10" width="20" height="20" rx="3" fill="none" stroke={ink} strokeWidth="2" /><path d="M14 16h12M14 20h12M14 24h7" stroke={ink} strokeWidth="2" strokeLinecap="round" /><circle cx="27" cy="27" r="4" fill={gold} /></svg>;
     case "executive": return <svg {...common}>{bg}<path d="M11 27l6-6 4 4 8-9" fill="none" stroke={gold} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /><path d="M11 31h18" stroke={ink} strokeWidth="2" strokeLinecap="round" /></svg>;
     case "audit": return <svg {...common}>{bg}<circle cx="18" cy="18" r="7" fill="none" stroke={ink} strokeWidth="2" /><path d="M23 23l6 6" stroke={ink} strokeWidth="2.5" strokeLinecap="round" /><path d="M15 18l2 2 4-4" fill="none" stroke={gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
     case "management": return <svg {...common}>{bg}<rect x="11" y="20" width="4" height="10" rx="1" fill={ink} /><rect x="18" y="14" width="4" height="16" rx="1" fill={ink} /><rect x="25" y="10" width="4" height="20" rx="1" fill={gold} /></svg>;

@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { DEMO_PERIOD } from "@/lib/ledger/demo";
 import { monthPeriod } from "@/lib/ledger/period";
 import { formatNumber } from "@/lib/format";
+import { useAccountLabel } from "@/components/AccountView";
 import { GROUPS, type Action, type CloseResult, type Step } from "@/lib/close/checklist";
 
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
@@ -21,6 +22,7 @@ export default function ClosePage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [onlyIssues, setOnlyIssues] = useState(false);
+  const label = useAccountLabel();
   const { show, ToastContainer } = useToast();
 
   const setPeriod = useCallback((p: { from: string; to: string }) => {
@@ -128,7 +130,7 @@ export default function ClosePage() {
                           <p className="mt-0.5 text-xs leading-relaxed text-fl-cream/65">{s.detail}</p>
                           {s.action?.kind === "entry" && (
                             <p className="mt-1.5 inline-flex flex-wrap gap-x-3 rounded-md bg-fl-gold/10 px-2 py-1 text-[11px] text-fl-cream/80">
-                              {s.action.entry.lines.map((l, i) => <span key={i} className="num">{l.debit ? "Дт" : "Кт"} {l.account} {formatNumber(l.debit || l.credit, 2)}</span>)}
+                              {s.action.entry.lines.map((l, i) => <span key={i} className="num">{l.debit ? "Дт" : "Кт"} {label(l.account)} {formatNumber(l.debit || l.credit, 2)}</span>)}
                             </p>
                           )}
                         </div>

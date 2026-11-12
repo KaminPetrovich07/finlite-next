@@ -6,6 +6,8 @@ import { accountTerm } from "@/lib/glossary";
 import { formatDate } from "@/lib/ledger/period";
 import { SOURCE_LABEL, type LedgerEntry } from "@/lib/ledger/types";
 import { formatNumber } from "@/lib/format";
+import { useAccountView } from "@/components/AccountView";
+import { ifrsName } from "@/lib/ledger/ifrs";
 
 const SOURCE_TONE: Record<string, string> = {
   opening: "border-fl-cream/20 text-fl-cream/60",
@@ -24,6 +26,8 @@ interface Props {
 
 export function EntryCard({ entry, highlight = [], onDelete }: Props) {
   const total = entry.lines.reduce((s, l) => s + l.debit, 0);
+  const [view] = useAccountView();
+  const ifrs = view === "ifrs";
   return (
     <article className="rounded-lg border border-fl-line bg-fl-charcoal/60 p-3.5">
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
@@ -55,9 +59,9 @@ export function EntryCard({ entry, highlight = [], onDelete }: Props) {
             return (
               <tr key={i} className={hot ? "text-fl-gold-bright" : "text-fl-cream/65"}>
                 <td className="w-12 py-0.5 align-top num">{l.debit > 0 ? "Дт" : "Кт"}</td>
-                <td className="w-14 py-0.5 align-top num">{l.account}</td>
+                {!ifrs && <td className="w-14 py-0.5 align-top num">{l.account}</td>}
                 <td className="py-0.5 pr-2">
-                  {accountName(l.account)}<Info t={accountTerm(l.account)} label={accountName(l.account)} />
+                  {ifrs ? ifrsName(l.account) : accountName(l.account)}<Info t={accountTerm(l.account)} label={ifrs ? ifrsName(l.account) : accountName(l.account)} />
                   {l.memo && <span className="text-fl-cream/40"> — {l.memo}</span>}
                   {l.party && <span className="text-fl-gold/80"> · {l.party}</span>}
                   {l.item && <span className="text-fl-cream/55"> · {l.item}{l.qty ? `, ${String(l.qty).replace(".", ",")} ${l.unit ?? ""}` : ""}</span>}

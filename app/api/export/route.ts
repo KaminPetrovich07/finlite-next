@@ -19,13 +19,14 @@ const MIME: Record<FormatKey, string> = {
 };
 const FILE: Record<PackageKey, string> = {
   full: "Финансовая отчётность",
+  ifrs: "Отчётность по МСФО",
   executive: "Отчёт для руководителя",
   audit: "Пакет для аудитора",
   management: "Управленческий отчёт",
   esg: "ESG-отчёт",
 };
 
-/** GET /api/export?companyId=…&from=…&to=…&package=full|executive|audit|management|esg&format=pdf|docx|xlsx */
+/** GET /api/export?companyId=…&from=…&to=…&package=full|ifrs|executive|audit|management|esg&format=pdf|docx|xlsx */
 export async function GET(req: NextRequest) {
   return build(req.nextUrl.searchParams, null);
 }

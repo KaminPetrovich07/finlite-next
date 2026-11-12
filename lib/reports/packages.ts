@@ -14,6 +14,7 @@ import { formatDate, periodLabel } from "@/lib/ledger/period";
 import { computeTaxAccrual, monthsInPeriod } from "@/lib/ledger/taxes";
 import { comparableRegimes, REGIME_INFO, type RegimeKey } from "@/lib/tax-engine";
 import { buildEsgReport } from "@/lib/esg/report";
+import { buildIfrsPackage } from "./ifrs-package";
 import { money, num, pct, PACKAGE_INFO, type Block, type PackageKey, type ReportDoc, type Section, type TableBlock } from "./model";
 
 const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
@@ -448,6 +449,7 @@ export function buildEsg(d: CompanyPeriodData): ReportDoc {
 
 export const BUILDERS: Record<PackageKey, (d: CompanyPeriodData) => ReportDoc> = {
   full: buildFull,
+  ifrs: buildIfrsPackage,
   executive: buildExecutive,
   audit: buildAudit,
   management: buildManagement,

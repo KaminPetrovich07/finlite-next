@@ -48,7 +48,7 @@ export interface Section {
   blocks: Block[];
 }
 
-export type PackageKey = "full" | "executive" | "audit" | "management" | "esg";
+export type PackageKey = "full" | "ifrs" | "executive" | "audit" | "management" | "esg";
 export type FormatKey = "pdf" | "docx" | "xlsx";
 
 export interface ReportDoc {
@@ -105,6 +105,12 @@ export const PACKAGE_INFO: Record<PackageKey, { title: string; short: string; de
     short: "Полный комплект",
     description: "Четыре формы по МСФО для МСП и примечания — для банка, учредителей, налоговой проверки.",
     contents: ["Отчёт о финансовом положении (Ф.1)", "Отчёт о прибылях и убытках (Ф.2)", "Отчёт о движении денежных средств (Ф.3)", "Отчёт об изменениях в капитале (Ф.4)", "Примечания: учётная политика, налоги, сверки"],
+  },
+  ifrs: {
+    title: "Отчётность по МСФО",
+    short: "МСФО без шифров",
+    description: "Четыре отчёта по МСФО (IAS 1, IAS 7) со статьями вместо кодов счетов и расшифровкой каждой строки.",
+    contents: ["Отчёт о финансовом положении", "Отчёт о прибыли или убытке и прочем совокупном доходе", "Отчёт о движении денежных средств (прямой метод)", "Отчёт об изменениях в капитале", "Проверки и расшифровка строк по статьям"],
   },
   executive: {
     title: "Отчёт для руководителя",

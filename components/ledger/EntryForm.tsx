@@ -6,6 +6,8 @@ import { SETTLE } from "@/lib/counterparties/types";
 import { wantsItem } from "@/lib/ledger/stock";
 import { formatNumber, parseFormattedNumber } from "@/lib/format";
 import { OkeiDatalist, UnitInput } from "@/components/okei/UnitInput";
+import { AccountViewToggle, useAccountView } from "@/components/AccountView";
+import { ifrsPickerGroups } from "@/lib/ledger/ifrs";
 
 interface Line { account: string; debit: string; credit: string; memo: string; party: string; item: string; qty: string; unit: string }
 
@@ -43,6 +45,8 @@ const GROUPS: Array<{ title: string; accounts: typeof ACCOUNTS }> = (() => {
   }
   return out.filter((g) => g.accounts.length);
 })();
+/** The same accounts grouped by IFRS statement line, shown without codes. */
+const IFRS_GROUPS = ifrsPickerGroups();
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 
 export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [], items = [] }: Props) {
@@ -50,6 +54,8 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
   const [description, setDescription] = useState(mode === "opening" ? "Начальные остатки" : "");
   const [lines, setLines] = useState<Line[]>(mode === "opening" ? [blank(), blank(), blank(), blank()] : [blank(), blank()]);
   const [saving, setSaving] = useState(false);
+  const [view] = useAccountView();
+  const ifrs = view === "ifrs";
 
   const totals = useMemo(() => {
     const dr = lines.reduce((s, l) => s + parseFormattedNumber(l.debit), 0);
@@ -86,12 +92,15 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
 
   return (
     <form onSubmit={submit} className="rounded-xl border border-fl-gold/25 bg-fl-charcoal-2 p-4 sm:p-5">
-      <h2 className="font-display text-lg font-semibold text-fl-cream">
-        {mode === "opening" ? "Начальные остатки" : "Новая проводка"}
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-lg font-semibold text-fl-cream">
+          {mode === "opening" ? "Начальные остатки" : "Новая проводка"}
+        </h2>
+        <AccountViewToggle />
+      </div>
       {mode === "opening" && (
         <p className="mt-1 text-sm text-fl-cream/55">
-          Перенесите сальдо счетов на дату начала учёта: активы — в дебет, обязательства и капитал — в кредит.
+          Перенесите остатки на дату начала учёта: активы — в дебет, обязательства и капитал — в кредит.
           Остатки не считаются оборотом и не попадают в ОДДС.
         </p>
       )}
@@ -109,22 +118,28 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
 
       <div className="mt-4 space-y-2">
         <div className="hidden grid-cols-[1fr_130px_130px_1fr_32px] gap-2 px-0.5 text-xs text-fl-cream/45 md:grid">
-          <span>Счёт</span><span className="text-right">Дебет</span><span className="text-right">Кредит</span><span>Комментарий</span><span />
+          <span>{ifrs ? "Статья" : "Счёт"}</span><span className="text-right">Дебет</span><span className="text-right">Кредит</span><span>Комментарий</span><span />
         </div>
         {lines.map((l, i) => (
           <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-fl-line p-2 md:grid-cols-[1fr_130px_130px_1fr_32px] md:border-0 md:p-0">
             <select
-              aria-label={`Счёт, строка ${i + 1}`}
+              aria-label={`${ifrs ? "Статья" : "Счёт"}, строка ${i + 1}`}
               value={l.account}
               onChange={(e) => set(i, { account: e.target.value })}
               className={`${field} col-span-2 md:col-span-1`}
             >
-              <option value="">Выберите счёт</option>
-              {GROUPS.map((g) => (
-                <optgroup key={g.title} label={g.title}>
-                  {g.accounts.map((a) => <option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                </optgroup>
-              ))}
+              <option value="">{ifrs ? "Выберите статью" : "Выберите счёт"}</option>
+              {ifrs
+                ? IFRS_GROUPS.map((g) => (
+                  <optgroup key={g.title} label={g.title}>
+                    {g.accounts.map((a) => <option key={a.code} value={a.code}>{a.name}</option>)}
+                  </optgroup>
+                ))
+                : GROUPS.map((g) => (
+                  <optgroup key={g.title} label={g.title}>
+                    {g.accounts.map((a) => <option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
+                  </optgroup>
+                ))}
             </select>
             <input
               aria-label={`Дебет, строка ${i + 1}`} inputMode="decimal" placeholder="Дебет"

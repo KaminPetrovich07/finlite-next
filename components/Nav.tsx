@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FeedbackDialog } from "@/components/auth/FeedbackDialog";
+import { UserMenu } from "@/components/auth/UserMenu";
 
 // Three groups, each a dropdown on desktop and a section of the menu on
 // phones — so every page stays one click away and nothing is pushed off-screen.
@@ -32,6 +33,7 @@ const GROUPS: Array<{ title: string; links: NavLink[] }> = [
     title: "Отчёты",
     links: [
       { href: "/reports", label: "Финансовая отчётность", desc: "Баланс, ОПиУ, ОДДС, капитал, ОСВ, налоги" },
+      { href: "/ifrs", label: "Отчётность по МСФО", desc: "Четыре отчёта со статьями МСФО, без шифров счетов" },
       { href: "/taxreports", label: "Налоговые отчёты ГНС", desc: "Единый налог, STI-161, налог с продаж, НДС, ЕНД — суммы и сроки" },
       { href: "/packages", label: "Пакеты и выгрузка", desc: "PDF, Word, Excel: полный, руководителю, аудитору" },
       { href: "/esg", label: "ESG-отчёт", desc: "Устойчивое развитие по GRI и IFRS S2" },
@@ -125,6 +127,7 @@ export function Nav() {
           <span className="hidden lg:inline">Отзыв</span>
         </button>
         <ThemeToggle />
+        <UserMenu />
         <button
           onClick={() => setMobile((v) => !v)}
           aria-label="Меню"
