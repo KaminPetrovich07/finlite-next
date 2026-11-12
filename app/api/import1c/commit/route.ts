@@ -1,3 +1,4 @@
+import { assertCanPost } from "@/lib/server/plan-guard";
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -53,6 +54,7 @@ export const POST = route(async (req: NextRequest) => {
   const refs = entries.map((e) => e.sourceRef);
   const have = new Set((await prisma.journalEntry.findMany({ where: { companyId, sourceRef: { in: refs } }, select: { sourceRef: true } })).map((r) => r.sourceRef));
   const fresh = entries.filter((e) => e.source === "opening" || !have.has(e.sourceRef));
+  await assertCanPost(companyId, fresh.length);
 
   const rows = fresh.map((e) => ({ id: randomUUID(), e }));
   await prisma.$transaction([

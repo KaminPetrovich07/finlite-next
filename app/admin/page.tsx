@@ -198,7 +198,7 @@ function Users() {
                   </td>
                   <td className="pr-3">
                     <select value={planKey(u.plan)} onChange={(e) => patch(u.id, { plan: e.target.value })} className="rounded border border-fl-line bg-fl-charcoal px-2 py-1 text-xs text-fl-cream">
-                      {PLAN_ORDER.map((k) => <option key={k} value={k}>{PLANS[k].name}{PLANS[k].priceKgs ? ` · ${PLANS[k].priceKgs}` : ""}</option>)}
+                      {PLAN_ORDER.map((k) => <option key={k} value={k}>{PLANS[k].name}{PLANS[k].semesterOnly ? ` · ${PLANS[k].priceSemesterKgs}/сем.` : PLANS[k].priceKgs ? ` · ${PLANS[k].contract ? "от " : ""}${PLANS[k].priceKgs}` : ""}</option>)}
                     </select>
                   </td>
                   <td className="pr-3">

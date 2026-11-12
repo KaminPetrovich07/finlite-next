@@ -4,7 +4,7 @@ import { hashPassword, passwordProblem, verifyPassword } from "./password";
 import { newToken, normalizeEmail, sha256 } from "./tokens";
 import { allows, canManage, levelFor } from "./access";
 import { tooMany } from "./limits";
-import { effectivePlan, PLANS } from "../plans";
+import { anchorKgsMonth, effectivePlan, PLANS, PRICE_ANCHORS } from "../plans";
 import { computeMetrics, weekOf } from "../metrics/compute";
 import { reviewOverdue, TAX_RULES, taxParameters } from "../tax-rules";
 import { REGIME_INFO } from "../tax-engine";
@@ -74,6 +74,14 @@ test("тарифы: просроченная оплата → бесплатны
     assert.ok(ladder[i].priceKgs > ladder[i - 1].priceKgs);
     for (const f of ladder[i - 1].features) assert.ok(ladder[i].features.includes(f), `${ladder[i].key} без ${f}`);
   }
+  // учебные тарифы: семестр дешевле пяти месяцев, группа дешевле 30 личных подписок
+  assert.ok(PLANS.science.priceSemesterKgs! < PLANS.science.priceKgs * 5);
+  assert.ok(PLANS.group.priceSemesterKgs! < PLANS.science.priceSemesterKgs! * 30);
+  assert.deepEqual(PLANS.group.features, PLANS.science.features);
+  assert.equal(effectivePlan("group", "2027-02-01", now).key, "group");
+  // опорные цены: 59 $ × 87,45 × 0,25 ≈ 1 290 сом; 18 100 ₽ в год ≈ 1 607 сом в месяц
+  assert.equal(anchorKgsMonth(PRICE_ANCHORS.find((a) => a.product === "Xero" && a.tier === "Growing")!), 1290);
+  assert.equal(anchorKgsMonth(PRICE_ANCHORS.find((a) => a.product === "1С:Фреш" && a.tier === "Базовый")!), 1607);
 });
 
 test("метрики: DAU/WAU/MAU, когорты, воронка", () => {

@@ -9,6 +9,7 @@ import "@fontsource/ibm-plex-sans/600.css";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { ThemeScript } from "@/components/ThemeScript";
+import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
   title: "FinLite KG",
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-body min-h-screen antialiased">
         <Nav />
         {children}
+        <Footer />
       </body>
     </html>
   );

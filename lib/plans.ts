@@ -36,6 +36,8 @@ export interface Plan {
   priceSemesterKgs?: number;
   /** the plan is sold by the semester only — the pricing page shows the semester price as the headline */
   semesterOnly?: boolean;
+  /** price is a lower bound: the final one is set by contract */
+  contract?: boolean;
   tagline: string;
   companies: number; // how many companies a user may own
   entriesPerMonth: number | null; // journal entries per company per month; null — unlimited
@@ -61,36 +63,36 @@ export const PLANS: Record<PlanKey, Plan> = {
     bullets: ["1 компания", "До 150 проводок в месяц", "Журнал, баланс, ОПиУ, ОДДС, капитал", "Отчётность по МСФО без шифров счетов", "Налоговый калькулятор и отчёты ГНС", "Выгрузка в PDF", "Новости и наука — чтение и комментарии"],
   },
   pro: {
-    key: "pro", name: "Про", priceKgs: 1590, priceYearKgs: 15900, paid: true, public: true,
+    key: "pro", name: "Про", priceKgs: 1990, priceYearKgs: 19900, paid: true, public: true,
     tagline: "Бухгалтер или предприниматель с несколькими компаниями",
     companies: 3, entriesPerMonth: 2000, features: BASE,
     bullets: ["До 3 компаний", "До 2 000 проводок в месяц на компанию", "Банковские выписки и обмен с 1С", "Первичные документы, калькуляция, контрагенты", "Выгрузка в Word и Excel", "Совместный доступ для бухгалтера"],
   },
   max: {
-    key: "max", name: "Макс", priceKgs: 2990, priceYearKgs: 29900, paid: true, public: true,
+    key: "max", name: "Макс", priceKgs: 4990, priceYearKgs: 49900, paid: true, public: true,
     tagline: "Аутсорс-бухгалтерия и растущий бизнес",
     companies: 10, entriesPerMonth: null, features: MAX,
     bullets: ["До 10 компаний", "Без ограничения проводок", "Всё из «Про»", "Основные средства, валюта, ЭСФ", "План-факт и прогноз денег", "Напоминания о сроках в Telegram", "ESG и пакеты для аудитора", "Контакты в реестре специалистов"],
   },
   premium: {
-    key: "premium", name: "Премиум", priceKgs: 9900, priceYearKgs: 99000, paid: true, public: true,
+    key: "premium", name: "Премиум", priceKgs: 25000, priceYearKgs: 0, contract: true, paid: true, public: true,
     tagline: "Банки, страховщики, госсектор, аудиторские фирмы",
     companies: 50, entriesPerMonth: null, features: [...MAX, "industry", "priority"],
-    bullets: ["До 50 компаний", "Всё из «Макс»", "Отраслевые расширения: банк, госсектор, страховщик", "Нормативы НБКР, метод Мака, стресс-тесты", "Приоритетная поддержка", "Внедрение и обучение команды — по договору отдельно"],
+    bullets: ["До 50 компаний", "Всё из «Макс»", "Отраслевые расширения: банк, госсектор, страховщик", "Нормативы НБКР, метод Мака, стресс-тесты", "Внедрение: настройка нормативов, загрузка данных, обучение команды", "Приоритетная поддержка"],
   },
   science: {
-    key: "science", name: "Наука", priceKgs: 490, priceYearKgs: 4900, priceSemesterKgs: 1990, paid: true, public: true,
+    key: "science", name: "Наука: студент", priceKgs: 490, priceYearKgs: 4900, priceSemesterKgs: 1990, paid: true, public: true,
     tagline: "Студенты, магистранты, аспиранты, исследователи",
     audience: "по подтверждению: студенческий билет, справка или почта вуза",
     companies: 3, entriesPerMonth: 500, features: SCIENCE,
     bullets: ["До 3 учебных компаний", "До 500 проводок в месяц", "Все разделы анализа, включая отраслевые", "Публикация статей в «Новости и наука»", "Данные для курсовых, дипломов и диссертаций"],
   },
   group: {
-    key: "group", name: "Наука: группа", priceKgs: 2980, priceYearKgs: 29800, priceSemesterKgs: 14900, semesterOnly: true, paid: true, public: true,
+    key: "group", name: "Наука: группа", priceKgs: 1980, priceYearKgs: 19800, priceSemesterKgs: 9900, semesterOnly: true, paid: true, public: true,
     tagline: "Преподаватель и учебная группа до 30 студентов",
     audience: "для преподавателей и кафедр; оплата от вуза или лично",
     companies: 35, entriesPerMonth: 500, features: SCIENCE,
-    bullets: ["До 35 учебных компаний — по одной на студента", "Студенты работают бесплатно через совместный доступ", "Преподаватель видит и проверяет все компании группы", "Всё из тарифа «Наука»", "≈ 500 сом на студента за семестр"],
+    bullets: ["До 35 учебных компаний — по одной на студента", "Студенты работают бесплатно через совместный доступ", "Преподаватель видит и проверяет все компании группы", "Всё из тарифа «Наука: студент»", "≈ 330 сом на студента за семестр"],
   },
   pilot: {
     key: "pilot", name: "Пилот", priceKgs: 0, priceYearKgs: 0, paid: false, public: false,

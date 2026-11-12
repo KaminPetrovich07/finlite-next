@@ -1,3 +1,4 @@
+import { assertCanPost } from "@/lib/server/plan-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseStatementFile } from "@/lib/bank-parser";
@@ -26,6 +27,7 @@ export const POST = route(async (req: NextRequest) => {
     return NextResponse.json({ error: e.message ?? "Не удалось разобрать файл" }, { status: 400 });
   }
 
+  await assertCanPost(companyId, parsed.transactions.length);
   if (parsed.transactions.length === 0) {
     return NextResponse.json(
       { error: "Не найдено ни одной транзакции", warnings: parsed.warnings, detectedColumns: parsed.detectedColumns },

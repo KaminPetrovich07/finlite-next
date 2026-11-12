@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { REGIMES } from "@/lib/tax-engine";
 import { HttpError, logActivity, requireCompany, route } from "@/lib/auth/server";
+import { canManage } from "@/lib/auth/access";
 
 const Schema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
@@ -29,9 +30,11 @@ export const PATCH = route(async (req: NextRequest, { params }: Ctx) => {
   return NextResponse.json(company);
 });
 
-/** DELETE /api/companies/:id — removes the company with its journal */
+/** DELETE /api/companies/:id — removes the company with its journal (owner or administrator only) */
 export const DELETE = route(async (_req: NextRequest, { params }: Ctx) => {
   const { id } = await params;
+  const level = await requireCompany(id, "view");
+  if (!canManage(level)) throw new HttpError(403, "Удалить компанию может только её владелец");
   const c = await prisma.company.findUnique({ where: { id }, select: { name: true } });
   if (!c) throw new HttpError(404, "Компания не найдена");
   await prisma.company.delete({ where: { id } });

@@ -1,3 +1,4 @@
+import { assertCanPost } from "@/lib/server/plan-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { HttpError, requireCompany } from "@/lib/auth/server";
 import { z } from "zod";
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
   if (p.gross <= 0) return NextResponse.json({ error: "Укажите сумму начисленной зарплаты" }, { status: 400 });
   try {
     await requireCompany(companyId, "edit");
+    await assertCanPost(companyId);
     const row = await createEntry(prisma, {
       companyId, date, source: "payroll", lines: p.lines,
       description: `Начисление заработной платы за ${date.slice(5, 7)}.${date.slice(0, 4)}`,
