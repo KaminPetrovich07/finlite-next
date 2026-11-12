@@ -8,13 +8,14 @@ import { formatNumber, parseFormattedNumber } from "@/lib/format";
 import { OkeiDatalist, UnitInput } from "@/components/okei/UnitInput";
 import { AccountViewToggle, useAccountView } from "@/components/AccountView";
 import { ifrsPickerGroups } from "@/lib/ledger/ifrs";
+import { isMonetary, MAIN_CURRENCIES } from "@/lib/fx/fx";
 
-interface Line { account: string; debit: string; credit: string; memo: string; party: string; item: string; qty: string; unit: string }
+interface Line { account: string; debit: string; credit: string; memo: string; party: string; item: string; qty: string; unit: string; currency: string; amountCur: string; rate: number | null; showCur: boolean }
 
 interface Props {
   mode: "manual" | "opening";
   defaultDate: string;
-  onSubmit: (entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string }> }) => Promise<boolean>;
+  onSubmit: (entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string; currency?: string; amountCur?: number }> }) => Promise<boolean>;
   onCancel: () => void;
   /** контрагенты, уже встречавшиеся в журнале — подсказки для поля */
   parties?: string[];
@@ -22,7 +23,9 @@ interface Props {
   items?: string[];
 }
 
-const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "", party: "", item: "", qty: "", unit: "" });
+const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "", party: "", item: "", qty: "", unit: "", currency: "", amountCur: "", rate: null, showCur: false });
+/** Счета в иностранной валюте — поле валюты открыто сразу. */
+const FX_ACCOUNTS = new Set(["1120", "1220", "1230"]);
 /** Счета расчётов, по которым нужен контрагент; выручка и закупки — по желанию. */
 const wantsParty = (acc: string) => !!SETTLE[acc] || /^(61|16|17)/.test(acc);
 /** Postable accounts grouped under their group header (1100, 1200 …), in chart order. */
@@ -68,6 +71,22 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
 
   const set = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
+  /** Amount in currency × NBKR rate on the entry date → the som amount on the side already chosen (debit by default). */
+  async function applyRate(i: number, patch: Partial<Line>) {
+    const cur = { ...lines[i], ...patch };
+    set(i, patch);
+    const amt = parseFormattedNumber(cur.amountCur);
+    if (!cur.currency || !(amt > 0) || !date) return;
+    try {
+      const r = await fetch(`/api/fx/rates?date=${date}&code=${cur.currency}`);
+      const b = await r.json();
+      const rate: number | null = b.rate?.rate ?? null;
+      if (!rate) { set(i, { rate: null }); return; }
+      const som = formatNumber(Math.round(amt * rate * 100) / 100, 2);
+      set(i, cur.credit && !cur.debit ? { rate, credit: som } : { rate, debit: som, credit: "" });
+    } catch { /* no rate — the user types the som amount */ }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!ready) return;
@@ -84,6 +103,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
         item: l.item.trim() || undefined,
         qty: parseFormattedNumber(l.qty) > 0 ? parseFormattedNumber(l.qty) : undefined,
         unit: l.unit.trim() || undefined,
+        ...(l.currency && parseFormattedNumber(l.amountCur) > 0 ? { currency: l.currency, amountCur: parseFormattedNumber(l.amountCur) } : {}),
       })),
     });
     setSaving(false);
@@ -164,6 +184,23 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
             >
               ×
             </button>
+            {(FX_ACCOUNTS.has(l.account) || l.showCur || l.currency) && (
+              <div className="col-span-2 grid grid-cols-2 items-center gap-2 md:col-span-4 md:grid-cols-[110px_160px_1fr]">
+                <select aria-label={`Валюта, строка ${i + 1}`} value={l.currency} onChange={(e) => applyRate(i, { currency: e.target.value })} className={field}>
+                  <option value="">сом</option>
+                  {MAIN_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {["GBP", "CHF", "JPY", "TRY", "UZS", "TJS", "AED", "KRW"].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <input aria-label={`Сумма в валюте, строка ${i + 1}`} inputMode="decimal" placeholder="Сумма в валюте" value={l.amountCur} disabled={!l.currency}
+                  onChange={(e) => set(i, { amountCur: e.target.value })} onBlur={() => applyRate(i, {})} className={`${field} num text-right disabled:opacity-40`} />
+                <span className="col-span-2 text-xs text-fl-cream/50 md:col-span-1">
+                  {l.currency ? (l.rate ? `по курсу НБКР ${l.rate.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} на ${date.split("-").reverse().join(".")}` : "курса на эту дату нет — сумму в сомах введите сами или загрузите курсы на странице «Валюта»") : "операция в сомах"}
+                </span>
+              </div>
+            )}
+            {!FX_ACCOUNTS.has(l.account) && !l.showCur && !l.currency && l.account && isMonetary(l.account) && (
+              <button type="button" onClick={() => set(i, { showCur: true })} className="col-span-2 justify-self-start text-xs text-fl-cream/45 hover:text-fl-gold md:col-span-4">+ в валюте</button>
+            )}
             {(wantsParty(l.account) || l.party || wantsItem(l.account) || l.item) && (
               <div className="col-span-2 grid grid-cols-2 gap-2 md:col-span-4 md:grid-cols-[1fr_1fr_110px_130px]">
                 {(wantsParty(l.account) || l.party) && (

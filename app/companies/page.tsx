@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AUTH_ON } from "@/lib/auth/mode";
 import { useToast } from "@/components/Toast";
 import { REGIME_INFO, REGIMES, type RegimeKey } from "@/lib/tax-engine";
 import { DEMO_COMPANY } from "@/lib/ledger/demo";
@@ -14,6 +15,11 @@ interface Company {
   patentAmount: number;
   createdAt: string;
   entries: number;
+  access: "edit" | "view";
+  own: boolean;
+  manage: boolean;
+  adminView?: boolean;
+  owner: { email: string; name: string | null } | null;
 }
 
 const field = "mt-1 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2 text-sm text-fl-cream focus:border-fl-info focus:outline-none";
@@ -29,6 +35,7 @@ export default function CompaniesPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [welcome, setWelcome] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -39,6 +46,7 @@ export default function CompaniesPage() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/auth/me").then((r) => r.json()).then((b) => setSignedIn(!AUTH_ON || !!b?.user)).catch(() => setSignedIn(!AUTH_ON));
     load();
     const sp = new URLSearchParams(window.location.search);
     if (sp.get("new")) setCreating(true);
@@ -59,18 +67,25 @@ export default function CompaniesPage() {
         <div>
           <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Компании</h1>
           <p className="mt-1 max-w-2xl text-sm text-fl-cream/60">
-            Все компании системы. Создайте свою или сделайте копию демо-компании, чтобы менять её данные.
+            Ваши компании и компании, к которым вам открыли доступ. Создайте свою или сделайте копию демо-компании, чтобы менять её данные.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {signedIn !== false && <div className="flex flex-wrap gap-2">
             <button onClick={demoCopy} className="rounded-lg border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold/40">
               Копия демо-компании
             </button>
             <button onClick={() => setCreating(true)} className="rounded-lg bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent shadow-card hover:bg-fl-accent-hover">
               + Новая компания
             </button>
-        </div>
+        </div>}
       </header>
+
+      {AUTH_ON && signedIn === false && (
+        <div className="mb-5 rounded-xl border-l-4 border-fl-info bg-fl-info/[0.07] px-4 py-3 text-sm text-fl-cream/85">
+          <p className="font-semibold">Вы смотрите демо без входа</p>
+          <p className="mt-1">Чтобы вести свою компанию, <a href="/register" className="font-semibold text-fl-gold underline">зарегистрируйтесь</a> или <a href="/login" className="font-semibold text-fl-gold underline">войдите</a>. Данные каждой компании видят только её владелец и те, кому он открыл доступ.</p>
+        </div>
+      )}
 
       {welcome && (
         <div className="mb-5 rounded-xl border-l-4 border-fl-gold bg-fl-gold/[0.07] px-4 py-3 text-sm text-fl-cream/85">
@@ -89,7 +104,7 @@ export default function CompaniesPage() {
       <div className="space-y-4">
         <DemoCard />
         {list === null && <p className="text-sm text-fl-cream/50">Загружаю…</p>}
-        {list?.length === 0 && !error && (
+        {list?.length === 0 && !error && signedIn && (
           <p className="rounded-xl border border-dashed border-fl-line px-5 py-8 text-center text-sm text-fl-cream/55">
             Своих компаний пока нет — создайте первую.
           </p>
@@ -177,6 +192,8 @@ function CompanyCard({ c, onChanged, toast }: {
   c: Company; onChanged: () => void; toast: (m: string, k?: "success" | "error" | "info") => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const regime = c.defaultRegime && c.defaultRegime in REGIME_INFO ? REGIME_INFO[c.defaultRegime as RegimeKey].short : "режим не выбран";
 
   return (
@@ -185,7 +202,11 @@ function CompanyCard({ c, onChanged, toast }: {
         <div className="min-w-[15rem] flex-1">
           <p className="font-display text-lg font-semibold text-fl-cream">
             {c.name}
+            <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-[11px] font-medium ${c.own ? "bg-fl-gold/15 text-fl-gold" : "bg-fl-info/15 text-fl-info"}`}>
+              {c.own ? "владелец" : c.adminView ? "администратор" : c.access === "edit" ? "доступ: изменение" : "доступ: просмотр"}
+            </span>
           </p>
+          {!c.own && <p className="mt-0.5 text-xs text-fl-cream/50">{c.owner ? `Владелец: ${c.owner.name ? `${c.owner.name} · ` : ""}${c.owner.email}` : "Владелец не назначен — назначьте его в разделе «Администрирование»"}</p>}
           <p className="mt-0.5 text-sm text-fl-cream/55">
             {[c.inn && `ИНН ${c.inn}`, regime, `${c.entries} ${c.entries % 10 === 1 && c.entries % 100 !== 11 ? "проводка" : c.entries % 10 >= 2 && c.entries % 10 <= 4 && (c.entries % 100 < 12 || c.entries % 100 > 14) ? "проводки" : "проводок"}`].filter(Boolean).join(" · ")}
           </p>
@@ -194,10 +215,14 @@ function CompanyCard({ c, onChanged, toast }: {
         <div className="flex flex-wrap gap-2">
           <button onClick={() => open(c.id, "/ledger")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">Журнал</button>
           <button onClick={() => open(c.id, "/reports")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">Отчётность</button>
-          <button onClick={() => setEditing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Настройки</button>
+          {c.access === "edit" && <button onClick={() => setEditing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Настройки</button>}
+          {AUTH_ON && c.manage && <button onClick={() => setSharing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Доступ</button>}
+          {c.manage && <button onClick={() => setDeleting((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-red/80 hover:text-fl-red">Удалить</button>}
         </div>
       </div>
       {editing && <EditForm c={c} onDone={(ok) => { setEditing(false); if (ok) { toast("Сохранено"); onChanged(); } }} />}
+      {sharing && <AccessPanel companyId={c.id} toast={toast} />}
+      {deleting && <DeletePanel c={c} onDone={(ok) => { setDeleting(false); if (ok) { toast("Компания удалена"); onChanged(); } }} />}
     </article>
   );
 }
@@ -237,6 +262,92 @@ function EditForm({ c, onDone }: { c: Company; onDone: (ok: boolean) => void }) 
       {error && <p className="text-sm text-fl-red sm:col-span-2">{error}</p>}
       <div className="flex gap-2 sm:col-span-2">
         <button onClick={save} className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Сохранить</button>
+        <button onClick={() => onDone(false)} className="rounded-lg border border-fl-line px-4 py-2 text-sm text-fl-cream/80">Отмена</button>
+      </div>
+    </div>
+  );
+}
+
+interface Grant { userId: string; email: string; name: string | null; level: "view" | "edit"; since: string }
+
+/** Share the company with a registered user — e.g. an outside accountant or the director. */
+function AccessPanel({ companyId, toast }: { companyId: string; toast: (m: string, k?: "success" | "error" | "info") => void }) {
+  const [rows, setRows] = useState<Grant[] | null>(null);
+  const [email, setEmail] = useState("");
+  const [level, setLevel] = useState<"view" | "edit">("view");
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/companies/${companyId}/access`);
+    setRows(res.ok ? await res.json() : []);
+  }, [companyId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function grant(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const res = await fetch(`/api/companies/${companyId}/access`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, level }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { setError(body.error ?? "Не удалось открыть доступ"); return; }
+    setEmail("");
+    toast("Доступ открыт");
+    load();
+  }
+  async function revoke(userId: string) {
+    await fetch(`/api/companies/${companyId}/access?userId=${encodeURIComponent(userId)}`, { method: "DELETE" });
+    toast("Доступ закрыт");
+    load();
+  }
+
+  return (
+    <div className="mt-4 border-t border-fl-line pt-4">
+      <p className="text-sm font-semibold text-fl-cream">Кто ещё видит компанию</p>
+      <p className="mt-0.5 text-xs text-fl-cream/55">Пользователь должен быть зарегистрирован в FinLite. «Просмотр» — только отчёты и журнал; «изменение» — может вносить проводки и менять настройки, но не удалять компанию и не управлять доступом.</p>
+      {rows === null ? <p className="mt-3 text-sm text-fl-cream/50">Загружаю…</p> : rows.length === 0 ? (
+        <p className="mt-3 text-sm text-fl-cream/55">Доступ никому не открыт.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-fl-line rounded-lg border border-fl-line">
+          {rows.map((r) => (
+            <li key={r.userId} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+              <span className="min-w-[12rem] flex-1 text-fl-cream">{r.name ? `${r.name} · ` : ""}{r.email}</span>
+              <span className="text-fl-cream/60">{r.level === "edit" ? "изменение" : "просмотр"}</span>
+              <button onClick={() => revoke(r.userId)} className="text-fl-red/80 hover:text-fl-red">Закрыть доступ</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={grant} className="mt-3 flex flex-wrap items-end gap-2">
+        <label className="min-w-[14rem] flex-1 text-xs text-fl-cream/60">E-mail пользователя<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="buh@example.kg" className={field} /></label>
+        <label className="text-xs text-fl-cream/60">Уровень
+          <select value={level} onChange={(e) => setLevel(e.target.value as "view" | "edit")} className={field}>
+            <option value="view">просмотр</option>
+            <option value="edit">изменение</option>
+          </select>
+        </label>
+        <button type="submit" className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Открыть доступ</button>
+      </form>
+      {error && <p className="mt-2 text-sm text-fl-red">{error}</p>}
+    </div>
+  );
+}
+
+function DeletePanel({ c, onDone }: { c: Company; onDone: (ok: boolean) => void }) {
+  const [typed, setTyped] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  async function remove() {
+    const res = await fetch(`/api/companies/${c.id}`, { method: "DELETE" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { setError(body.error ?? "Не удалось удалить"); return; }
+    onDone(true);
+  }
+  return (
+    <div className="mt-4 rounded-lg border border-fl-red/40 bg-fl-red/[0.06] p-4">
+      <p className="text-sm font-semibold text-fl-red">Удаление нельзя отменить</p>
+      <p className="mt-1 text-sm text-fl-cream/70">Будут удалены журнал проводок ({c.entries}), выписки, документы и настройки компании. Перед удалением можно выгрузить все данные на странице «Мой аккаунт». Для подтверждения введите название компании.</p>
+      <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={c.name} className={field} />
+      {error && <p className="mt-2 text-sm text-fl-red">{error}</p>}
+      <div className="mt-3 flex gap-2">
+        <button disabled={typed.trim() !== c.name.trim()} onClick={remove} className="rounded-lg bg-fl-red px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Удалить навсегда</button>
         <button onClick={() => onDone(false)} className="rounded-lg border border-fl-line px-4 py-2 text-sm text-fl-cream/80">Отмена</button>
       </div>
     </div>

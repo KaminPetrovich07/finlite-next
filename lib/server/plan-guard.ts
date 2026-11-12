@@ -3,10 +3,11 @@ import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/auth/server";
 import { isAdmin } from "@/lib/auth/access";
 import type { CurrentUser } from "@/lib/auth/session";
+import { AUTH_ON } from "@/lib/auth/mode";
 import { cheapestWith, effectivePlan, FEATURE_LABEL, hasFeature, type Feature } from "@/lib/plans";
 
-export async function assertCanCreateCompany(user: CurrentUser): Promise<void> {
-  if (isAdmin(user)) return;
+export async function assertCanCreateCompany(user: CurrentUser | null): Promise<void> {
+  if (!AUTH_ON || !user || isAdmin(user)) return;
   const plan = effectivePlan(user.plan, user.paidUntil);
   const owned = await prisma.company.count({ where: { ownerId: user.id } });
   if (owned >= plan.companies) {
@@ -16,6 +17,7 @@ export async function assertCanCreateCompany(user: CurrentUser): Promise<void> {
 
 /** Journal entries per company per calendar month (Bishkek time), by the owner's plan. */
 export async function assertCanPost(companyId: string, adding = 1): Promise<void> {
+  if (!AUTH_ON) return;
   const c = await prisma.company.findUnique({ where: { id: companyId }, select: { owner: { select: { role: true, plan: true, paidUntil: true } } } });
   if (!c?.owner || c.owner.role === "admin") return;
   const plan = effectivePlan(c.owner.plan, c.owner.paidUntil);
@@ -35,13 +37,13 @@ function denied(f: Feature): HttpError {
 
 /** The signed-in user's plan has the feature (administrators always do). */
 export function assertUserFeature(user: CurrentUser, f: Feature): void {
-  if (isAdmin(user)) return;
+  if (!AUTH_ON || isAdmin(user)) return;
   if (!hasFeature(effectivePlan(user.plan, user.paidUntil), f)) throw denied(f);
 }
 
 /** The company owner's plan has the feature. The demo company has everything. */
 export async function assertCompanyFeature(companyId: string, f: Feature): Promise<void> {
-  if (companyId === "demo") return;
+  if (!AUTH_ON || companyId === "demo") return;
   const c = await prisma.company.findUnique({ where: { id: companyId }, select: { owner: { select: { role: true, plan: true, paidUntil: true } } } });
   if (!c?.owner || c.owner.role === "admin") return;
   if (!hasFeature(effectivePlan(c.owner.plan, c.owner.paidUntil), f)) throw denied(f);

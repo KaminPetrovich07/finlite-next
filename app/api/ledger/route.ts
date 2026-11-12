@@ -1,3 +1,4 @@
+import { assertCanPost } from "@/lib/server/plan-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { HttpError, requireCompany } from "@/lib/auth/server";
 import { z } from "zod";
@@ -5,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { validateEntry } from "@/lib/ledger/engine";
 import { createEntry, fromIsoDate, toLedgerEntry } from "@/lib/ledger/repo";
 import { round2 } from "@/lib/ledger/types";
+import { autoCogsFor } from "@/lib/stock/auto";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата в формате ГГГГ-ММ-ДД");
 
@@ -47,6 +49,8 @@ const LineSchema = z.object({
   item: z.string().trim().max(200).optional().nullable(),
   qty: z.number().min(0).max(1e12).optional().nullable(),
   unit: z.string().trim().max(20).optional().nullable(),
+  currency: z.string().trim().regex(/^[A-Z]{3}$/, "Код валюты — три латинские буквы").optional().nullable(),
+  amountCur: z.number().min(0).max(1e13).optional().nullable(),
 });
 
 const EntrySchema = z.object({
@@ -71,8 +75,12 @@ export async function POST(req: NextRequest) {
 
   try {
     await requireCompany(input.companyId, "edit");
+    await assertCanPost(input.companyId);
     const row = await createEntry(prisma, { ...input, lines });
-    return NextResponse.json(toLedgerEntry(row), { status: 201 });
+    // продажа с номенклатурой — списать себестоимость по средней, если это включено на странице «Склад»
+    const cogs = input.source === "manual" && lines.some((l) => /^61[13]\d$/.test(l.account) && l.credit > 0 && l.item && l.qty)
+      ? await autoCogsFor(input.companyId, row.id, input.date) : 0;
+    return NextResponse.json({ ...toLedgerEntry(row), cogsPosted: cogs }, { status: 201 });
   } catch (e) {
     if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "Не удалось сохранить проводку — база данных недоступна" }, { status: 503 });

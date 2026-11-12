@@ -43,6 +43,8 @@ export function toLedgerEntry(row: EntryRow): LedgerEntry {
       ...(l.item ? { item: l.item } : {}),
       ...(l.qty !== null && l.qty !== undefined ? { qty: Number(l.qty) } : {}),
       ...(l.unit ? { unit: l.unit } : {}),
+      ...(l.currency ? { currency: l.currency } : {}),
+      ...(l.amountCur !== null && l.amountCur !== undefined ? { amountCur: Number(l.amountCur) } : {}),
     })),
   };
 }
@@ -87,6 +89,8 @@ export async function createEntry(db: Db, e: NewEntry) {
           item: l.item?.trim() || null,
           qty: typeof l.qty === "number" && Number.isFinite(l.qty) && l.qty > 0 ? Math.round(l.qty * 1000) / 1000 : null,
           unit: normalizeUnit(l.unit) || null,
+          currency: l.currency && /^[A-Z]{3}$/.test(l.currency) && l.currency !== "KGS" ? l.currency : null,
+          amountCur: l.currency && typeof l.amountCur === "number" && Number.isFinite(l.amountCur) ? Math.round(l.amountCur * 100) / 100 : null,
         })),
       },
     },

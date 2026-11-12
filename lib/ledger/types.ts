@@ -3,7 +3,7 @@
 // No Prisma types here: the engine must stay testable without a database.
 // ════════════════════════════════════════════════════════════════════════
 
-export type EntrySource = "opening" | "manual" | "bank" | "tax" | "closing" | "payroll" | "demo" | "import1c";
+export type EntrySource = "opening" | "manual" | "bank" | "tax" | "closing" | "payroll" | "demo" | "import1c" | "depreciation" | "asset" | "cogs" | "fx" | "esf";
 
 export const SOURCE_LABEL: Record<EntrySource, string> = {
   opening: "Начальные остатки",
@@ -14,6 +14,11 @@ export const SOURCE_LABEL: Record<EntrySource, string> = {
   payroll: "Начисление зарплаты",
   demo: "Демо",
   import1c: "Импорт из 1С",
+  depreciation: "Амортизация",
+  asset: "Основные средства",
+  cogs: "Списание себестоимости",
+  fx: "Курсовые разницы",
+  esf: "ЭСФ",
 };
 
 export interface LedgerLine {
@@ -30,6 +35,9 @@ export interface LedgerLine {
   /** количество в единицах `unit`; цена = сумма / количество */
   qty?: number | null;
   unit?: string | null;
+  /** валюта и сумма в валюте (для валютных счетов и расчётов) */
+  currency?: string | null;
+  amountCur?: number | null;
 }
 
 export interface LedgerEntry {
