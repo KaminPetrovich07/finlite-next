@@ -6,7 +6,7 @@ import { useToast } from "@/components/Toast";
 import { RichText } from "@/components/community/RichText";
 import { Editor, type PostRow } from "@/components/community/PostEditor";
 import { author, clientId, getKey, keysOf, rememberAuthor, saveKey } from "@/components/community/keys";
-import { POST_KIND } from "@/lib/news/types";
+import { ago, ExternalIcon, host, KindBadge, Thumb } from "@/components/community/NewsCard";
 
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 const card = "rounded-xl border border-fl-line bg-fl-charcoal-2 shadow-card";
@@ -16,7 +16,7 @@ interface Comment { id: string; parentId: string | null; authorName: string; aut
 
 export default function PostPage() {
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState<{ post: PostRow & { body: string; mine: boolean }; comments: Comment[]; admin: boolean } | null>(null);
+  const [data, setData] = useState<{ post: PostRow & { body: string; mine: boolean; imageUrl?: string | null; auto?: boolean }; comments: Comment[]; admin: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [reply, setReply] = useState<string | null>(null);
@@ -75,17 +75,35 @@ export default function PostPage() {
         <div className="mt-4"><Editor initial={p} postId={id} editKey={getKey("post", id) ?? undefined} onDone={(x) => { setEditing(false); if (x) { show("Сохранено"); load(); } }} /></div>
       ) : (
         <article className="mt-4">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded bg-fl-line/60 px-1.5 py-0.5 text-fl-cream/75">{POST_KIND[p.kind]?.label}</span>
-            {p.docDate && <span className="text-fl-cream/50">{new Date(p.docDate).toLocaleDateString("ru-RU")}</span>}
+          {p.imageUrl && (
+            <div className="mb-5 aspect-[16/9] overflow-hidden rounded-2xl border border-fl-line bg-fl-surface-2">
+              <Thumb src={p.imageUrl} label={p.sourceName || p.authorName} kind={p.kind} />
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-fl-cream/55">
+            <KindBadge kind={p.kind} />
+            <span className="font-medium text-fl-cream/75">{p.sourceName || host(p.sourceUrl) || p.authorName}</span>
+            <span aria-hidden>·</span>
+            <span title={dt(p.docDate ?? p.createdAt)}>{ago(p.docDate ?? p.createdAt)}</span>
             {p.status === "hidden" && <span className="text-fl-red">скрыто</span>}
           </div>
           <h1 className="mt-2 font-display text-2xl font-bold leading-tight text-fl-cream sm:text-3xl">{p.title}</h1>
-          {p.summary && <p className="mt-2 text-base text-fl-cream/75">{p.summary}</p>}
-          <p className="mt-3 text-xs text-fl-cream/50">{p.authorName}{p.authorOrg ? `, ${p.authorOrg}` : ""} · опубликовано {dt(p.createdAt)} · просмотров {p.views}</p>
-          <RichText text={p.body} className="mt-5 text-[15px] leading-relaxed text-fl-cream/90" />
-          {p.sourceUrl && <p className="mt-5 text-sm">Источник: <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-fl-gold underline underline-offset-2">{p.sourceName || p.sourceUrl}</a></p>}
-          {p.tags.length > 0 && <p className="mt-3 flex flex-wrap gap-2 text-xs">{p.tags.map((t) => <a key={t} href={`/news?tag=${encodeURIComponent(t)}`} className="text-fl-gold/80">#{t}</a>)}</p>}
+          {p.auto ? (
+            p.summary ? <p className="mt-3 text-base leading-relaxed text-fl-cream/80">{p.summary}</p> : null
+          ) : (
+            <>
+              {p.summary && <p className="mt-2 text-base text-fl-cream/75">{p.summary}</p>}
+              <p className="mt-3 text-xs text-fl-cream/50">{p.authorName}{p.authorOrg ? `, ${p.authorOrg}` : ""} · опубликовано {dt(p.createdAt)} · просмотров {p.views}</p>
+              <RichText text={p.body} className="mt-5 text-[15px] leading-relaxed text-fl-cream/90" />
+            </>
+          )}
+          {p.sourceUrl && (
+            <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex items-center gap-2 rounded-lg bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
+              {p.auto ? "Читать полностью" : "Открыть источник"} на {host(p.sourceUrl)} <ExternalIcon />
+            </a>
+          )}
+          {p.auto && <p className="mt-2 text-xs text-fl-cream/45">Анонс собран автоматически из ленты «{p.sourceName}». Полный текст и права на него — у источника.</p>}
+          {p.tags.length > 0 && <p className="mt-4 flex flex-wrap gap-1.5 text-xs">{p.tags.map((t) => <a key={t} href={`/news?tag=${encodeURIComponent(t)}`} className="rounded-full bg-fl-gold/10 px-2 py-0.5 text-fl-gold hover:bg-fl-gold/20">#{t}</a>)}</p>}
           <div className="mt-5 flex flex-wrap items-center gap-2">
             <button type="button" onClick={useful} className="rounded-lg border border-fl-line px-3 py-1.5 text-sm text-fl-cream hover:border-fl-gold">Полезно · {p.useful}</button>
             {(p.mine || data.admin) && <>
@@ -100,7 +118,7 @@ export default function PostPage() {
         </article>
       )}
 
-      <section className={`${card} mt-8 p-4 sm:p-5`}>
+      <section id="discussion" className={`${card} mt-8 scroll-mt-6 p-4 sm:p-5`}>
         <h2 className="font-display text-lg font-semibold text-fl-cream">Обсуждение · {data.comments.length}</h2>
         <CommentForm postId={id} onDone={load} />
         {top.length > 0 && <ul className="mt-5 space-y-5">{top.map((c) => <CommentView key={c.id} c={c} />)}</ul>}

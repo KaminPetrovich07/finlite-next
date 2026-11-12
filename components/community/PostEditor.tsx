@@ -9,14 +9,14 @@ const card = "rounded-xl border border-fl-line bg-fl-charcoal-2 shadow-card";
 
 export interface PostRow {
   id: string; kind: PostKind; title: string; summary: string | null; sourceUrl: string | null; sourceName: string | null; docDate: string | null;
-  tags: string[]; authorName: string; authorOrg: string | null; pinned: boolean; views: number; useful: number; createdAt: string; comments: number; status: string;
+  imageUrl?: string | null; auto?: boolean; tags: string[]; authorName: string; authorOrg: string | null; pinned: boolean; views: number; useful: number; createdAt: string; comments: number; status: string;
 }
 
 export function Editor({ initial, postId, editKey, onDone }: { initial?: Partial<PostRow & { body: string }>; postId?: string; editKey?: string; onDone: (id: string | null) => void }) {
   const me = author();
   const [f, setF] = useState({
     kind: (initial?.kind ?? "news") as PostKind, title: initial?.title ?? "", summary: initial?.summary ?? "", body: initial?.body ?? "",
-    sourceUrl: initial?.sourceUrl ?? "", sourceName: initial?.sourceName ?? "", docDate: initial?.docDate?.slice(0, 10) ?? "",
+    sourceUrl: initial?.sourceUrl ?? "", sourceName: initial?.sourceName ?? "", imageUrl: initial?.imageUrl ?? "", docDate: initial?.docDate?.slice(0, 10) ?? "",
     tags: (initial?.tags ?? []).join(", "), authorName: initial?.authorName ?? me.name, authorOrg: initial?.authorOrg ?? me.org,
   });
   const [busy, setBusy] = useState(false);
@@ -44,6 +44,7 @@ export function Editor({ initial, postId, editKey, onDone }: { initial?: Partial
         {L({ t: "Текст", wide: true, children: <textarea rows={8} className={field} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} placeholder="Что изменилось, для кого, с какой даты, что делать. Пустая строка — новый абзац; ссылки станут кликабельными." /> })}
         {L({ t: "Ссылка на источник", children: <input className={field} value={f.sourceUrl} onChange={(e) => setF({ ...f, sourceUrl: e.target.value })} placeholder="https://…" /> })}
         {L({ t: "Источник", children: <input className={field} value={f.sourceName} onChange={(e) => setF({ ...f, sourceName: e.target.value })} placeholder="Минюст КР, ГНС, журнал «…»" /> })}
+        {L({ t: "Картинка — ссылка на изображение (необязательно)", wide: true, children: <input className={field} value={f.imageUrl ?? ""} onChange={(e) => setF({ ...f, imageUrl: e.target.value })} placeholder="https://…/image.jpg — своя или с разрешения автора" /> })}
         {L({ t: "Темы через запятую", wide: true, children: <input className={field} value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="НДС, МСФО, страхование" /> })}
         {L({ t: "Автор", children: <input className={field} value={f.authorName} onChange={(e) => setF({ ...f, authorName: e.target.value })} placeholder="Фамилия Имя" /> })}
         {L({ t: "Организация", children: <input className={field} value={f.authorOrg} onChange={(e) => setF({ ...f, authorOrg: e.target.value })} placeholder="КРСУ, ОсОО «…»" /> })}

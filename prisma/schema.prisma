@@ -343,6 +343,9 @@ model Post {
   body       String
   sourceUrl  String?
   sourceName String?
+  imageUrl   String?   // картинка-превью: из ленты источника или ссылка автора
+  externalId String?   @unique // автосбор: источник + id записи, чтобы не задваивать
+  auto       Boolean   @default(false) // собрано из ленты, а не опубликовано человеком
   docDate    DateTime? // дата документа или события
   tags       String[]
   authorName String
@@ -359,6 +362,24 @@ model Post {
 
   @@index([status, createdAt])
   @@index([kind, createdAt])
+}
+
+/// Внешняя лента для раздела «Новости и наука»: RSS/Atom или публичный Telegram-канал.
+model FeedSource {
+  id        String    @id @default(cuid())
+  name      String
+  url       String    @unique // адрес ленты или https://t.me/s/<канал>
+  type      String    // rss | telegram
+  kind      String    @default("news") // вид публикаций по умолчанию
+  filter    Boolean   @default(false) // брать только записи по темам раздела (для общих лент)
+  tags      String[]
+  enabled   Boolean   @default(true)
+  lastRunAt DateTime?
+  lastOk    Boolean?
+  lastCount Int       @default(0) // записей в ленте при последней загрузке
+  lastAdded Int       @default(0) // из них добавлено новых
+  lastError String?
+  createdAt DateTime  @default(now())
 }
 
 model Comment {

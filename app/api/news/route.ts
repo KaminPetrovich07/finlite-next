@@ -7,32 +7,36 @@ import { assertUserFeature } from "@/lib/server/plan-guard";
 import { clean, issueKey, limit, viewerIsAdmin } from "@/lib/community/owner";
 import { isPostKind } from "@/lib/news/types";
 import { readPost } from "@/lib/news/read";
+import { lastRun, REFRESH_EVERY_MIN } from "@/lib/news/collect";
 
-const LIST_SELECT = { id: true, kind: true, title: true, summary: true, sourceUrl: true, sourceName: true, docDate: true, tags: true, authorName: true, authorOrg: true, pinned: true, views: true, useful: true, createdAt: true, status: true, _count: { select: { comments: true } } } as const;
+const LIST_SELECT = { id: true, kind: true, title: true, summary: true, sourceUrl: true, sourceName: true, imageUrl: true, auto: true, docDate: true, tags: true, authorName: true, authorOrg: true, pinned: true, views: true, useful: true, createdAt: true, status: true, _count: { select: { comments: true } } } as const;
 
-/** GET /api/news?kind=&q=&tag=&take= — newest first, pinned on top */
+/** GET /api/news?kind=a,b&q=&tag=&take= — newest first, pinned on top */
 export const GET = route(async (req: NextRequest) => {
   const sp = req.nextUrl.searchParams;
-  const kind = sp.get("kind"), q = clean(sp.get("q"), 100), tag = clean(sp.get("tag"), 60);
+  const kinds = (sp.get("kind") ?? "").split(",").filter(isPostKind), q = clean(sp.get("q"), 100), tag = clean(sp.get("tag"), 60);
   const admin = await viewerIsAdmin();
   const rows = await prisma.post.findMany({
     where: {
       ...(admin ? {} : { status: "published" }),
-      ...(isPostKind(kind) ? { kind } : {}),
+      ...(kinds.length ? { kind: { in: kinds } } : {}),
       ...(tag ? { tags: { has: tag } } : {}),
       ...(q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { summary: { contains: q, mode: "insensitive" } }, { body: { contains: q, mode: "insensitive" } }] } : {}),
     },
     orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
-    take: Math.min(Number(sp.get("take")) || 100, 300),
+    take: Math.min(Number(sp.get("take")) || 60, 300),
     select: LIST_SELECT,
   });
-  const tags = await prisma.post.findMany({ where: { status: "published" }, select: { tags: true }, take: 1000 });
+  const tags = await prisma.post.findMany({ where: { status: "published" }, select: { tags: true }, orderBy: { createdAt: "desc" }, take: 1500 });
+  const last = await lastRun();
   const count = new Map<string, number>();
   for (const t of tags) for (const x of t.tags) count.set(x, (count.get(x) ?? 0) + 1);
   return NextResponse.json({
     posts: rows.map(({ _count, ...p }) => ({ ...p, comments: _count.comments })),
     tags: [...count].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([t, n]) => ({ tag: t, n })),
     admin,
+    lastRunAt: last,
+    stale: !last || Date.now() - last.getTime() > REFRESH_EVERY_MIN * 60e3,
   });
 });
 

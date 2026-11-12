@@ -18,6 +18,7 @@ export function readPost(raw: any) {
     summary: clean(raw?.summary, 600) || null,
     authorOrg: clean(raw?.authorOrg, 200) || null,
     sourceUrl: safeUrl(raw?.sourceUrl), sourceName: clean(raw?.sourceName, 200) || null,
+    imageUrl: safeUrl(raw?.imageUrl),
     docDate: /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(`${d}T00:00:00Z`) : null,
     tags: cleanList(raw?.tags, 10, 40),
   };
