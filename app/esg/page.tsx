@@ -437,7 +437,7 @@ export default function EsgPage() {
           )}
 
           {!readOnly && (dirty || tab === "data") && (
-            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-fl-line bg-fl-charcoal-2/95 backdrop-blur">
+            <div className="fixed inset-x-0 bottom-16 z-30 md:bottom-0 border-t border-fl-line bg-fl-charcoal-2/95 backdrop-blur">
               <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
                 <p className="text-sm text-fl-cream/60">{dirty ? "Есть несохранённые изменения" : "Все данные сохранены"}</p>
                 <button

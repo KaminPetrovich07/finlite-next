@@ -4,68 +4,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FeedbackDialog } from "@/components/auth/FeedbackDialog";
 import { UserMenu } from "@/components/auth/UserMenu";
+import { ALL_LINKS, HOME_LINK, isActive, NAV_GROUPS, type NavLink } from "@/lib/nav";
+import { openSearch } from "@/components/CommandPalette";
 
-// Groups, each a dropdown on desktop and a section of the menu on
-// phones — so every page stays one click away and nothing is pushed off-screen.
-interface NavLink { href: string; label: string; desc: string }
-const GROUPS: Array<{ title: string; links: NavLink[] }> = [
-  {
-    title: "Учёт",
-    links: [
-      { href: "/companies", label: "Компании", desc: "Создать компанию, режим, ИНН, копия демо" },
-      { href: "/ledger", label: "Журнал проводок", desc: "Операции, начальные остатки, зарплата, закрытие периода" },
-      { href: "/transactions", label: "Банковские выписки", desc: "Загрузка выписки и разноска по счетам" },
-      { href: "/esf", label: "ЭСФ", desc: "Реестр счетов-фактур → проводки; продажи → XML для ЭСФ 2.0" },
-      { href: "/import1c", label: "Обмен с 1С", desc: "Загрузка журнала, карточек счетов и ОСВ из 1С, выгрузка проводок" },
-      { href: "/assets", label: "Основные средства", desc: "Карточки, амортизация, выбытие, ОС-1, налоговые группы НК КР" },
-      { href: "/inventory", label: "Склад", desc: "Остатки по номенклатуре, списание себестоимости по средней" },
-      { href: "/fx", label: "Валюта", desc: "Курсы НБКР, курсовые разницы на отчётную дату" },
-      { href: "/close", label: "Закрытие месяца", desc: "Проверка всех разделов, исправления и закрытие периода" },
-    ],
-  },
-  {
-    title: "Документы",
-    links: [
-      { href: "/policy", label: "Учётная политика", desc: "Приказ, политика, план счетов, документооборот" },
-      { href: "/documents", label: "Первичные документы", desc: "Кассовые ордера, накладные, акты, ведомости, описи" },
-      { href: "/costing", label: "Калькуляция", desc: "Себестоимость изделий по нормам и данным журнала" },
-      { href: "/counterparties", label: "Контрагенты", desc: "Долги, просрочка, акты сверки, инвентаризация ИНВ-17" },
-      { href: "/okei", label: "Классификатор ОКЕИ", desc: "Единицы измерения: код, обозначение, поиск" },
-    ],
-  },
-  {
-    title: "Отчёты",
-    links: [
-      { href: "/reports", label: "Финансовая отчётность", desc: "Баланс, ОПиУ, ОДДС, капитал, ОСВ, налоги" },
-      { href: "/ifrs", label: "Отчётность по МСФО", desc: "Четыре отчёта со статьями МСФО, без шифров счетов" },
-      { href: "/calendar", label: "Налоговый календарь", desc: "Сроки отчётов по всем компаниям, напоминания в Telegram и на почту" },
-      { href: "/taxreports", label: "Налоговые отчёты ГНС", desc: "Единый налог, STI-161, налог с продаж, НДС, ЕНД — суммы и сроки" },
-      { href: "/packages", label: "Пакеты и выгрузка", desc: "PDF, Word, Excel: полный, руководителю, аудитору" },
-      { href: "/esg", label: "ESG-отчёт", desc: "Устойчивое развитие по GRI и IFRS S2" },
-    ],
-  },
-  {
-    title: "Анализ",
-    links: [
-      { href: "/", label: "Налоговый калькулятор", desc: "Налоги и прибыль по любому режиму НК КР" },
-      { href: "/compare", label: "Выбор налогового режима", desc: "Сравнение режимов на ваших цифрах" },
-      { href: "/budget", label: "План-факт и прогноз денег", desc: "Бюджет по месяцам, отклонения, кассовый разрыв на 3 месяца вперёд" },
-      { href: "/executive", label: "Сводка для руководителя", desc: "Риски, безубыточность, сценарии, рекомендации" },
-      { href: "/leanops", label: "Бережливое производство", desc: "Потери, аудит муда, юнит-экономика" },
-      { href: "/industry", label: "Отраслевые расширения", desc: "Банк: нормативы НБКР; страховщик: резервы Мака; госсектор: исполнение бюджета" },
-    ],
-  },
-  {
-    title: "Сообщество",
-    links: [
-      { href: "/news", label: "Новости и наука", desc: "Законы, постановления, сборники, статьи, события — с обсуждением" },
-      { href: "/law", label: "Правовая база", desc: "Полные тексты кодексов, законов и постановлений; новые редакции — каждую ночь" },
-      { href: "/specialists", label: "Реестр специалистов", desc: "Бухгалтеры, аудиторы, финансисты: опыт, места работы, рейтинг" },
-    ],
-  },
-];
-
-const isActive = (href: string, path: string | null) => (href === "/" ? path === "/" : !!path?.startsWith(href));
 
 export function Nav() {
   const path = usePathname();
@@ -83,12 +24,12 @@ export function Nav() {
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
   }, [open, mobile]);
 
-  const current = GROUPS.flatMap((g) => g.links).find((l) => isActive(l.href, path));
+  const current = ALL_LINKS.find((l) => isActive(l.href, path));
 
   return (
     <nav ref={ref} className="sticky top-0 z-30 border-b border-fl-line bg-fl-charcoal-2/95 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5 sm:px-6">
-        <a href="/reports" className="flex flex-shrink-0 items-center gap-2" aria-label="FinLite KG — на главную">
+        <a href="/" className="flex flex-shrink-0 items-center gap-2" aria-label="FinLite KG — рабочий стол">
           <Mark />
           <span className="font-display text-[15px] font-semibold tracking-tight text-fl-cream">
             FinLite<span className="ml-1 text-fl-gold">KG</span>
@@ -97,7 +38,7 @@ export function Nav() {
 
         {/* desktop: three dropdown groups */}
         <div className="ml-2 hidden items-center gap-1 md:flex">
-          {GROUPS.map((g) => {
+          {NAV_GROUPS.map((g) => {
             const activeGroup = g.links.some((l) => isActive(l.href, path));
             const here = g.links.find((l) => isActive(l.href, path));
             return (
@@ -131,6 +72,16 @@ export function Nav() {
         <span className="hidden flex-1 md:block" />
 
         <button
+          onClick={openSearch}
+          aria-label="Поиск по разделам"
+          title="Поиск по разделам (Ctrl+K)"
+          className="flex h-9 flex-shrink-0 items-center gap-2 rounded-md border border-fl-line px-2.5 text-sm text-fl-cream/60 hover:border-fl-gold/50 hover:text-fl-cream"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden><path fill="currentColor" d="M8.5 2a6.5 6.5 0 0 1 5.18 10.43l4.2 4.2-1.06 1.06-4.2-4.2A6.5 6.5 0 1 1 8.5 2Zm0 1.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" /></svg>
+          <span className="hidden lg:inline">Найти</span>
+          <kbd className="hidden rounded border border-fl-line px-1 text-[10px] text-fl-cream/40 xl:inline">Ctrl K</kbd>
+        </button>
+        <button
           onClick={() => setFeedback(true)}
           aria-label="Обратная связь создателю"
           title="Обратная связь"
@@ -156,14 +107,24 @@ export function Nav() {
       </div>
 
       {mobile && (
-        <div className="max-h-[calc(100vh-60px)] overflow-y-auto border-t border-fl-line bg-fl-charcoal-2 px-4 pb-4 md:hidden">
-          {GROUPS.map((g) => (
+        <div className="max-h-[calc(100vh-60px)] overflow-y-auto border-t border-fl-line bg-fl-charcoal-2 px-4 pb-24 md:hidden">
+          <button type="button" onClick={() => { setMobile(false); openSearch(); }} className="mt-3 flex w-full items-center gap-2 rounded-xl border border-fl-line bg-fl-surface-2 px-3 py-3 text-left text-sm text-fl-cream/55">
+            <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden><path fill="currentColor" d="M8.5 2a6.5 6.5 0 0 1 5.18 10.43l4.2 4.2-1.06 1.06-4.2-4.2A6.5 6.5 0 1 1 8.5 2Zm0 1.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" /></svg>
+            Найти раздел или действие
+          </button>
+          <a href="/" className={`mt-2 block rounded-lg px-3 py-2.5 text-sm font-medium ${isActive("/", path) ? "bg-fl-gold/15 text-fl-cream" : "text-fl-cream/85"}`}>{HOME_LINK.label}</a>
+          {NAV_GROUPS.map((g) => (
             <div key={g.title} className="pt-3">
-              <p className="label-caps px-2 pb-1">{g.title}</p>
-              {g.links.map((l) => <MenuLink key={l.href} l={l} active={isActive(l.href, path)} />)}
+              <p className="label-caps px-2 pb-1.5">{g.title}</p>
+              <div className="grid grid-cols-2 gap-1">
+                {g.links.map((l) => (
+                  <a key={l.href} href={l.href} aria-current={isActive(l.href, path) ? "page" : undefined}
+                    className={`rounded-lg px-3 py-2.5 text-sm leading-tight ${isActive(l.href, path) ? "bg-fl-gold/15 font-semibold text-fl-cream" : "bg-fl-surface-2/60 text-fl-cream/85 hover:bg-fl-surface-2"}`}>{l.label}</a>
+                ))}
+              </div>
             </div>
           ))}
-          <button onClick={() => { setMobile(false); setFeedback(true); }} className="mt-3 w-full rounded-lg border border-fl-line px-3 py-2.5 text-left text-sm text-fl-cream/80">
+          <button onClick={() => { setMobile(false); setFeedback(true); }} className="mt-4 w-full rounded-lg border border-fl-line px-3 py-2.5 text-left text-sm text-fl-cream/80">
             Написать создателю
           </button>
         </div>

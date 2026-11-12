@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ACCOUNTS } from "@/lib/ledger/accounts";
 import { SETTLE } from "@/lib/counterparties/types";
 import { wantsItem } from "@/lib/ledger/stock";
 import { formatNumber, parseFormattedNumber } from "@/lib/format";
 import { OkeiDatalist, UnitInput } from "@/components/okei/UnitInput";
 import { AccountViewToggle, useAccountView } from "@/components/AccountView";
-import { ifrsPickerGroups } from "@/lib/ledger/ifrs";
+import { AccountPicker } from "@/components/ledger/AccountPicker";
+import { fillTemplate, splitVat, TEMPLATES, templateWants, type Template } from "@/lib/ledger/templates";
 import { isMonetary, MAIN_CURRENCIES } from "@/lib/fx/fx";
 
 interface Line { account: string; debit: string; credit: string; memo: string; party: string; item: string; qty: string; unit: string; currency: string; amountCur: string; rate: number | null; showCur: boolean }
@@ -28,28 +28,6 @@ const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "", party
 const FX_ACCOUNTS = new Set(["1120", "1220", "1230"]);
 /** Счета расчётов, по которым нужен контрагент; выручка и закупки — по желанию. */
 const wantsParty = (acc: string) => !!SETTLE[acc] || /^(61|16|17)/.test(acc);
-/** Postable accounts grouped under their group header (1100, 1200 …), in chart order. */
-const GROUPS: Array<{ title: string; accounts: typeof ACCOUNTS }> = (() => {
-  const out: Array<{ title: string; accounts: typeof ACCOUNTS }> = [];
-  let cur: { title: string; accounts: typeof ACCOUNTS } | null = null;
-  for (const a of ACCOUNTS) {
-    if (a.header) {
-      if (a.code.endsWith("000") && a.code !== "8000") continue; // section titles: 1000, 2000 …
-      cur = { title: `${a.code} ${a.name}`, accounts: [] };
-      out.push(cur);
-    } else {
-      const key = (c: string) => (c.startsWith("8") ? "8" : c.slice(0, 2)); // 8000 groups 8010–8490
-      if (!cur || (!a.parent && key(a.code) !== key(cur.title))) {
-        cur = { title: `${a.code} ${a.name}`, accounts: [] };
-        out.push(cur);
-      }
-      cur.accounts.push(a);
-    }
-  }
-  return out.filter((g) => g.accounts.length);
-})();
-/** The same accounts grouped by IFRS statement line, shown without codes. */
-const IFRS_GROUPS = ifrsPickerGroups();
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 
 export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [], items = [] }: Props) {
@@ -59,6 +37,18 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
   const [saving, setSaving] = useState(false);
   const [view] = useAccountView();
   const ifrs = view === "ifrs";
+  // типовая операция: сумма, НДС, контрагент → строки проводки
+  const [tpl, setTpl] = useState<Template | null>(null);
+  const [tv, setTv] = useState({ total: "", vat: false, party: "", item: "", qty: "", unit: "" });
+  const [descTouched, setDescTouched] = useState(false);
+
+  function applyTemplate(t: Template | null, v: typeof tv) {
+    setTpl(t); setTv(v);
+    if (!t) return;
+    const r = fillTemplate(t, { total: parseFormattedNumber(v.total), vat: v.vat, party: v.party, item: v.item, qty: v.qty, unit: v.unit });
+    setLines(r.lines.map((l) => ({ ...blank(), ...l })));
+    if (!descTouched) setDescription(r.description);
+  }
 
   const totals = useMemo(() => {
     const dr = lines.reduce((s, l) => s + parseFormattedNumber(l.debit), 0);
@@ -68,6 +58,18 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
 
   const filled = lines.filter((l) => l.account && (parseFormattedNumber(l.debit) > 0 || parseFormattedNumber(l.credit) > 0));
   const ready = description.trim() && filled.length >= 2 && totals.diff === 0 && totals.dr > 0;
+
+  /** Строка, куда «Уравнять» поставит разницу: первая со счётом и без суммы, иначе первая пустая. */
+  const balanceTarget = (() => {
+    const empty = (l: Line) => !parseFormattedNumber(l.debit) && !parseFormattedNumber(l.credit);
+    const withAcc = lines.findIndex((l) => l.account && empty(l));
+    return withAcc >= 0 ? withAcc : lines.findIndex(empty);
+  })();
+  function balance() {
+    if (balanceTarget < 0 || totals.diff === 0) return;
+    const amt = formatNumber(Math.abs(totals.diff), 2);
+    set(balanceTarget, totals.diff > 0 ? { credit: amt, debit: "" } : { debit: amt, credit: "" });
+  }
 
   const set = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
@@ -107,7 +109,10 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
       })),
     });
     setSaving(false);
-    if (ok) { setLines(mode === "opening" ? [blank(), blank(), blank(), blank()] : [blank(), blank()]); if (mode === "manual") setDescription(""); }
+    if (ok) {
+      setLines(mode === "opening" ? [blank(), blank(), blank(), blank()] : [blank(), blank()]);
+      if (mode === "manual") { setDescription(""); setDescTouched(false); setTpl(null); setTv({ total: "", vat: tv.vat, party: "", item: "", qty: "", unit: "" }); }
+    }
   }
 
   return (
@@ -125,6 +130,51 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
         </p>
       )}
 
+      {mode === "manual" && (
+        <div className="mt-4">
+          <p className="mb-2 text-xs text-fl-cream/50">Типовая операция — строки заполнятся сами, их можно поправить</p>
+          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:thin] sm:flex-wrap sm:overflow-visible">
+            <button type="button" onClick={() => { applyTemplate(null, tv); setLines([blank(), blank()]); if (!descTouched) setDescription(""); }}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-sm ${!tpl ? "bg-fl-cream font-semibold text-fl-charcoal" : "border border-fl-line text-fl-cream/75 hover:border-fl-gold/50"}`}>Своя проводка</button>
+            {TEMPLATES.map((t) => (
+              <button key={t.key} type="button" onClick={() => applyTemplate(t, { ...tv, vat: t.vat ? tv.vat : false })} title={t.group}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-sm ${tpl?.key === t.key ? "bg-fl-gold/25 font-semibold text-fl-gold" : "border border-fl-line text-fl-cream/75 hover:border-fl-gold/50 hover:text-fl-cream"}`}>{t.label}</button>
+            ))}
+          </div>
+          {tpl && (
+            <div className="mt-3 grid gap-2 rounded-xl bg-fl-surface-2 p-3 sm:grid-cols-[180px_1fr] lg:grid-cols-[180px_auto_1fr]">
+              <label className="text-xs text-fl-cream/55">Сумма{tpl.vat && tv.vat ? " с НДС" : ""}
+                <input autoFocus inputMode="decimal" value={tv.total} onChange={(e) => applyTemplate(tpl, { ...tv, total: e.target.value })} placeholder="0,00" className={`${field} num mt-1 text-right text-base`} />
+              </label>
+              {tpl.vat && (
+                <label className="flex items-center gap-2 self-end pb-2 text-sm text-fl-cream/80">
+                  <input type="checkbox" checked={tv.vat} onChange={(e) => applyTemplate(tpl, { ...tv, vat: e.target.checked })} className="h-4 w-4" />
+                  в т. ч. НДС 12 %{tv.vat && parseFormattedNumber(tv.total) > 0 && <span className="num text-fl-cream/50">— {formatNumber(splitVat(parseFormattedNumber(tv.total)).vat, 2)}</span>}
+                </label>
+              )}
+              {templateWants(tpl).party && (
+                <label className="text-xs text-fl-cream/55 sm:col-span-2 lg:col-span-1">Контрагент
+                  <input list="fl-parties" value={tv.party} onChange={(e) => applyTemplate(tpl, { ...tv, party: e.target.value })} placeholder="ОсОО «…», ИП …" className={`${field} mt-1`} />
+                </label>
+              )}
+              {templateWants(tpl).item && (
+                <div className="grid grid-cols-[1fr_90px_110px] gap-2 sm:col-span-2 lg:col-span-3">
+                  <label className="text-xs text-fl-cream/55">Номенклатура (необязательно)
+                    <input list="fl-items" value={tv.item} onChange={(e) => applyTemplate(tpl, { ...tv, item: e.target.value })} placeholder="Товар, услуга" className={`${field} mt-1`} />
+                  </label>
+                  <label className="text-xs text-fl-cream/55">Кол-во
+                    <input inputMode="decimal" value={tv.qty} onChange={(e) => applyTemplate(tpl, { ...tv, qty: e.target.value })} className={`${field} num mt-1 text-right`} />
+                  </label>
+                  <label className="text-xs text-fl-cream/55">Ед.
+                    <UnitInput aria-label="Единица" value={tv.unit} onChange={(u) => applyTemplate(tpl, { ...tv, unit: u })} className={`${field} mt-1`} />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]">
         <label className="text-xs text-fl-cream/50">
           Дата
@@ -132,7 +182,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
         </label>
         <label className="text-xs text-fl-cream/50">
           Содержание операции
-          <input required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Например: оплата поставщику по счёту №12" className={`${field} mt-1`} />
+          <input required value={description} onChange={(e) => { setDescription(e.target.value); setDescTouched(true); }} placeholder="Например: оплата поставщику по счёту №12" className={`${field} mt-1`} />
         </label>
       </div>
 
@@ -142,25 +192,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
         </div>
         {lines.map((l, i) => (
           <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-fl-line p-2 md:grid-cols-[1fr_130px_130px_1fr_32px] md:border-0 md:p-0">
-            <select
-              aria-label={`${ifrs ? "Статья" : "Счёт"}, строка ${i + 1}`}
-              value={l.account}
-              onChange={(e) => set(i, { account: e.target.value })}
-              className={`${field} col-span-2 md:col-span-1`}
-            >
-              <option value="">{ifrs ? "Выберите статью" : "Выберите счёт"}</option>
-              {ifrs
-                ? IFRS_GROUPS.map((g) => (
-                  <optgroup key={g.title} label={g.title}>
-                    {g.accounts.map((a) => <option key={a.code} value={a.code}>{a.name}</option>)}
-                  </optgroup>
-                ))
-                : GROUPS.map((g) => (
-                  <optgroup key={g.title} label={g.title}>
-                    {g.accounts.map((a) => <option key={a.code} value={a.code}>{a.code} {a.name}</option>)}
-                  </optgroup>
-                ))}
-            </select>
+            <AccountPicker label={`${ifrs ? "Статья" : "Счёт"}, строка ${i + 1}`} value={l.account} onChange={(code) => set(i, { account: code })} ifrs={ifrs} className="col-span-2 md:col-span-1" />
             <input
               aria-label={`Дебет, строка ${i + 1}`} inputMode="decimal" placeholder="Дебет"
               value={l.debit} onChange={(e) => set(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })}
@@ -236,6 +268,9 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
           <span className="mx-2 text-fl-cream/30">/</span>
           Кредит <span className="num text-fl-cream">{formatNumber(totals.cr, 2)}</span>
           {totals.diff !== 0 && <span className="ml-3 text-fl-amber">разница {formatNumber(Math.abs(totals.diff), 2)}</span>}
+          {totals.diff !== 0 && balanceTarget >= 0 && (
+            <button type="button" onClick={balance} className="ml-2 rounded-md border border-fl-amber/50 px-2 py-0.5 text-xs font-medium text-fl-amber hover:bg-fl-amber/10" title="Поставить разницу в строку без суммы">Уравнять</button>
+          )}
         </p>
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} className="rounded-md px-4 py-2.5 text-sm text-fl-cream/60 hover:text-fl-cream">Отмена</button>

@@ -1,0 +1,79 @@
+// Sections of FinLite: the desktop dropdowns, the phone menu, the search
+// (Ctrl+K) and the phone tab bar all read this one list.
+
+// Groups, each a dropdown on desktop and a section of the menu on
+// phones — so every page stays one click away and nothing is pushed off-screen.
+export interface NavLink { href: string; label: string; desc: string; keywords?: string }
+export const NAV_GROUPS: Array<{ title: string; links: NavLink[] }> = [
+  {
+    title: "Учёт",
+    links: [
+      { href: "/companies", label: "Компании", desc: "Создать компанию, режим, ИНН, копия демо" },
+      { href: "/ledger", label: "Журнал проводок", desc: "Операции, начальные остатки, зарплата, закрытие периода" },
+      { href: "/transactions", label: "Банковские выписки", desc: "Загрузка выписки и разноска по счетам" },
+      { href: "/esf", label: "ЭСФ", desc: "Реестр счетов-фактур → проводки; продажи → XML для ЭСФ 2.0" },
+      { href: "/import1c", label: "Обмен с 1С", desc: "Загрузка журнала, карточек счетов и ОСВ из 1С, выгрузка проводок" },
+      { href: "/assets", label: "Основные средства", desc: "Карточки, амортизация, выбытие, ОС-1, налоговые группы НК КР" },
+      { href: "/inventory", label: "Склад", desc: "Остатки по номенклатуре, списание себестоимости по средней" },
+      { href: "/fx", label: "Валюта", desc: "Курсы НБКР, курсовые разницы на отчётную дату" },
+      { href: "/close", label: "Закрытие месяца", desc: "Проверка всех разделов, исправления и закрытие периода" },
+    ],
+  },
+  {
+    title: "Документы",
+    links: [
+      { href: "/policy", label: "Учётная политика", desc: "Приказ, политика, план счетов, документооборот" },
+      { href: "/documents", label: "Первичные документы", desc: "Кассовые ордера, накладные, акты, ведомости, описи" },
+      { href: "/costing", label: "Калькуляция", desc: "Себестоимость изделий по нормам и данным журнала" },
+      { href: "/counterparties", label: "Контрагенты", desc: "Долги, просрочка, акты сверки, инвентаризация ИНВ-17" },
+      { href: "/okei", label: "Классификатор ОКЕИ", desc: "Единицы измерения: код, обозначение, поиск" },
+    ],
+  },
+  {
+    title: "Отчёты",
+    links: [
+      { href: "/reports", label: "Финансовая отчётность", desc: "Баланс, ОПиУ, ОДДС, капитал, ОСВ, налоги" },
+      { href: "/ifrs", label: "Отчётность по МСФО", desc: "Четыре отчёта со статьями МСФО, без шифров счетов" },
+      { href: "/calendar", label: "Налоговый календарь", desc: "Сроки отчётов по всем компаниям, напоминания в Telegram и на почту" },
+      { href: "/taxreports", label: "Налоговые отчёты ГНС", desc: "Единый налог, STI-161, налог с продаж, НДС, ЕНД — суммы и сроки" },
+      { href: "/packages", label: "Пакеты и выгрузка", desc: "PDF, Word, Excel: полный, руководителю, аудитору" },
+      { href: "/esg", label: "ESG-отчёт", desc: "Устойчивое развитие по GRI и IFRS S2" },
+    ],
+  },
+  {
+    title: "Анализ",
+    links: [
+      { href: "/calculator", label: "Налоговый калькулятор", desc: "Налоги и прибыль по любому режиму НК КР", keywords: "налог расчёт прибыль" },
+      { href: "/compare", label: "Выбор налогового режима", desc: "Сравнение режимов на ваших цифрах" },
+      { href: "/budget", label: "План-факт и прогноз денег", desc: "Бюджет по месяцам, отклонения, кассовый разрыв на 3 месяца вперёд" },
+      { href: "/executive", label: "Сводка для руководителя", desc: "Риски, безубыточность, сценарии, рекомендации" },
+      { href: "/leanops", label: "Бережливое производство", desc: "Потери, аудит муда, юнит-экономика" },
+      { href: "/industry", label: "Отраслевые расширения", desc: "Банк: нормативы НБКР; страховщик: резервы Мака; госсектор: исполнение бюджета" },
+    ],
+  },
+  {
+    title: "Сообщество",
+    links: [
+      { href: "/news", label: "Новости и наука", desc: "Законы, постановления, сборники, статьи, события — с обсуждением" },
+      { href: "/law", label: "Правовая база", desc: "Полные тексты кодексов, законов и постановлений; новые редакции — каждую ночь" },
+      { href: "/specialists", label: "Реестр специалистов", desc: "Бухгалтеры, аудиторы, финансисты: опыт, места работы, рейтинг" },
+    ],
+  },
+];
+
+
+/** Частые действия — в поиске (Ctrl+K) они идут первыми. */
+export const NAV_ACTIONS: NavLink[] = [
+  { href: "/ledger?new=1", label: "Новая проводка", desc: "Продажа, покупка, оплата — по шаблону или своя", keywords: "операция ввести добавить" },
+  { href: "/transactions", label: "Загрузить банковскую выписку", desc: "Выписка банка → проводки", keywords: "банк импорт" },
+  { href: "/ledger?payroll=1", label: "Начислить зарплату", desc: "Зарплата, подоходный налог, взносы в Соцфонд", keywords: "зп оплата труда" },
+  { href: "/close", label: "Закрыть месяц", desc: "Проверка разделов и закрытие периода", keywords: "закрытие период" },
+  { href: "/reports", label: "Открыть отчётность", desc: "Баланс, ОПиУ, ОДДС, ОСВ", keywords: "баланс опиу оддс осв отчет" },
+  { href: "/taxreports", label: "Налоги к уплате и отчёты ГНС", desc: "Суммы и сроки по формам", keywords: "ндс единый налог sti" },
+];
+
+export const HOME_LINK: NavLink = { href: "/", label: "Рабочий стол", desc: "Деньги, сроки, первые шаги, последние операции", keywords: "главная начало" };
+
+export const ALL_LINKS: NavLink[] = [HOME_LINK, ...NAV_GROUPS.flatMap((g) => g.links)];
+
+export const isActive = (href: string, path: string | null) => (href === "/" ? path === "/" : !!path?.startsWith(href.split("?")[0]));

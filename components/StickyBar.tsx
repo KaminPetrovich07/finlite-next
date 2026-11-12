@@ -15,7 +15,7 @@ export function StickyBar({ netProfit, profitability, regimeName, visible }: Sti
   return (
     <div
       className={`
-        fixed bottom-0 left-0 right-0 z-40
+        fixed bottom-16 left-0 right-0 z-40 md:bottom-0
         border-t border-fl-line bg-fl-charcoal/95 backdrop-blur-md
         transition-transform duration-300 ease-out
         ${visible ? "translate-y-0" : "translate-y-full"}

@@ -17,6 +17,8 @@ function currentMonth() {
   return monthPeriod(d.getFullYear(), d.getMonth() + 1);
 }
 
+const todayIso = () => new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 10); // Бишкек
+
 export default function LedgerPage() {
   const { companies, companyId, setCompanyId, company, loaded, reload, readOnly } = useCompanies();
   const [period, setPeriodState] = useState<{ from: string; to: string } | null>(null);
@@ -38,6 +40,17 @@ export default function LedgerPage() {
   }, [loaded, company, period, setPeriod]);
 
   const isDemo = !!company?.demo;
+
+  // /ledger?new=1 и ?payroll=1 — из нижней панели телефона и поиска
+  useEffect(() => {
+    if (!loaded || !period || isDemo || readOnly) return;
+    const sp = new URLSearchParams(window.location.search);
+    const want = sp.get("new") ? "manual" : sp.get("payroll") ? "payroll" : null;
+    if (!want) return;
+    setForm(want);
+    history.replaceState(null, "", "/ledger");
+    setTimeout(() => document.getElementById("fl-entry-form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  }, [loaded, period, isDemo, readOnly]);
 
   const load = useCallback(async () => {
     if (!companyId || !period) return;
@@ -139,11 +152,11 @@ export default function LedgerPage() {
   const inPeriod = entries.filter((e) => e.source !== "opening");
 
   return (
-    <main className="mx-auto max-w-5xl px-4 pb-24 pt-8 sm:px-6 sm:pt-10">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <main className="mx-auto max-w-5xl px-4 pb-24 pt-5 sm:px-6 sm:pt-10">
+      <header className="mb-4 flex flex-wrap items-end justify-between gap-2 sm:mb-6 sm:gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Журнал проводок</h1>
-          <p className="mt-1 max-w-2xl text-sm text-fl-cream/60">
+          <h1 className="font-display text-2xl font-bold text-fl-cream sm:text-4xl">Журнал проводок</h1>
+          <p className="mt-1 hidden max-w-2xl text-sm text-fl-cream/60 sm:block">
             Единственный источник данных для баланса, ОПиУ, ОДДС, отчёта о капитале и налогов. Операции из банковских
             выписок попадают сюда автоматически.
           </p>
@@ -151,7 +164,7 @@ export default function LedgerPage() {
         <a href="/reports" className="text-sm text-fl-gold underline-offset-4 hover:underline">Открыть отчётность</a>
       </header>
 
-      <section className="mb-5 flex flex-col gap-3 rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5 lg:flex-row lg:items-center">
+      <section className="mb-4 flex flex-col gap-3 rounded-xl border border-fl-line bg-fl-charcoal-2 p-3 sm:mb-5 sm:p-5 lg:flex-row lg:items-center">
         <label className="flex flex-col gap-1 text-xs text-fl-cream/50 lg:min-w-[220px]">
           Компания
           <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setForm(null); }}
@@ -179,30 +192,30 @@ export default function LedgerPage() {
           У вас доступ к этой компании только для просмотра: журнал и отчёты открыты, изменения недоступны.
         </div>
       ) : (
-        <div className="mb-5 flex flex-wrap gap-2">
-          <button onClick={() => setForm("manual")} className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
+        <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+          <button onClick={() => setForm("manual")} className="shrink-0 rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
             Новая проводка
           </button>
-          <button onClick={() => setForm("opening")} className="rounded-md border border-fl-gold/40 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10">
+          <button onClick={() => setForm("opening")} className="shrink-0 rounded-md border border-fl-gold/40 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10">
             Ввести начальные остатки
           </button>
-          <button onClick={() => setForm("payroll")} className="rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream">
+          <button onClick={() => setForm("payroll")} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream">
             Начислить зарплату
           </button>
-          <button onClick={closePeriod} disabled={busy} className="rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream disabled:opacity-50">
+          <button onClick={closePeriod} disabled={busy} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream disabled:opacity-50">
             Закрыть период
           </button>
-          <button onClick={postBank} disabled={busy} className="rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/70 hover:text-fl-cream disabled:opacity-50">
+          <button onClick={postBank} disabled={busy} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/70 hover:text-fl-cream disabled:opacity-50">
             Провести операции из выписок
           </button>
         </div>
       )}
 
       {form && period && (
-        <div className="mb-6">
+        <div id="fl-entry-form" className="mb-6 scroll-mt-20">
           {form === "payroll"
             ? <PayrollForm defaultDate={period.to} onSubmit={savePayroll} onCancel={() => setForm(null)} />
-            : <EntryForm key={form} mode={form} defaultDate={period.from} onSubmit={save} onCancel={() => setForm(null)} parties={parties} items={items} />}
+            : <EntryForm key={form} mode={form} defaultDate={form === "manual" && todayIso() >= period.from && todayIso() <= period.to ? todayIso() : period.from} onSubmit={save} onCancel={() => setForm(null)} parties={parties} items={items} />}
         </div>
       )}
 

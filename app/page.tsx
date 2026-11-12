@@ -1,435 +1,277 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { MoneyInput } from "@/components/MoneyInput";
-import { Collapsible } from "@/components/Collapsible";
-import { StickyBar } from "@/components/StickyBar";
-import { KpiCard } from "@/components/KpiCard";
-import { useToast } from "@/components/Toast";
-import { Info } from "@/components/Info";
-import { LedgerSource, type LedgerLoad } from "@/components/ledger/LedgerSource";
-import { periodLabel as ledgerPeriodLabel } from "@/lib/ledger/period";
-import {
-  calculate, REGIMES, MONTHS,
-  breakEven, safetyMargin, grossMargin, taxBurden, validateInputs,
-  type RegimeKey, type CalculateResult,
-} from "@/lib/tax-engine";
-import { formatNumber, formatPercent } from "@/lib/format";
+import { useEffect, useMemo, useState } from "react";
+import { NEW_COMPANY, useCompanies } from "@/components/ledger/useCompanies";
+import { formatNumber } from "@/lib/format";
+import { ago, KindBadge } from "@/components/community/NewsCard";
+import type { PostKind } from "@/lib/news/types";
 
-type PeriodType = "Месяц" | "Квартал" | "Год";
+const card = "rounded-2xl border border-fl-line bg-fl-charcoal-2 shadow-card";
+const today = () => new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 10); // Бишкек
+const money = (x: number) => formatNumber(Math.round(x), 0);
+const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 
-const emptyInputs = {
-  revenue: 0, otherIncome: 0, cogs: 0, salaries: 0, rent: 0,
-  sellingExp: 0, adminExp: 0, otherOpExp: 0, interestExp: 0,
-  otherNonOp: 0, investInc: 0, cashPct: 70, patentAmount: 0,
-};
-
-function periodDates(ptype: PeriodType, year: number, monthIdx: number, quarter: number) {
-  if (ptype === "Месяц") {
-    const from = new Date(Date.UTC(year, monthIdx, 1));
-    const to   = new Date(Date.UTC(year, monthIdx + 1, 0));
-    return { from, to, label: `${MONTHS[monthIdx]} ${year}` };
-  }
-  if (ptype === "Квартал") {
-    const m1 = (quarter - 1) * 3;
-    return {
-      from: new Date(Date.UTC(year, m1, 1)),
-      to: new Date(Date.UTC(year, m1 + 3, 0)),
-      label: `Q${quarter} ${year}`,
-    };
-  }
-  return {
-    from: new Date(Date.UTC(year, 0, 1)),
-    to: new Date(Date.UTC(year, 11, 31)),
-    label: String(year),
+interface Entry { id: string; date: string; description: string; source: string; lines: Array<{ account: string; debit: number; credit: number }> }
+interface Monthly { month: string; revenue: number; expenses: number; netProfit: number; cashEnd: number }
+interface Stat {
+  statements: {
+    trialBalance: { rows: Array<{ account: string; openingDr: number; openingCr: number; closingDr: number; closingCr: number }> };
+    incomeStatement: { netRevenue: number; netProfit: number };
+    taxes: { computed: { total: number } };
+    monthly: Monthly[];
+    entryCount: number;
   };
+  entries: Entry[];
+}
+interface Ev { key: string; companyId: string; form: string; title: string; periodLabel: string; deadline: string; daysLeft: number; status: string; amount: number | null }
+interface News { id: string; kind: PostKind; title: string; sourceName: string | null; authorName: string; docDate: string | null; createdAt: string }
+
+const SOURCE: Record<string, string> = { manual: "вручную", bank: "из выписки", opening: "остатки", closing: "закрытие", payroll: "зарплата", esf: "ЭСФ", depreciation: "амортизация", cogs: "себестоимость", fx: "курсовые", import1c: "из 1С", demo: "демо" };
+
+function Step({ done, n, title, text, href, cta }: { done: boolean; n: number; title: string; text: string; href: string; cta: string }) {
+  return (
+    <li className={`flex gap-3 rounded-xl p-3 ${done ? "opacity-60" : "bg-fl-surface-2/70"}`}>
+      <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-fl-green text-white" : "border-2 border-fl-gold text-fl-gold"}`}>{done ? "✓" : n}</span>
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm font-semibold ${done ? "text-fl-cream/70 line-through decoration-fl-cream/30" : "text-fl-cream"}`}>{title}</p>
+        {!done && <p className="mt-0.5 text-xs text-fl-cream/60">{text}</p>}
+      </div>
+      {!done && <a href={href} className="self-center whitespace-nowrap rounded-lg bg-fl-accent px-3 py-1.5 text-xs font-semibold text-fl-on-accent hover:bg-fl-accent-hover">{cta}</a>}
+    </li>
+  );
 }
 
-// ── Small helpers ────────────────────────────────────────────────────────────
+function Tile({ label, value, note, href, children }: { label: string; value: string; note?: string; href?: string; children?: React.ReactNode }) {
+  const body = (
+    <>
+      <p className="text-xs font-medium text-fl-cream/55">{label}</p>
+      <p className="num mt-1 font-display text-2xl font-bold tracking-tight text-fl-cream">{value}<span className="ml-1 text-sm font-medium text-fl-cream/45">сом</span></p>
+      {note && <p className="mt-0.5 text-xs text-fl-cream/50">{note}</p>}
+      {children}
+    </>
+  );
+  return href ? <a href={href} className={`${card} block p-4 transition hover:border-fl-gold/50`}>{body}</a> : <div className={`${card} p-4`}>{body}</div>;
+}
 
-function FieldRow({ label, value, sub, info }: { label: string; value: string; sub?: string; info?: string }) {
+/** Помесячные столбики выручки — без библиотеки графиков, чтобы рабочий стол открывался мгновенно. */
+function Bars({ data }: { data: Monthly[] }) {
+  const max = Math.max(1, ...data.map((d) => d.revenue));
   return (
-    <div className="flex items-start justify-between gap-2 py-2.5 border-t border-fl-line first:border-0">
-      <span className="text-sm text-fl-cream/70 flex-1">{label}{info && <Info k={info} label={label} />}</span>
-      <div className="text-right">
-        <span className="num text-sm text-fl-cream tabular-nums">{value}</span>
-        {sub && <p className="text-xs text-fl-cream/40">{sub}</p>}
-      </div>
+    <div className="mt-3 flex h-12 items-end gap-1" aria-hidden>
+      {data.slice(-8).map((d) => (
+        <div key={d.month} className="flex flex-1 flex-col items-center gap-1">
+          <div className="w-full rounded-sm bg-fl-gold/70" style={{ height: `${Math.max(4, (d.revenue / max) * 40)}px` }} title={`${d.month}: ${money(d.revenue)} сом`} />
+          <span className="text-[9px] text-fl-cream/40">{MONTHS[Number(d.month.slice(5)) - 1]}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-function Badge({ label, variant }: { label: string; variant: "ok" | "warn" | "err" | "neutral" }) {
-  const cls = {
-    ok:      "border-fl-green/40 bg-fl-green/10 text-fl-green",
-    warn:    "border-fl-gold/40 bg-fl-gold/10 text-fl-gold-bright",
-    err:     "border-fl-red/40 bg-fl-red/10 text-fl-red",
-    neutral: "border-fl-cream/20 bg-fl-cream/5 text-fl-cream/60",
-  }[variant];
-  return (
-    <span className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium ${cls}`}>
-      {label}
-    </span>
-  );
-}
+const ACTIONS: Array<{ href: string; label: string; text: string; icon: string }> = [
+  { href: "/ledger?new=1", label: "Новая проводка", text: "Продажа, покупка, оплата — по шаблону", icon: "M12 5v14M5 12h14" },
+  { href: "/transactions", label: "Банковская выписка", text: "Загрузить и разнести по счетам", icon: "M4 10h16M6 10v8m4-8v8m4-8v8m4-8v8M3 20h18M12 3l9 5H3l9-5Z" },
+  { href: "/ledger?payroll=1", label: "Зарплата", text: "Начислить, удержать, Соцфонд", icon: "M12 3v18M8 7h6a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h7" },
+  { href: "/reports", label: "Отчётность", text: "Баланс, ОПиУ, ОДДС, ОСВ", icon: "M4 20V10m6 10V4m6 16v-7" },
+  { href: "/taxreports", label: "Налоги ГНС", text: "Суммы и сроки по формам", icon: "M7 3h10v18l-5-3-5 3V3Zm3 6h4" },
+  { href: "/close", label: "Закрыть месяц", text: "Проверка и закрытие периода", icon: "M5 12l4 4L19 6" },
+];
 
-// ── Main page ────────────────────────────────────────────────────────────────
-
-export default function CalculatorPage() {
-  const [companyId, setCompanyId]     = useState("");
-  const [isDemo, setIsDemo]           = useState(false);
-  const [sel, setSel]                 = useState<{ from: string; to: string } | null>(null);
-  const [source, setSource]           = useState<string | null>(null);
-  const [regimeKey, setRegimeKey]     = useState<RegimeKey>("general");
-  const [inputs, setInputs]           = useState(emptyInputs);
-  const [result, setResult]           = useState<CalculateResult | null>(null);
-  const [history, setHistory]         = useState<any[]>([]);
-  const [saving, setSaving]           = useState(false);
-  const { show: showToast, ToastContainer } = useToast();
-
-  const onSelect = useCallback((x: { companyId: string; demo: boolean; period: { from: string; to: string } }) => {
-    setCompanyId(x.companyId); setIsDemo(x.demo); setSel(x.period);
-  }, []);
-  const onLoad = useCallback((d: LedgerLoad) => {
-    const i = d.bridge.input;
-    // the form shows «прочие внереализационные расходы» as a positive number
-    setInputs({ ...i, otherNonOp: -i.otherNonOp });
-    setRegimeKey(d.regime);
-    setSource(`${d.companyName}, ${d.periodLabel.toLowerCase()} — ${d.entryCount} проводок`);
-    setResult(null);
-  }, []);
+export default function Home() {
+  const { companies, companyId, setCompanyId, company, loaded } = useCompanies();
+  const [stat, setStat] = useState<Stat | null>(null);
+  const [events, setEvents] = useState<Ev[]>([]);
+  const [news, setNews] = useState<News[]>([]);
+  const [policySaved, setPolicySaved] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [hideSteps, setHideSteps] = useState(false);
+  const [dateLabel, setDateLabel] = useState("");
+  useEffect(() => { setDateLabel(new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })); }, []);
+  const year = today().slice(0, 4);
 
   useEffect(() => {
-    if (!companyId || isDemo) { setHistory([]); return; }
-    fetch(`/api/reports?companyId=${companyId}&limit=10`)
-      .then((r) => r.json()).then((d) => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
-  }, [companyId, isDemo]);
+    if (!loaded || !companyId || companyId === NEW_COMPANY) return;
+    setStat(null); setError(null); setPolicySaved(null);
+    try { setHideSteps(localStorage.getItem(`finlite:steps-hidden:${companyId}`) === "1"); } catch { setHideSteps(false); }
+    fetch(`/api/statements?${new URLSearchParams({ companyId, from: `${year}-01-01`, to: today() })}`)
+      .then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); setStat(b); })
+      .catch((e) => setError(e.message));
+    fetch(`/api/policy?companyId=${encodeURIComponent(companyId)}`).then((r) => r.json()).then((b) => setPolicySaved(!!b.saved)).catch(() => setPolicySaved(null));
+  }, [loaded, companyId, year]);
 
-  const warnings = useMemo(
-    () => validateInputs(inputs.revenue, inputs.cogs, inputs.salaries),
-    [inputs.revenue, inputs.cogs, inputs.salaries],
-  );
+  useEffect(() => {
+    fetch("/api/calendar").then((r) => r.json()).then((b) => setEvents(b.events ?? [])).catch(() => {});
+    fetch("/api/news?take=4").then((r) => r.json()).then((b) => setNews(b.posts ?? [])).catch(() => {});
+  }, []);
 
-  const period = sel
-    ? { from: new Date(sel.from + "T00:00:00Z"), to: new Date(sel.to + "T00:00:00Z"), label: ledgerPeriodLabel(sel.from, sel.to) }
-    : periodDates("Месяц", new Date().getFullYear(), new Date().getMonth(), 1);
+  const k = useMemo(() => {
+    if (!stat) return null;
+    const s = stat.statements;
+    const cash = s.trialBalance.rows.filter((r) => /^1[12]/.test(r.account)).reduce((t, r) => t + r.closingDr - r.closingCr, 0);
+    const month = today().slice(0, 7);
+    const thisMonth = s.monthly.find((m) => m.month === month);
+    const entries = stat.entries;
+    const steps = {
+      opening: s.trialBalance.rows.some((r) => r.openingDr || r.openingCr) || entries.some((e) => e.source === "opening"),
+      first: entries.some((e) => e.source !== "opening" && e.source !== "closing"),
+      bank: entries.some((e) => e.source === "bank"),
+      closed: entries.some((e) => e.source === "closing"),
+    };
+    const recent = [...entries].filter((e) => e.source !== "closing").sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
+    return { cash, revenue: s.incomeStatement.netRevenue, profit: s.incomeStatement.netProfit, taxes: s.taxes.computed.total, thisMonth, monthly: s.monthly, steps, recent, count: s.entryCount };
+  }, [stat]);
 
-  function set(k: keyof typeof inputs) {
-    return (v: number) => setInputs((s) => ({ ...s, [k]: v }));
-  }
-
-  function handleCalculate() {
-    setResult(calculate({ regimeKey, ...inputs, otherNonOp: -inputs.otherNonOp }));
-  }
-
-  async function saveReport() {
-    if (!result || !companyId) return;
-    if (isDemo) { showToast("Демо-компанию нельзя изменить — расчёт не сохраняется", "info"); return; }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyId,
-          periodLabel: period.label,
-          periodFrom: period.from.toISOString(),
-          periodTo: period.to.toISOString(),
-          regimeKey, ...inputs, otherNonOp: -inputs.otherNonOp,
-        }),
-      });
-      if (!res.ok) throw new Error();
-      showToast("Расчёт сохранён в истории компании", "success");
-      fetch(`/api/reports?companyId=${companyId}&limit=10`)
-        .then((r) => r.json()).then((d) => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
-    } catch {
-      showToast("Ошибка при сохранении", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // Derived
-  const gm   = result ? grossMargin(result) : null;
-  const sm   = result ? safetyMargin(result) : null;
-  const be   = result ? breakEven(result) : null;
-  const tb   = result ? taxBurden(result) : null;
-
-  const smVariant = sm === null ? "neutral" : sm > 30 ? "ok" : sm > 15 ? "warn" : "err";
-  const profitVariant = result
-    ? (result.netProfit > 0 ? "ok" : "err")
-    : "neutral";
-
-  const expensesTotal = inputs.sellingExp + inputs.adminExp + inputs.otherOpExp;
-  const nonOpTotal    = inputs.interestExp + inputs.otherNonOp;
+  const upcoming = events.filter((e) => e.companyId === companyId && e.status !== "done" && e.daysLeft >= -60).sort((a, b) => a.deadline.localeCompare(b.deadline)).slice(0, 5);
+  const isDemo = !!company?.demo;
+  const steps = k && !isDemo ? [
+    { done: true, title: "Компания создана", text: "", href: "/companies", cta: "" },
+    { done: !!policySaved, title: "Учётная политика", text: "Приказ и политика по шаблону КР — за 5 минут, с планом счетов и документооборотом.", href: "/policy", cta: "Оформить" },
+    { done: k.steps.opening, title: "Начальные остатки", text: "Деньги, долги, товары и капитал на дату начала учёта — чтобы баланс сходился.", href: "/ledger", cta: "Ввести" },
+    { done: k.steps.first, title: "Первые операции", text: "Продажа, покупка, оплата — шаблоном за полминуты, или загрузите банковскую выписку.", href: "/ledger?new=1", cta: "Провести" },
+    { done: k.steps.bank, title: "Банковская выписка", text: "Выписка из банка превращается в проводки сама — вы только проверяете счета.", href: "/transactions", cta: "Загрузить" },
+    { done: k.steps.closed, title: "Закрыть месяц и получить отчётность", text: "Проверка всех разделов, закрытие периода, баланс и налоговые отчёты.", href: "/close", cta: "Закрыть" },
+  ] : [];
+  const doneSteps = steps.filter((s) => s.done).length;
+  const showSteps = steps.length > 0 && doneSteps < steps.length && !hideSteps;
 
   return (
-    <>
-      <ToastContainer />
-
-      <main className="mx-auto max-w-5xl px-4 py-8 pb-32 sm:px-6 sm:py-10">
-
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <header className="mb-8">
-          <h1 className="font-display text-2xl font-bold text-fl-cream sm:text-3xl">
-            Налоговый калькулятор
-          </h1>
-          <p className="mt-1 text-sm text-fl-cream/40">Ставки по НК КР в редакции от 06.08.2026</p>
-        </header>
-
-        <div className="space-y-4">
-
-          {/* ── Данные из журнала ───────────────────────────────────────── */}
-          <LedgerSource onLoad={onLoad} onSelect={onSelect}
-            note="Подставит в поля суммы из проводок выбранной компании за период и её налоговый режим. Цифры можно менять — для сценария «что если»." />
-          {source && <p className="-mt-2 px-1 text-xs text-fl-cream/55">Заполнено из журнала: {source}.</p>}
-
-          <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-            <label className="block">
-              <span className="label-caps">Налоговый режим<Info k="calc:regime" /></span>
-              <select
-                value={regimeKey}
-                onChange={(e) => setRegimeKey(e.target.value as RegimeKey)}
-                className="mt-2 w-full rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2.5 text-sm text-fl-cream focus:border-fl-gold focus:outline-none"
-              >
-                {Object.entries(REGIMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </label>
-          </div>
-
-          {/* ── Доходы ──────────────────────────────────────────────────── */}
-          <Collapsible title="Доходы" defaultOpen={true}>
-            <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-              <MoneyInput label="Выручка от реализации" info="calc:revenue" value={inputs.revenue} onChange={set("revenue")} required />
-              <MoneyInput label="Прочие операционные доходы" info="calc:otherIncome" value={inputs.otherIncome} onChange={set("otherIncome")} />
-            </div>
-          </Collapsible>
-
-          {/* ── Себестоимость и ФОТ ─────────────────────────────────────── */}
-          <Collapsible title="Себестоимость и ФОТ" defaultOpen={true}>
-            <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-              <MoneyInput label="Себестоимость (материалы, производство)" info="calc:cogs" value={inputs.cogs} onChange={set("cogs")} />
-              <MoneyInput label="Фонд оплаты труда (до удержаний)" info="calc:salaries" value={inputs.salaries} onChange={set("salaries")}
-                hint="Страховые взносы работодателя 2,25% начисляются автоматически; 10% взносов и 10% подоходного налога удерживаются из зарплаты" />
-              <MoneyInput label="Аренда" info="calc:rent" value={inputs.rent} onChange={set("rent")} />
-            </div>
-          </Collapsible>
-
-          {/* ── Операционные расходы ────────────────────────────────────── */}
-          <Collapsible
-            title="Операционные расходы"
-            badge={expensesTotal > 0 ? formatNumber(expensesTotal) + " сом" : undefined}
-          >
-            <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-              <MoneyInput label="Коммерческие расходы" info="calc:sellingExp" value={inputs.sellingExp} onChange={set("sellingExp")}
-                hint="Маркетинг, реклама, доставка" />
-              <MoneyInput label="Административные расходы" info="calc:adminExp" value={inputs.adminExp} onChange={set("adminExp")}
-                hint="Офис, связь, канцелярия" />
-              <MoneyInput label="Прочие операционные расходы" info="calc:otherOpExp" value={inputs.otherOpExp} onChange={set("otherOpExp")} />
-            </div>
-          </Collapsible>
-
-          {/* ── Внереализационные ───────────────────────────────────────── */}
-          <Collapsible
-            title="Внереализационные и прочие"
-            badge={nonOpTotal > 0 ? formatNumber(nonOpTotal) + " сом" : undefined}
-          >
-            <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-              <MoneyInput label="Проценты к уплате" info="calc:interestExp" value={inputs.interestExp} onChange={set("interestExp")} />
-              <MoneyInput label="Прочие внереализационные расходы" info="calc:otherNonOp" value={inputs.otherNonOp} onChange={set("otherNonOp")} />
-              <MoneyInput label="Инвестиционные доходы" info="calc:investInc" value={inputs.investInc} onChange={set("investInc")} />
-            </div>
-          </Collapsible>
-
-          {/* ── Спец. параметры ─────────────────────────────────────────── */}
-          {(regimeKey.startsWith("unified_") || regimeKey === "patent") && (
-            <Collapsible title="Параметры режима">
-              <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-                {regimeKey.startsWith("unified_") && (
-                  <label className="block">
-                    <span className="text-xs text-fl-cream/60">Доля наличной выручки (%)<Info k="calc:cashPct" /></span>
-                    <div className="mt-2 flex items-center gap-3">
-                      <input type="range" min={0} max={100} value={inputs.cashPct}
-                        onChange={(e) => setInputs(s => ({ ...s, cashPct: +e.target.value }))}
-                        className="flex-1" />
-                      <span className="num w-12 text-right text-sm text-fl-cream">{Math.round(inputs.cashPct)}%</span>
-                    </div>
-                  </label>
-                )}
-                {regimeKey === "patent" && (
-                  <MoneyInput label="Стоимость патента в месяц" info="calc:patentAmount" value={inputs.patentAmount} onChange={set("patentAmount")} />
-                )}
-              </div>
-            </Collapsible>
-          )}
-
-          {/* ── Предупреждения ──────────────────────────────────────────── */}
-          {warnings.length > 0 && (
-            <div className="space-y-1.5">
-              {warnings.map((w, i) => (
-                <div key={i} className="rounded-lg border border-fl-gold/30 bg-fl-gold/8 px-4 py-2.5 text-sm text-fl-gold-bright">
-                  {w}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── Кнопка расчёта ──────────────────────────────────────────── */}
-          <button
-            onClick={handleCalculate}
-            className="w-full rounded-xl bg-fl-accent py-4 font-display text-base font-bold
-                       tracking-wide text-fl-on-accent hover:bg-fl-accent-hover
-                       active:scale-[0.99] transition-all duration-150"
-          >
-            Рассчитать налоги
-          </button>
-
-          {/* ── Результат ───────────────────────────────────────────────── */}
-          {result && (
-            <section className="space-y-4">
-
-              {/* KPI row */}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <KpiCard label="Выручка" value={formatNumber(result.totalRevenue)} />
-                <KpiCard
-                  label="Валовая маржа"
-                  value={formatPercent(gm!)}
-                  trend={gm! > 40 ? "up" : gm! > 20 ? "neutral" : "down"}
-                />
-                <KpiCard
-                  label="EBIT"
-                  value={formatNumber(result.ebit)}
-                  trend={result.ebit > 0 ? "up" : "down"}
-                />
-                <KpiCard
-                  label="Чистая прибыль"
-                  value={formatNumber(result.netProfit)}
-                  sub={formatPercent(result.profitability) + " маржа"}
-                  trend={result.netProfit > 0 ? "up" : "down"}
-                  highlight
-                />
-              </div>
-
-              {/* Детализация налогов */}
-              <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="label-caps">Налоговая нагрузка</p>
-                  <Badge
-                    label={result.regimeName}
-                    variant="neutral"
-                  />
-                </div>
-                {Object.entries(result.details).map(([label, amount]) => (
-                  <FieldRow
-                    key={label}
-                    label={label}
-                    value={`${formatNumber(amount)} сом`}
-                    sub={label.startsWith("НДС") ? "косвенный налог, не уменьшает прибыль" : undefined}
-                  />
-                ))}
-                {result.salaries > 0 && (
-                  <FieldRow
-                    label="Удерживается из зарплаты (не расход компании)"
-                    value={`${formatNumber(result.withheld.socialEmployee + result.withheld.pit)} сом`}
-                    sub={`взносы работника 10% — ${formatNumber(result.withheld.socialEmployee)}, подоходный налог 10% — ${formatNumber(result.withheld.pit)}`}
-                  />
-                )}
-                <div className="mt-3 flex items-center justify-between border-t border-fl-line pt-3">
-                  <span className="text-sm font-semibold text-fl-cream">Налоги из средств компании<Info k="calc:compareTax" /></span>
-                  <div className="flex items-center gap-2">
-                    <span className="num text-sm font-bold text-fl-cream">{formatNumber(result.totalDirect)} сом</span>
-                    <Badge
-                      label={`${formatPercent(tb!)} от выручки`}
-                      variant={tb! < 15 ? "ok" : tb! < 25 ? "warn" : "err"}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* ОПУ */}
-              <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-                <p className="label-caps mb-3">Отчёт о прибылях и убытках (сокр.)</p>
-                <FieldRow info="kpi:netRevenue" label="Выручка" value={`${formatNumber(result.totalRevenue)} сом`} />
-                <FieldRow info="calc:cogs" label="Себестоимость" value={`(${formatNumber(result.cogs)}) сом`} />
-                <FieldRow info="is:gross" label="Валовая прибыль" value={`${formatNumber(result.grossProfit)} сом`} sub={`маржа ${formatPercent(gm!)}`} />
-                <FieldRow info="calc:opex" label="Операционные расходы" value={`(${formatNumber(result.totalOpExp)}) сом`} />
-                <FieldRow info="exec:ebit" label="Операционная прибыль (EBIT)" value={`${formatNumber(result.ebit)} сом`} />
-                <FieldRow info="calc:otherNonOp" label="Внереализационные доходы и расходы (сальдо)" value={`${formatNumber(result.nonOpNet)} сом`} />
-                <FieldRow info="exec:ebt" label="Прибыль до налогообложения (EBT)" value={`${formatNumber(result.ebt)} сом`} />
-                <FieldRow info="tax:profit" label="Налог на прибыль / единый налог" value={`(${formatNumber(result.incomeTax)}) сом`} />
-                <div className="mt-2 flex items-center justify-between border-t-2 border-fl-gold/30 pt-3">
-                  <span className="font-display text-sm font-bold text-fl-cream">Чистая прибыль</span>
-                  <span className={`num text-lg font-bold ${result.netProfit >= 0 ? "text-fl-green" : "text-fl-red"}`}>
-                    {formatNumber(result.netProfit)} сом
-                  </span>
-                </div>
-              </div>
-
-              {/* CVP-метрики */}
-              <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-                <p className="label-caps mb-3">Безубыточность и запас прочности<Info k="exec:cvp" /></p>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <KpiCard info="exec:breakEven" label="Точка безубыточности" value={`${formatNumber(be!)} сом`} />
-                  <KpiCard
-                    label="Запас прочности"
-                    info="exec:safety"
-                    value={formatPercent(sm!)}
-                    trend={sm! > 30 ? "up" : sm! > 15 ? "neutral" : "down"}
-                  />
-                  <KpiCard info="exec:gross" label="Валовая маржа" value={formatPercent(gm!)} />
-                  <KpiCard info="tax:burden" label="Налоговая нагрузка" value={formatPercent(tb!)} />
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge
-                    label={sm! > 30 ? "Устойчив" : sm! > 15 ? "Требует внимания" : "Критический запас"}
-                    variant={smVariant}
-                  />
-                  <Badge
-                    label={result.netProfit > 0 ? "Прибыльный" : "Убыточный"}
-                    variant={profitVariant}
-                  />
-                </div>
-              </div>
-
-              {/* Сохранить */}
-              <button
-                onClick={saveReport}
-                disabled={saving || !companyId}
-                className="w-full rounded-xl border border-fl-gold/30 py-3.5 font-display text-sm
-                           font-semibold tracking-wide text-fl-gold-bright
-                           hover:bg-fl-gold/10 disabled:opacity-40 transition-colors"
-              >
-                {saving ? "Сохранение..." : "Сохранить отчёт"}
-              </button>
-
-              {/* История */}
-              {history.length > 0 && (
-                <div className="rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-                  <p className="label-caps mb-3">История отчётов</p>
-                  <div className="space-y-0">
-                    {history.map((r: any) => (
-                      <div key={r.id} className="flex items-center justify-between py-2.5 border-t border-fl-line first:border-0">
-                        <span className="text-sm text-fl-cream/60">{r.periodLabel}</span>
-                        <span className={`num text-sm font-medium ${r.netProfit >= 0 ? "text-fl-green" : "text-fl-red"}`}>
-                          {formatNumber(r.netProfit)} сом
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
+    <main className="mx-auto max-w-6xl px-4 pb-24 pt-5 sm:px-6 sm:pt-8">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="min-h-5 text-sm text-fl-cream/55">{dateLabel}</p>
+          <h1 className="font-display text-2xl font-bold text-fl-cream sm:text-3xl">Рабочий стол</h1>
         </div>
-      </main>
+        {loaded && (
+          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} aria-label="Компания"
+            className="max-w-full rounded-lg border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm font-medium text-fl-cream sm:max-w-xs">
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <option value={NEW_COMPANY}>+ Добавить компанию…</option>
+          </select>
+        )}
+      </header>
 
-      {/* Sticky bar — shows when result is available */}
-      <StickyBar
-        netProfit={result?.netProfit ?? 0}
-        profitability={result?.profitability ?? 0}
-        regimeName={result?.regimeName ?? ""}
-        visible={!!result}
-      />
-    </>
+      {isDemo && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-fl-gold/30 bg-fl-gold/10 px-4 py-3">
+          <p className="text-sm text-fl-cream/80">Это демо-компания: всё можно посмотреть, но не изменить. Чтобы вести свой учёт — создайте компанию.</p>
+          <a href="/companies" className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Создать свою компанию</a>
+        </div>
+      )}
+      {error && <p className="mt-4 rounded-lg border border-fl-red/40 bg-fl-red/10 px-4 py-3 text-sm text-fl-red">{error}</p>}
+
+      {showSteps && (
+        <section className={`${card} mt-5 p-4 sm:p-5`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-semibold text-fl-cream">Первые шаги</h2>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-fl-cream/55">{doneSteps} из {steps.length}</span>
+              <button type="button" onClick={() => { setHideSteps(true); try { localStorage.setItem(`finlite:steps-hidden:${companyId}`, "1"); } catch { /* */ } }} className="text-xs text-fl-cream/45 hover:text-fl-cream">скрыть</button>
+            </div>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-fl-surface-2"><div className="h-full rounded-full bg-fl-green transition-all" style={{ width: `${(doneSteps / steps.length) * 100}%` }} /></div>
+          <ol className="mt-4 grid gap-2 lg:grid-cols-2">
+            {steps.map((s, i) => <Step key={s.title} n={i + 1} {...s} />)}
+          </ol>
+        </section>
+      )}
+
+      <section className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {!k ? Array.from({ length: 4 }).map((_, i) => <div key={i} className={`${card} h-28 animate-pulse`} />) : (
+          <>
+            <Tile label="Деньги: касса и банк" value={money(k.cash)} note="на сегодня" href="/reports" />
+            <Tile label={`Выручка с начала ${year}`} value={money(k.revenue)} note={k.thisMonth ? `в этом месяце ${money(k.thisMonth.revenue)}` : "в этом месяце пока нет"} href="/reports">
+              {k.monthly.length > 1 && <Bars data={k.monthly} />}
+            </Tile>
+            <Tile label={`Прибыль с начала ${year}`} value={money(k.profit)} note={k.revenue ? `рентабельность ${Math.round((k.profit / k.revenue) * 100)} %` : undefined} href="/executive" />
+            <Tile label="Налоги по расчёту" value={money(k.taxes)} note="с начала года — суммы и сроки" href="/taxreports" />
+          </>
+        )}
+      </section>
+
+      <section className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {ACTIONS.map((a) => (
+          <a key={a.href} href={a.href} className={`${card} group flex flex-col gap-2 p-3 transition hover:border-fl-gold/50`}>
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-fl-gold/15 text-fl-gold">
+              <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={a.icon} /></svg>
+            </span>
+            <span className="text-sm font-semibold text-fl-cream">{a.label}</span>
+            <span className="hidden text-xs text-fl-cream/55 sm:block">{a.text}</span>
+          </a>
+        ))}
+      </section>
+
+      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className={`${card} p-4 sm:p-5`}>
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-lg font-semibold text-fl-cream">Последние операции</h2>
+            <a href="/ledger" className="text-sm text-fl-gold hover:underline">весь журнал</a>
+          </div>
+          {k && k.recent.length === 0 && (
+            <div className="mt-4 rounded-xl bg-fl-surface-2 p-4 text-sm text-fl-cream/70">
+              Операций в этом году ещё нет. <a href="/ledger?new=1" className="font-medium text-fl-gold hover:underline">Проведите первую</a> — например, «Продажа в долг» или «Оплата поставщику».
+            </div>
+          )}
+          <ul className="mt-3 divide-y divide-fl-line/70">
+            {k?.recent.map((e) => {
+              const sum = e.lines.reduce((t, l) => t + l.debit, 0);
+              return (
+                <li key={e.id} className="flex items-center gap-3 py-2.5">
+                  <span className="num w-12 shrink-0 text-xs text-fl-cream/50">{e.date.slice(8)}.{e.date.slice(5, 7)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-fl-cream">{e.description}</span>
+                    <span className="text-xs text-fl-cream/45">{SOURCE[e.source] ?? e.source}</span>
+                  </span>
+                  <span className="num shrink-0 text-sm font-medium text-fl-cream">{formatNumber(sum, 2)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
+        <div className="space-y-5">
+          <section className={`${card} p-4 sm:p-5`}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-lg font-semibold text-fl-cream">Ближайшие сроки</h2>
+              <a href="/calendar" className="text-sm text-fl-gold hover:underline">календарь</a>
+            </div>
+            {upcoming.length === 0 && <p className="mt-3 text-sm text-fl-cream/60">Ближайших сроков по этой компании нет.</p>}
+            <ul className="mt-3 space-y-2">
+              {upcoming.map((e) => (
+                <li key={e.key} className={`rounded-xl px-3 py-2 ${e.daysLeft < 0 ? "bg-fl-red/10" : e.daysLeft <= 5 ? "bg-fl-amber/10" : "bg-fl-surface-2/70"}`}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-semibold text-fl-cream">{e.form}</span>
+                    <span className={`text-xs font-medium ${e.daysLeft < 0 ? "text-fl-red" : e.daysLeft <= 5 ? "text-fl-amber" : "text-fl-cream/55"}`}>
+                      {e.daysLeft < 0 ? `просрочен ${-e.daysLeft} дн.` : e.daysLeft === 0 ? "сегодня" : `через ${e.daysLeft} дн.`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-fl-cream/60">{e.title}, {e.periodLabel}{e.amount ? ` · ${money(e.amount)} сом` : ""}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className={`${card} p-4 sm:p-5`}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-lg font-semibold text-fl-cream">Новости</h2>
+              <a href="/news" className="text-sm text-fl-gold hover:underline">все</a>
+            </div>
+            {news.length === 0 && <p className="mt-3 text-sm text-fl-cream/60">Лента обновится при первом открытии раздела «Новости и наука».</p>}
+            <ul className="mt-3 space-y-3">
+              {news.map((n) => (
+                <li key={n.id}>
+                  <a href={`/news/${n.id}`} className="group block">
+                    <span className="flex items-center gap-2 text-xs text-fl-cream/50"><KindBadge kind={n.kind} /> {n.sourceName || n.authorName} · {ago(n.docDate ?? n.createdAt)}</span>
+                    <span className="mt-1 line-clamp-2 block text-sm font-medium text-fl-cream group-hover:text-fl-gold">{n.title}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </div>
+
+      <p className="mt-8 text-center text-xs text-fl-cream/40">
+        Нажмите <kbd className="rounded border border-fl-line px-1">Ctrl</kbd> + <kbd className="rounded border border-fl-line px-1">K</kbd> или <kbd className="rounded border border-fl-line px-1">/</kbd>, чтобы быстро найти любой раздел.
+      </p>
+    </main>
   );
 }

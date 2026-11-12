@@ -10,6 +10,8 @@ import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { ThemeScript } from "@/components/ThemeScript";
 import { Footer } from "@/components/Footer";
+import { CommandPalette } from "@/components/CommandPalette";
+import { MobileTabs } from "@/components/MobileTabs";
 
 export const metadata: Metadata = {
   title: "FinLite KG",
@@ -26,6 +28,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Nav />
         {children}
         <Footer />
+        <MobileTabs />
+        <CommandPalette />
       </body>
     </html>
   );
