@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { HttpError, route } from "@/lib/auth/server";
-import { assertOwner, keyMatches, viewerIsAdmin } from "@/lib/community/owner";
+import { assertOwner, clean, keyMatches, viewerIsAdmin } from "@/lib/community/owner";
 import { readPost } from "@/lib/news/read";
+import { insightFor } from "@/lib/news/insight-server";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -16,8 +17,10 @@ export const GET = route(async (req: NextRequest, ctx: Ctx) => {
   const key = req.nextUrl.searchParams.get("key");
   const keys = (req.nextUrl.searchParams.get("keys") ?? "").split(",").filter(Boolean);
   const { editHash, comments, ...rest } = p;
+  const insight = await insightFor(p).catch(() => null); // разбор — дополнение: без него страница всё равно открывается
   return NextResponse.json({
     post: { ...rest, mine: keyMatches(editHash, key) },
+    insight,
     comments: comments.filter((c) => c.status === "published" || admin).map(({ editHash: h, ...c }) => ({ ...c, mine: keys.some((k) => keyMatches(h, k)) })),
     admin,
   });
@@ -34,12 +37,12 @@ export const PUT = route(async (req: NextRequest, ctx: Ctx) => {
   return NextResponse.json({ ok: true });
 });
 
-/** PATCH /api/news/[id] — administrator: { pinned?, status? } */
+/** PATCH /api/news/[id] — administrator: { pinned?, status?, analysis? } — «Разбор FinLite» можно дописать и к собранной новости */
 export const PATCH = route(async (req: NextRequest, ctx: Ctx) => {
   const { id } = await ctx.params;
   if (!(await viewerIsAdmin())) throw new HttpError(403, "Только администратор");
   const b = await req.json().catch(() => ({}));
-  await prisma.post.update({ where: { id }, data: { ...(typeof b.pinned === "boolean" ? { pinned: b.pinned } : {}), ...(b.status === "hidden" || b.status === "published" ? { status: b.status } : {}) } });
+  await prisma.post.update({ where: { id }, data: { ...(typeof b.pinned === "boolean" ? { pinned: b.pinned } : {}), ...(b.status === "hidden" || b.status === "published" ? { status: b.status } : {}), ...(typeof b.analysis === "string" ? { analysis: clean(b.analysis, 20000) || null } : {}) } });
   return NextResponse.json({ ok: true });
 });
 

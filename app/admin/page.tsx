@@ -234,11 +234,22 @@ function Companies() {
     if (!r.ok) { const b = await r.json().catch(() => ({})); alert(b.error ?? "Ошибка"); }
     load();
   }
+  async function claim() {
+    const r = await fetch("/api/admin/companies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ claimOrphans: true }) });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) alert(b.error ?? "Ошибка"); else alert(`Компаний передано вам: ${b.count}`);
+    load();
+  }
   if (!rows) return <p className="text-sm text-fl-cream/50">Загружаю…</p>;
   const orphans = rows.filter((c) => !c.owner).length;
   return (
     <div>
-      {orphans > 0 && <p className="mb-3 rounded-lg border-l-4 border-fl-amber bg-fl-amber/10 px-4 py-2.5 text-sm">Без владельца: {orphans}. Это компании, созданные до включения входа, — их видит только администратор. Назначьте владельца.</p>}
+      {orphans > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border-l-4 border-fl-amber bg-fl-amber/10 px-4 py-2.5 text-sm">
+          <p>Без владельца: {orphans}. Это компании, созданные до включения входа, — их видит только администратор.</p>
+          <button onClick={claim} className="rounded-md bg-fl-accent px-3 py-1.5 text-xs font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Сделать меня владельцем всех</button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead><tr className="text-left text-xs text-fl-cream/55"><th className="py-2 font-medium">Компания</th><th className="font-medium">Владелец</th><th className="text-right font-medium">Проводок</th><th className="text-right font-medium">Доступов</th><th className="font-medium" /></tr></thead>

@@ -13,6 +13,8 @@ export const CHART = {
   s1: "rgb(var(--c-s1))",
   s2: "rgb(var(--c-s2))",
   s3: "rgb(var(--c-s3))",
+  s4: "rgb(var(--c-s4))",
+  s5: "rgb(var(--c-s5))",
   s1Wash: "rgb(var(--c-s1) / 0.10)",
   pos: "rgb(var(--c-pos))",
   neg: "rgb(var(--c-neg))",
@@ -28,6 +30,8 @@ export const CHART = {
 };
 
 export const SERIES = [CHART.s1, CHART.s2, CHART.s3];
+/** Up to five lines (adjacent-pair validated); slots 4–5 sit below 3:1 on white, so such charts ship a table. */
+export const LINE_SERIES = [CHART.s1, CHART.s2, CHART.s3, CHART.s4, CHART.s5];
 
 /** 1 234 567 → «1,2 млн», 12 300 → «12 тыс.» for axis ticks. */
 export function compactSom(n: number): string {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchNbkr } from "@/lib/fx/store";
 import { runReminders } from "@/lib/calendar/server";
 import { collect } from "@/lib/news/collect";
+import { publishFxDaily } from "@/lib/news/fxpost";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
   }
   const result: Record<string, unknown> = {};
   try { result.fx = await fetchNbkr(); } catch (e) { result.fx = { error: e instanceof Error ? e.message : String(e) }; }
+  try { result.fxPost = await publishFxDaily(); } catch (e) { result.fxPost = { error: e instanceof Error ? e.message : String(e) }; }
   try { result.news = (await collect({ force: true })).map((r) => ({ source: r.source, added: r.added, ...(r.error ? { error: r.error } : {}) })); } catch (e) { result.news = { error: e instanceof Error ? e.message : String(e) }; }
   try { result.reminders = await runReminders(); } catch (e) { result.reminders = { error: e instanceof Error ? e.message : String(e) }; }
   return NextResponse.json({ ok: true, ...result });

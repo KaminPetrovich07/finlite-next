@@ -7,6 +7,7 @@ import { RichText } from "@/components/community/RichText";
 import { Editor, type PostRow } from "@/components/community/PostEditor";
 import { author, clientId, getKey, keysOf, rememberAuthor, saveKey } from "@/components/community/keys";
 import { ago, ExternalIcon, host, KindBadge, Thumb } from "@/components/community/NewsCard";
+import { ArticleBody, FxChart, NextSteps, type InsightData } from "@/components/community/Insight";
 
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 const card = "rounded-xl border border-fl-line bg-fl-charcoal-2 shadow-card";
@@ -16,7 +17,8 @@ interface Comment { id: string; parentId: string | null; authorName: string; aut
 
 export default function PostPage() {
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState<{ post: PostRow & { body: string; mine: boolean; imageUrl?: string | null; auto?: boolean }; comments: Comment[]; admin: boolean } | null>(null);
+  const [data, setData] = useState<{ post: PostRow & { body: string; analysis?: string | null; mine: boolean; imageUrl?: string | null; auto?: boolean }; comments: Comment[]; admin: boolean; insight: InsightData | null } | null>(null);
+  const [draft, setDraft] = useState<string | null>(null); // «Разбор FinLite» в редактировании (администратор)
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [reply, setReply] = useState<string | null>(null);
@@ -42,6 +44,10 @@ export default function PostPage() {
   async function admin(patch: Record<string, unknown>) {
     const r = await fetch(`/api/news/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
     if (r.ok) load(); else show((await r.json()).error, "error");
+  }
+  async function saveAnalysis() {
+    const r = await fetch(`/api/news/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ analysis: draft ?? "" }) });
+    if (r.ok) { setDraft(null); show("Разбор сохранён"); load(); } else show((await r.json()).error, "error");
   }
   async function delComment(c: Comment) {
     const r = await fetch(`/api/news/${id}/comments?commentId=${c.id}&key=${encodeURIComponent(getKey("comment", c.id) ?? "")}`, { method: "DELETE" });
@@ -88,21 +94,54 @@ export default function PostPage() {
             {p.status === "hidden" && <span className="text-fl-red">скрыто</span>}
           </div>
           <h1 className="mt-2 font-display text-2xl font-bold leading-tight text-fl-cream sm:text-3xl">{p.title}</h1>
-          {p.auto ? (
-            p.summary ? <p className="mt-3 text-base leading-relaxed text-fl-cream/80">{p.summary}</p> : null
-          ) : (
-            <>
-              {p.summary && <p className="mt-2 text-base text-fl-cream/75">{p.summary}</p>}
-              <p className="mt-3 text-xs text-fl-cream/50">{p.authorName}{p.authorOrg ? `, ${p.authorOrg}` : ""} · опубликовано {dt(p.createdAt)} · просмотров {p.views}</p>
-              <RichText text={p.body} className="mt-5 text-[15px] leading-relaxed text-fl-cream/90" />
-            </>
-          )}
+          {(() => {
+            const ins = data.insight;
+            const auto = ins?.autoFx ? ins.fx[ins.autoFx] : null;
+            const hasOwn = !!p.analysis || !!auto;
+            return (
+              <>
+                {hasOwn && (
+                  <section className="mt-5 rounded-2xl border border-fl-gold/30 bg-fl-gold/[0.04] p-4 sm:p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-fl-gold">Разбор FinLite</p>
+                    {p.analysis && <ArticleBody text={p.analysis} insight={ins} className="mt-2 text-[15px] leading-relaxed text-fl-cream/90" />}
+                    {auto && ins && (
+                      <div className="mt-3 space-y-3">
+                        {ins.story.map((t, i) => <p key={i} className="text-[15px] leading-relaxed text-fl-cream/90">{t}</p>)}
+                        <FxChart data={auto} />
+                      </div>
+                    )}
+                  </section>
+                )}
+                {p.auto ? (
+                  p.summary ? (
+                    <section className="mt-5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-fl-cream/45">Кратко из источника{p.sourceName ? ` · ${p.sourceName}` : ""}</p>
+                      <blockquote className="mt-1.5 border-l-2 border-fl-line pl-3 text-base leading-relaxed text-fl-cream/80">{p.summary}</blockquote>
+                    </section>
+                  ) : null
+                ) : (
+                  <>
+                    {p.summary && !p.body.includes(p.summary) && <p className="mt-3 text-base text-fl-cream/75">{p.summary}</p>}
+                    <p className="mt-3 text-xs text-fl-cream/50">{p.authorName}{p.authorOrg ? `, ${p.authorOrg}` : ""} · опубликовано {dt(p.createdAt)} · просмотров {p.views}</p>
+                    <ArticleBody text={p.body} insight={ins} className="mt-5 text-[15px] leading-relaxed text-fl-cream/90" />
+                  </>
+                )}
+                {ins && <div className="mt-6"><NextSteps insight={ins} /></div>}
+              </>
+            );
+          })()}
           {p.sourceUrl && (
-            <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex items-center gap-2 rounded-lg bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
-              {p.auto ? "Читать полностью" : "Открыть источник"} на {host(p.sourceUrl)} <ExternalIcon />
-            </a>
+            <section className="mt-6 flex flex-col gap-3 rounded-xl border border-fl-line p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-fl-cream/45">Первоисточник</p>
+                <p className="mt-0.5 truncate text-sm text-fl-cream/80">{p.sourceName || host(p.sourceUrl)} · {host(p.sourceUrl)}</p>
+                {p.auto && <p className="mt-1 text-xs text-fl-cream/45">Анонс собран автоматически. Полный текст и права на него — у источника.</p>}
+              </div>
+              <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-fl-line px-4 py-2.5 text-sm font-semibold text-fl-cream hover:border-fl-gold hover:text-fl-gold">
+                {p.auto ? "Читать полностью" : "Открыть"} на {host(p.sourceUrl)} <ExternalIcon />
+              </a>
+            </section>
           )}
-          {p.auto && <p className="mt-2 text-xs text-fl-cream/45">Анонс собран автоматически из ленты «{p.sourceName}». Полный текст и права на него — у источника.</p>}
           {p.tags.length > 0 && <p className="mt-4 flex flex-wrap gap-1.5 text-xs">{p.tags.map((t) => <a key={t} href={`/news?tag=${encodeURIComponent(t)}`} className="rounded-full bg-fl-gold/10 px-2 py-0.5 text-fl-gold hover:bg-fl-gold/20">#{t}</a>)}</p>}
           <div className="mt-5 flex flex-wrap items-center gap-2">
             <button type="button" onClick={useful} className="rounded-lg border border-fl-line px-3 py-1.5 text-sm text-fl-cream hover:border-fl-gold">Полезно · {p.useful}</button>
@@ -113,8 +152,38 @@ export default function PostPage() {
             {data.admin && <>
               <button type="button" onClick={() => admin({ pinned: !p.pinned })} className="rounded-lg px-3 py-1.5 text-sm text-fl-cream/60 hover:text-fl-gold">{p.pinned ? "открепить" : "закрепить"}</button>
               <button type="button" onClick={() => admin({ status: p.status === "hidden" ? "published" : "hidden" })} className="rounded-lg px-3 py-1.5 text-sm text-fl-cream/60 hover:text-fl-red">{p.status === "hidden" ? "показать" : "скрыть"}</button>
+              <button type="button" onClick={() => setDraft(p.analysis ?? "")} className="rounded-lg px-3 py-1.5 text-sm text-fl-cream/60 hover:text-fl-gold">{p.analysis ? "изменить разбор" : "написать разбор"}</button>
             </>}
           </div>
+          {draft !== null && (
+            <div className={`${card} mt-4 space-y-2 p-4`}>
+              <p className="text-sm font-semibold text-fl-cream">Разбор FinLite — показывается над текстом источника</p>
+              <textarea rows={10} value={draft} onChange={(e) => setDraft(e.target.value)} className={field}
+                placeholder={"Что случилось простыми словами, кого касается, с какой даты, что делать.\n\n{{курсы USD,EUR 90}}\n\nЧто это значит для бухгалтера…"} />
+              <p className="text-xs leading-relaxed text-fl-cream/50">
+                Графики вставляются строкой в двойных фигурных скобках: <code className="text-fl-cream/75">{"{{курсы USD,EUR,RUB 90}}"}</code> — курсы НБКР за 90 дней из базы;{" "}
+                <code className="text-fl-cream/75">{"{{график Инфляция, %: 2023=10,8; 2024=5; 2025=7,2}}"}</code> — столбцы;{" "}
+                <code className="text-fl-cream/75">{"{{линия Учётная ставка, %: янв=9; фев=9; мар=8,5}}"}</code> — линия. Числа берите из первоисточника и укажите его ниже по тексту.
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={saveAnalysis} className="rounded-lg bg-fl-accent px-3 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Сохранить</button>
+                <button type="button" onClick={() => setDraft(null)} className="rounded-lg px-3 py-2 text-sm text-fl-cream/60 hover:text-fl-cream">Отмена</button>
+              </div>
+            </div>
+          )}
+          {(data.insight?.related.length ?? 0) > 0 && (
+            <section className="mt-8">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wide text-fl-cream/45">По этой теме</h2>
+              <ul className="mt-2 divide-y divide-fl-line rounded-xl border border-fl-line">
+                {data.insight!.related.map((r) => (
+                  <li key={r.id}><a href={`/news/${r.id}`} className="block px-4 py-2.5 hover:bg-fl-gold/5">
+                    <span className="block text-sm text-fl-cream">{r.title}</span>
+                    <span className="text-xs text-fl-cream/45">{r.sourceName ? `${r.sourceName} · ` : ""}{ago(r.createdAt)}</span>
+                  </a></li>
+                ))}
+              </ul>
+            </section>
+          )}
         </article>
       )}
 

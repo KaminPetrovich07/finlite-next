@@ -53,7 +53,7 @@ export function Thumb({ src, label, kind, className = "" }: { src: string | null
 const ExternalIcon = () => <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5"><path fill="currentColor" d="M9 2h5v5h-1.5V4.56L7.53 9.53 6.47 8.47l4.97-4.97H9V2ZM3 4h4v1.5H3.5v7h7V9H12v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" /></svg>;
 const CommentIcon = () => <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5"><path fill="currentColor" d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6A1.5 1.5 0 0 1 12.5 11H6l-3.2 2.6A.5.5 0 0 1 2 13.2V3.5Zm1.5 0v8.15L5.47 10H12.5v-6.5h-9Z" /></svg>;
 
-type Post = PostRow & { imageUrl?: string | null; auto?: boolean };
+type Post = PostRow & { imageUrl?: string | null; auto?: boolean; analysis?: boolean };
 
 /** Карточка ленты: вся карточка ведёт к обсуждению, ссылка «источник» — на оригинал. */
 export function NewsCard({ p, lead, onTag }: { p: Post; lead?: boolean; onTag: (t: string) => void }) {
@@ -89,11 +89,11 @@ export function NewsCard({ p, lead, onTag }: { p: Post; lead?: boolean; onTag: (
         <div className="relative z-10 mt-auto flex items-center gap-3 pt-3 text-xs text-fl-cream/55">
           <a href={`/news/${p.id}#discussion`} className="inline-flex items-center gap-1 hover:text-fl-cream"><CommentIcon />{p.comments}</a>
           {p.useful > 0 && <span>полезно {p.useful}</span>}
-          {p.sourceUrl && (
-            <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-medium text-fl-gold hover:bg-fl-gold/10">
-              {host(p.sourceUrl) || "источник"} <ExternalIcon />
-            </a>
-          )}
+          {(p.analysis || p.authorName === "FinLite") && <span className="rounded-full bg-fl-gold/15 px-2 py-0.5 font-semibold text-fl-gold">разбор FinLite</span>}
+          {/* сначала наш разбор и графики, ссылка на первоисточник — на странице публикации */}
+          <a href={`/news/${p.id}`} className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-medium text-fl-gold hover:bg-fl-gold/10">
+            {p.sourceUrl ? "Разбор и источник" : "Читать"} →
+          </a>
         </div>
       </div>
     </article>

@@ -341,6 +341,7 @@ model Post {
   title      String
   summary    String?
   body       String
+  analysis   String?   // «Разбор FinLite»: свой текст редакции с графиками {{курсы …}}, {{график …}}
   sourceUrl  String?
   sourceName String?
   imageUrl   String?   // картинка-превью: из ленты источника или ссылка автора

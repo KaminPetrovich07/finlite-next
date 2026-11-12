@@ -16,6 +16,7 @@ export function readPost(raw: any) {
   return {
     kind, title, body, authorName,
     summary: clean(raw?.summary, 600) || null,
+    analysis: clean(raw?.analysis, 20000) || null,
     authorOrg: clean(raw?.authorOrg, 200) || null,
     sourceUrl: safeUrl(raw?.sourceUrl), sourceName: clean(raw?.sourceName, 200) || null,
     imageUrl: safeUrl(raw?.imageUrl),

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { overLimit, PROBE } from "@/lib/security/guard";
 
 // Runs before every page and API request.
 // 1) API: state-changing requests from another site are rejected (CSRF).
@@ -9,10 +10,17 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC = ["/login", "/register", "/reset", "/privacy", "/terms", "/pricing", "/tax-rules"];
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+const ipOf = (req: NextRequest) => req.headers.get("x-real-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "?";
+
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  if (PROBE.test(pathname)) return new NextResponse("Not found", { status: 404 });
 
   if (pathname.startsWith("/api/")) {
+    // крон и вебхук Telegram защищены секретом и не должны упираться в общий лимит
+    if (!pathname.startsWith("/api/cron/") && !pathname.startsWith("/api/telegram") && overLimit(ipOf(req), UNSAFE.has(req.method))) {
+      return NextResponse.json({ error: "Слишком много запросов — подождите минуту" }, { status: 429, headers: { "Retry-After": "60" } });
+    }
     if (UNSAFE.has(req.method)) {
       const origin = req.headers.get("origin");
       const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");

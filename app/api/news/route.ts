@@ -9,7 +9,7 @@ import { isPostKind } from "@/lib/news/types";
 import { readPost } from "@/lib/news/read";
 import { lastRun, REFRESH_EVERY_MIN } from "@/lib/news/collect";
 
-const LIST_SELECT = { id: true, kind: true, title: true, summary: true, sourceUrl: true, sourceName: true, imageUrl: true, auto: true, docDate: true, tags: true, authorName: true, authorOrg: true, pinned: true, views: true, useful: true, createdAt: true, status: true, _count: { select: { comments: true } } } as const;
+const LIST_SELECT = { id: true, kind: true, title: true, summary: true, sourceUrl: true, sourceName: true, imageUrl: true, auto: true, docDate: true, tags: true, authorName: true, authorOrg: true, analysis: true, pinned: true, views: true, useful: true, createdAt: true, status: true, _count: { select: { comments: true } } } as const;
 
 /** GET /api/news?kind=a,b&q=&tag=&take= — newest first, pinned on top */
 export const GET = route(async (req: NextRequest) => {
@@ -32,7 +32,7 @@ export const GET = route(async (req: NextRequest) => {
   const count = new Map<string, number>();
   for (const t of tags) for (const x of t.tags) count.set(x, (count.get(x) ?? 0) + 1);
   return NextResponse.json({
-    posts: rows.map(({ _count, ...p }) => ({ ...p, comments: _count.comments })),
+    posts: rows.map(({ _count, analysis, ...p }) => ({ ...p, analysis: !!analysis, comments: _count.comments })),
     tags: [...count].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([t, n]) => ({ tag: t, n })),
     admin,
     lastRunAt: last,
