@@ -329,3 +329,112 @@ model FxRate {
   @@unique([date, code])
   @@index([code, date])
 }
+
+// ── Новости и наука ───────────────────────────────────────────────────────
+// Публикации: новости, изменения законодательства, постановления, сборники,
+// статьи, исследования, мнения. Автор правит и удаляет свою публикацию по
+// секретному ключу, выданному при создании (в базе — только его SHA-256);
+// администратор — всегда.
+model Post {
+  id         String    @id @default(cuid())
+  kind       String    // news | law | regulation | collection | article | research | event | opinion
+  title      String
+  summary    String?
+  body       String
+  sourceUrl  String?
+  sourceName String?
+  docDate    DateTime? // дата документа или события
+  tags       String[]
+  authorName String
+  authorOrg  String?
+  userId     String?
+  editHash   String?
+  status     String    @default("published") // published | hidden
+  pinned     Boolean   @default(false)
+  views      Int       @default(0)
+  useful     Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  comments   Comment[]
+
+  @@index([status, createdAt])
+  @@index([kind, createdAt])
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId     String
+  parentId   String?
+  authorName String
+  authorOrg  String?
+  body       String
+  userId     String?
+  editHash   String?
+  status     String   @default("published")
+  createdAt  DateTime @default(now())
+
+  @@index([postId, createdAt])
+}
+
+/// «Полезно» — один голос с одного браузера (clientId из localStorage).
+model PostVote {
+  postId   String
+  clientId String
+  createdAt DateTime @default(now())
+
+  @@id([postId, clientId])
+}
+
+// ── Реестр специалистов ───────────────────────────────────────────────────
+// Только анкеты, которые человек заполнил и опубликовал сам, с согласием на
+// обработку персональных данных. Рейтинг — открытая формула (lib/talent).
+// Отзывы — только от работодателя с именем и организацией, без анонимных.
+model Specialist {
+  id              String    @id @default(cuid())
+  fullName        String
+  headline        String
+  city            String?
+  experienceYears Int       @default(0)
+  specializations String[]
+  skills          String[]
+  workplaces      Json      // [{ org, position, from, to, current, duties }]
+  education       Json      // [{ institution, degree, year }]
+  certificates    Json      // [{ name, issuer, year, number, url }]
+  about           String?
+  availability    String    @default("open") // open | part | busy
+  workFormat      String[]  // office | remote | outsource
+  rateFrom        Int?      // желаемая оплата, сом в месяц
+  phone           String?
+  email           String?
+  telegram        String?
+  consentAt       DateTime
+  consentText     String
+  published       Boolean   @default(true)
+  userId          String?
+  editHash        String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  reviews         Review[]
+
+  @@index([published, updatedAt])
+}
+
+model Review {
+  id           String     @id @default(cuid())
+  specialist   Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  specialistId String
+  authorName   String
+  authorOrg    String
+  authorRole   String?
+  relation     String     // employer | client | colleague
+  rating       Int
+  text         String
+  reply        String?    // ответ специалиста
+  userId       String?
+  editHash     String?
+  status       String     @default("published") // published | hidden
+  createdAt    DateTime   @default(now())
+
+  @@index([specialistId, createdAt])
+}
