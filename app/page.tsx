@@ -17,7 +17,7 @@ interface Stat {
   statements: {
     trialBalance: { rows: Array<{ account: string; openingDr: number; openingCr: number; closingDr: number; closingCr: number }> };
     incomeStatement: { netRevenue: number; netProfit: number };
-    taxes: { computed: { total: number } };
+    taxes: { computed: { total: number } | null }; // null — налоговый режим компании не выбран
     monthly: Monthly[];
     entryCount: number;
   };
@@ -45,7 +45,7 @@ function Tile({ label, value, note, href, children }: { label: string; value: st
   const body = (
     <>
       <p className="text-xs font-medium text-fl-cream/55">{label}</p>
-      <p className="num mt-1 font-display text-2xl font-bold tracking-tight text-fl-cream">{value}<span className="ml-1 text-sm font-medium text-fl-cream/45">сом</span></p>
+      <p className="num mt-1 font-display text-2xl font-bold tracking-tight text-fl-cream">{value}{value !== "—" && <span className="ml-1 text-sm font-medium text-fl-cream/45">сом</span>}</p>
       {note && <p className="mt-0.5 text-xs text-fl-cream/50">{note}</p>}
       {children}
     </>
@@ -118,7 +118,7 @@ export default function Home() {
       closed: entries.some((e) => e.source === "closing"),
     };
     const recent = [...entries].filter((e) => e.source !== "closing").sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
-    return { cash, revenue: s.incomeStatement.netRevenue, profit: s.incomeStatement.netProfit, taxes: s.taxes.computed.total, thisMonth, monthly: s.monthly, steps, recent, count: s.entryCount };
+    return { cash, revenue: s.incomeStatement.netRevenue, profit: s.incomeStatement.netProfit, taxes: s.taxes?.computed?.total ?? null, thisMonth, monthly: s.monthly, steps, recent, count: s.entryCount };
   }, [stat]);
 
   const upcoming = events.filter((e) => e.companyId === companyId && e.status !== "done" && e.daysLeft >= -60).sort((a, b) => a.deadline.localeCompare(b.deadline)).slice(0, 5);
@@ -182,7 +182,9 @@ export default function Home() {
               {k.monthly.length > 1 && <Bars data={k.monthly} />}
             </Tile>
             <Tile label={`Прибыль с начала ${year}`} value={money(k.profit)} note={k.revenue ? `рентабельность ${Math.round((k.profit / k.revenue) * 100)} %` : undefined} href="/executive" />
-            <Tile label="Налоги по расчёту" value={money(k.taxes)} note="с начала года — суммы и сроки" href="/taxreports" />
+            {k.taxes === null
+              ? <Tile label="Налоги по расчёту" value="—" note="выберите налоговый режим компании" href="/companies" />
+              : <Tile label="Налоги по расчёту" value={money(k.taxes)} note="с начала года — суммы и сроки" href="/taxreports" />}
           </>
         )}
       </section>
