@@ -459,3 +459,41 @@ model Review {
 
   @@index([specialistId, createdAt])
 }
+
+/// Правовая база: полный текст закона, кодекса, постановления и его прежние редакции.
+model LegalDoc {
+  id         String         @id @default(cuid())
+  slug       String         @unique
+  title      String
+  category   String
+  kind       String         @default("law") // code | law | decree | nbkr | standard | other
+  sourceUrl  String?        // официальная страница или файл — по нему проверяется новая редакция
+  requisites String?        // «от 18 января 2022 № 3» — из шапки документа
+  amendedAt  String?        // дата последних изменений из пометки «В редакции …»
+  text       String?
+  toc        Json?
+  chars      Int            @default(0)
+  hash       String?
+  origin     String?        // url | file
+  autoUpdate Boolean        @default(true)
+  loadedAt   DateTime?
+  checkedAt  DateTime?
+  changedAt  DateTime?
+  lastError  String?
+  createdAt  DateTime       @default(now())
+  editions   LegalEdition[]
+}
+
+model LegalEdition {
+  id        String   @id @default(cuid())
+  doc       LegalDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+  docId     String
+  hash      String
+  text      String
+  amendedAt String?
+  changes   Json?    // какие статьи изменены по сравнению с этой редакцией
+  createdAt DateTime @default(now())
+
+  @@index([docId, createdAt])
+}
+
