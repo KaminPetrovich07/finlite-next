@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { companyByLinkCode, loadCalendarSettings, saveCalendarSettings, companyEvents, bishkekToday } from "@/lib/calendar/server";
 import { reminderText } from "@/lib/calendar/events";
 import { sendTelegram } from "@/lib/notify/send";
+import { alertSettings, saveAlertSettings } from "@/lib/monitor/errors";
 
 /**
  * POST /api/telegram/webhook — updates from the bot. Telegram sends the secret
@@ -23,8 +24,20 @@ export async function POST(req: NextRequest) {
   try {
     const subscribed = await prisma.companyRecord.findMany({ where: { kind: "calendar" }, select: { companyId: true, data: true, company: { select: { name: true } } } });
     const mine = subscribed.filter((r) => ((r.data as any)?.chats ?? []).some((c: any) => c.id === chatId));
+    const arg = text.split(/\s+/)[1] ?? "";
+    if (text.startsWith("/start") && arg.startsWith("alerts_")) {
+      // администратор подключает чат к оповещениям об ошибках сайта
+      const s = await alertSettings();
+      if (s.code && arg === `alerts_${s.code}`) {
+        if (!s.chats.some((c) => c.id === chatId)) s.chats.push({ id: chatId, name: who, at: new Date().toISOString() });
+        s.code = undefined; // ссылка одноразовая
+        await saveAlertSettings(s);
+        await sendTelegram(chatId, "Готово: сюда будут приходить сообщения об ошибках на сайте FinLite KG.");
+      } else await sendTelegram(chatId, "Ссылка устарела. Получите новую в Админке → Ошибки.");
+      return NextResponse.json({ ok: true });
+    }
     if (text.startsWith("/start")) {
-      const code = text.split(/\s+/)[1];
+      const code = arg;
       const companyId = code ? await companyByLinkCode(code) : null;
       if (!companyId) {
         await sendTelegram(chatId, "Откройте ссылку на бота из раздела «Налоговый календарь» в FinLite KG — так бот узнает, о какой компании напоминать.");

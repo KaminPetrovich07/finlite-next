@@ -1,6 +1,7 @@
 // Access checks shared by the API routes. Every company belongs to a user;
 // it is visible to its owner, to users it is shared with ("view" / "edit")
 // and to the administrator. The built-in demo company is read-only for all.
+import { recordError } from "@/lib/monitor/errors";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEMO_COMPANY } from "@/lib/ledger/demo";
@@ -90,6 +91,8 @@ export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>
     } catch (e) {
       if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
       console.error(e);
+      const req = args[0] instanceof Request ? args[0] : null;
+      await recordError({ source: "api", message: e instanceof Error ? `${e.name}: ${e.message}` : String(e), stack: e instanceof Error ? e.stack : null, url: req ? `${req.method} ${new URL(req.url).pathname}` : null });
       const db = e instanceof Error && /prisma|database|connect|ECONN/i.test(e.message + e.constructor.name);
       return NextResponse.json({ error: db ? "База данных недоступна" : "Внутренняя ошибка сервера" }, { status: db ? 503 : 500 });
     }

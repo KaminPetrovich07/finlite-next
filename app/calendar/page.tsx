@@ -75,7 +75,7 @@ export default function CalendarPage() {
 
       {data && data.problems.length > 0 && (
         <div className="mb-4 rounded-xl border border-fl-amber/40 bg-fl-amber/10 px-4 py-3 text-sm text-fl-cream/85">
-          {data.problems.map((p) => <p key={p.company}><b>{p.company}:</b> {p.problem}</p>)}
+          {data.problems.map((p, i) => <p key={`${i}-${p.company}`}><b>{p.company}:</b> {p.problem}</p>)}
         </div>
       )}
 

@@ -1,0 +1,59 @@
+# Проверка каждого push и pull request: типы, тесты, сборка и «дымовой» обход страниц в браузере
+# на демо-компании. Если что-то упало — коммит на GitHub помечается красным крестиком,
+# а Vercel (при включённых Deployment Checks) не выпускает такую версию на основной адрес.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: finlite
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/finlite
+      FL_TEST_PG_URL: postgresql://postgres:postgres@localhost:5432/finlite
+      CRON_SECRET: ci-only-secret
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Схема базы
+        run: npx prisma db push --skip-generate
+      - name: Типы
+        run: npx prisma generate && npx tsc --noEmit
+      - name: Тесты
+        run: npm test
+      - name: Сборка
+        run: npx next build
+      - name: Браузер для проверки страниц
+        run: npm i --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - name: Обход страниц
+        run: |
+          npx next start -p 3000 > next.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:3000/api/health && break; sleep 2; done
+          node scripts/smoke.mjs http://localhost:3000
+      - name: Журнал сервера при ошибке
+        if: failure()
+        run: tail -n 200 next.log || true

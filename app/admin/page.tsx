@@ -7,8 +7,8 @@ import { PLANS, PLAN_ORDER, planKey } from "@/lib/plans";
 import { reviewOverdue, TAX_RULES } from "@/lib/tax-rules";
 import { card, field, ghostBtn } from "@/components/auth/ui";
 
-type Tab = "metrics" | "users" | "companies" | "feedback";
-const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["users", "Пользователи"], ["companies", "Компании"], ["feedback", "Обратная связь"]];
+type Tab = "metrics" | "users" | "companies" | "feedback" | "errors";
+const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["users", "Пользователи"], ["companies", "Компании"], ["feedback", "Обратная связь"], ["errors", "Ошибки"]];
 const pct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)} %`);
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString("ru-RU") : "—");
 
@@ -42,6 +42,7 @@ export default function AdminPage() {
         {tab === "users" && <Users />}
         {tab === "companies" && <Companies />}
         {tab === "feedback" && <Feedback />}
+        {tab === "errors" && <Errors />}
       </div>
     </main>
   );
@@ -301,5 +302,65 @@ function Feedback() {
         </li>
       ))}
     </ul>
+  );
+}
+
+interface ErrRow { id: string; source: string; message: string; stack: string | null; url: string | null; digest: string | null; userAgent: string | null; count: number; firstAt: string; lastAt: string; resolved: boolean }
+
+/** Журнал ошибок сайта и подключение оповещений в Telegram. */
+function Errors() {
+  const [data, setData] = useState<{ errors: ErrRow[]; open: number; alerts: { chats: Array<{ id: number; name: string }>; botReady: boolean; link: string | null } } | null>(null);
+  const [all, setAll] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+  const load = useCallback(() => { fetch(`/api/admin/errors${all ? "?all=1" : ""}`).then((r) => r.json()).then(setData).catch(() => undefined); }, [all]);
+  useEffect(() => { load(); }, [load]);
+  const act = async (body: object) => { await fetch("/api/admin/errors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); load(); };
+  if (!data) return <p className="text-sm text-fl-cream/50">Загружаю…</p>;
+  const where: Record<string, string> = { client: "браузер", server: "сервер", api: "API" };
+  const dt = (d: string) => new Date(d).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="space-y-4">
+      <section className={`${card} p-4`}>
+        <h2 className="font-semibold text-fl-cream">Оповещения в Telegram</h2>
+        {!data.alerts.botReady ? (
+          <p className="mt-1 text-sm text-fl-cream/65">Бот не настроен: добавьте в Vercel переменные <code>TELEGRAM_BOT_TOKEN</code> и <code>TELEGRAM_BOT_USERNAME</code>. Ошибки при этом всё равно записываются в журнал ниже.</p>
+        ) : (
+          <div className="mt-1 space-y-2 text-sm text-fl-cream/75">
+            <p>Новая ошибка, а также 10-е, 100-е и 1000-е её повторение приходят сообщением в подключённые чаты.</p>
+            {data.alerts.chats.length > 0 && <ul className="flex flex-wrap gap-2">{data.alerts.chats.map((c) => (
+              <li key={c.id} className="rounded-full border border-fl-line px-3 py-1">{c.name} <button className="ml-1 text-fl-cream/50 hover:text-fl-red" onClick={() => act({ removeChat: c.id })} aria-label={`Отключить ${c.name}`}>×</button></li>
+            ))}</ul>}
+            {data.alerts.link
+              ? <p>Откройте ссылку в Telegram и нажмите «Start»: <a className="text-fl-gold underline" href={data.alerts.link} target="_blank" rel="noopener noreferrer">{data.alerts.link}</a> (одноразовая)</p>
+              : <button className={ghostBtn} onClick={() => act({ link: true })}>{data.alerts.chats.length ? "Подключить ещё чат" : "Подключить Telegram"}</button>}
+          </div>
+        )}
+      </section>
+      <section className={`${card} p-4`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold text-fl-cream">Ошибки {data.open > 0 ? <span className="ml-1 rounded-full bg-fl-red/15 px-2 py-0.5 text-sm text-fl-red">{data.open} открыто</span> : <span className="ml-1 text-sm font-normal text-fl-green">открытых нет</span>}</h2>
+          <div className="flex gap-2 text-sm">
+            <label className="flex items-center gap-1.5 text-fl-cream/70"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> показать исправленные</label>
+            {data.open > 0 && <button className={ghostBtn} onClick={() => act({ resolveAll: true })}>Все исправлены</button>}
+          </div>
+        </div>
+        {data.errors.length === 0 ? <p className="mt-3 text-sm text-fl-cream/55">Пусто.</p> : (
+          <ul className="mt-3 divide-y divide-fl-line">
+            {data.errors.map((e) => (
+              <li key={e.id} className="py-2.5">
+                <div className="flex flex-wrap items-start gap-2">
+                  <button className="min-w-0 flex-1 text-left" onClick={() => setOpen(open === e.id ? null : e.id)}>
+                    <span className={`block text-sm ${e.resolved ? "text-fl-cream/45 line-through" : "text-fl-cream"}`}>{e.message}</span>
+                    <span className="text-xs text-fl-cream/50">{where[e.source] ?? e.source} · {e.url ?? "—"} · {e.count} раз · последний {dt(e.lastAt)}, первый {dt(e.firstAt)}</span>
+                  </button>
+                  {!e.resolved && <button className={ghostBtn} onClick={() => act({ resolve: e.id })}>Исправлено</button>}
+                </div>
+                {open === e.id && <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-fl-surface-2 p-2 text-[11px] text-fl-cream/70">{[e.stack, e.digest && `digest: ${e.digest}`, e.userAgent].filter(Boolean).join("\n\n") || "Стека нет"}</pre>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
   );
 }

@@ -498,3 +498,29 @@ model LegalEdition {
   @@index([docId, createdAt])
 }
 
+
+/// Ошибки сайта: одинаковые сворачиваются в одну строку по отпечатку, count — сколько раз повторилась.
+model ErrorEvent {
+  id          String   @id @default(cuid())
+  fingerprint String   @unique
+  source      String   // client | server | api
+  message     String
+  stack       String?
+  url         String?
+  digest      String?
+  userAgent   String?
+  userId      String?
+  count       Int      @default(1)
+  firstAt     DateTime @default(now())
+  lastAt      DateTime @default(now())
+  resolved    Boolean  @default(false)
+
+  @@index([lastAt])
+}
+
+/// Настройки сайта целиком (не компании): например, чаты Telegram для оповещений об ошибках.
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

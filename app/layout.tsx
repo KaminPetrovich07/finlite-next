@@ -1,3 +1,4 @@
+import { ErrorReporter } from "@/components/ErrorReporter";
 import type { Metadata } from "next";
 import "@fontsource/manrope/500.css";
 import "@fontsource/manrope/600.css";
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Footer />
         <MobileTabs />
         <CommandPalette />
+        <ErrorReporter />
       </body>
     </html>
   );

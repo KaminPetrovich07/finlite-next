@@ -53,6 +53,22 @@ export default function CompaniesPage() {
     if (sp.get("welcome")) setWelcome(true);
   }, [load]);
 
+  const [importing, setImporting] = useState(false);
+  /** Загрузить компанию из файла резервной копии; обычный JSON сжимаем в браузере, чтобы пролез в лимит запроса. */
+  async function restore(file: File) {
+    setImporting(true);
+    try {
+      const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+      const gz = head[0] === 0x1f && head[1] === 0x8b;
+      const body = gz || typeof CompressionStream === "undefined" ? file : await new Response(file.stream().pipeThrough(new CompressionStream("gzip"))).blob();
+      const res = await fetch("/api/companies/import", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
+      const b = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.show(b.error ?? "Не удалось загрузить копию", "error"); return; }
+      toast.show(`Загружено: «${b.name}», ${b.stats.entries} проводок`);
+      load();
+    } finally { setImporting(false); }
+  }
+
   async function demoCopy() {
     const res = await fetch("/api/demo", { method: "POST" });
     const body = await res.json().catch(() => ({}));
@@ -74,6 +90,11 @@ export default function CompaniesPage() {
             <button onClick={demoCopy} className="rounded-lg border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold/40">
               Копия демо-компании
             </button>
+            <label className={`cursor-pointer rounded-lg border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold/40 ${importing ? "pointer-events-none opacity-60" : ""}`} title="Файл .finlite.json.gz, скачанный кнопкой «Резервная копия»">
+              {importing ? "Загружаю…" : "Загрузить из копии"}
+              <input type="file" accept=".gz,.json,application/gzip,application/json" className="sr-only" disabled={importing}
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) restore(f); }} />
+            </label>
             <button onClick={() => setCreating(true)} className="rounded-lg bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent shadow-card hover:bg-fl-accent-hover">
               + Новая компания
             </button>
@@ -215,6 +236,7 @@ function CompanyCard({ c, onChanged, toast }: {
         <div className="flex flex-wrap gap-2">
           <button onClick={() => open(c.id, "/ledger")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">Журнал</button>
           <button onClick={() => open(c.id, "/reports")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">Отчётность</button>
+          <a href={`/api/companies/${c.id}/backup`} download title="Все проводки, выписки, справочники и настройки компании одним файлом" className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Резервная копия</a>
           {c.access === "edit" && <button onClick={() => setEditing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Настройки</button>}
           {AUTH_ON && c.manage && <button onClick={() => setSharing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Доступ</button>}
           {c.manage && <button onClick={() => setDeleting((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-red/80 hover:text-fl-red">Удалить</button>}
