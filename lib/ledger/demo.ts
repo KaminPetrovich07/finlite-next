@@ -126,9 +126,18 @@ function materialLines(side: "dr" | "cr", total: number, boost = 1, ldspPrice = 
 const P = (l: LedgerLine, k: keyof typeof DEMO_PARTIES) => pt(l, DEMO_PARTIES[k][0], DEMO_PARTIES[k][1] || undefined);
 
 let seq = 0;
+/** Банк в выходные платежи не проводит: такие операции демо-компании сдвигаем на ближайший рабочий день того же месяца. */
+function bankDay(date: string, lines: LedgerLine[]): string {
+  if (!lines.some((l) => /^12\d\d/.test(l.account))) return date;
+  const d = new Date(`${date}T00:00:00Z`), wd = d.getUTCDay();
+  if (wd !== 0 && wd !== 6) return date;
+  const back = new Date(d.getTime() - (wd === 6 ? 1 : 2) * 864e5);
+  const fwd = new Date(d.getTime() + (wd === 6 ? 2 : 1) * 864e5);
+  return (back.getUTCMonth() === d.getUTCMonth() ? back : fwd).toISOString().slice(0, 10);
+}
 function entry(date: string, description: string, lines: LedgerLine[], source: LedgerEntry["source"] = "demo"): LedgerEntry {
   seq += 1;
-  return { id: `demo-${String(seq).padStart(3, "0")}`, date, description, source, lines };
+  return { id: `demo-${String(seq).padStart(3, "0")}`, date: source === "opening" ? date : bankDay(date, lines), description, source, lines };
 }
 
 interface MonthPlan {

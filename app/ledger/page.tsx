@@ -33,11 +33,28 @@ export default function LedgerPage() {
     setPeriodState((cur) => (cur && cur.from === p.from && cur.to === p.to ? cur : p));
   }, []);
 
+  // /ledger?entry=…&date=… — открыть месяц операции и подсветить её (из «Проверки журнала»)
+  const [focus, setFocus] = useState<string | null>(null);
   useEffect(() => {
     if (!loaded || period) return;
-    setPeriod(company?.demo ? DEMO_PERIOD : currentMonth());
+    const sp = new URLSearchParams(window.location.search);
+    const date = sp.get("date"), entry = sp.get("entry");
+    if (entry && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const [y, m] = date.split("-").map(Number);
+      setPeriod({ from: `${date.slice(0, 7)}-01`, to: new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10) });
+      setFocus(entry);
+    } else setPeriod(company?.demo ? DEMO_PERIOD : currentMonth());
     setPickerKey((k) => k + 1);
   }, [loaded, company, period, setPeriod]);
+  useEffect(() => {
+    if (!focus || !entries.length) return;
+    const el = document.getElementById(`e-${focus}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-fl-gold");
+    const t = setTimeout(() => { el.classList.remove("ring-2", "ring-fl-gold"); setFocus(null); }, 4000);
+    return () => clearTimeout(t);
+  }, [focus, entries]);
 
   const isDemo = !!company?.demo;
 

@@ -11,6 +11,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { buildStatements, type Check } from "@/lib/ledger/engine";
 import { stockByItem, qtyText } from "@/lib/ledger/stock";
+import { findAnomalies } from "@/lib/audit/anomalies";
 import type { LedgerEntry, LedgerLine, Period } from "@/lib/ledger/types";
 import type { RegimeKey } from "@/lib/tax-engine";
 import type { People } from "@/lib/primary/build";
@@ -77,6 +78,10 @@ export function closeChecklist(x: CloseInput): CloseResult {
   add(neg
     ? { id: "cash", group: "Данные", title: "Остатки денег не отрицательные", status: "error", detail: neg.detail, action: { kind: "link", label: "Открыть журнал", href: "/ledger" } }
     : { id: "cash", group: "Данные", title: "Остатки денег не отрицательные", status: "ok", detail: "Касса и счета в банке — с неотрицательным остатком." });
+  const anomalies = findAnomalies(entries, from, to).findings.filter((f) => f.severity === "high");
+  add(anomalies.length
+    ? { id: "anomalies", group: "Данные", title: "Нет возможных дублей", status: "warn", detail: `Похоже на повторно введённые операции: ${anomalies.length}. ${anomalies[0].detail}`, action: { kind: "link", label: "Проверка журнала", href: `/audit?from=${from}&to=${to}` } }
+    : { id: "anomalies", group: "Данные", title: "Нет возможных дублей", status: "ok", detail: "Одинаковых операций с теми же счетами и контрагентом в пределах трёх дней нет." });
   const stock = stockByItem(entries, to, (a) => STOCK.test(a));
   const negAmt = stock.filter((b) => b.amount < -0.004);
   const negQty = stock.filter((b) => b.item && b.qty < -0.0004);

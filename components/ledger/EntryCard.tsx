@@ -29,7 +29,7 @@ export function EntryCard({ entry, highlight = [], onDelete }: Props) {
   const [view] = useAccountView();
   const ifrs = view === "ifrs";
   return (
-    <article className="rounded-lg border border-fl-line bg-fl-charcoal/60 p-3.5">
+    <article id={`e-${entry.id}`} className="scroll-mt-24 rounded-lg border border-fl-line bg-fl-charcoal/60 p-3.5 transition-shadow">
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         <div className="min-w-0">
           <p className="text-sm text-fl-cream">{entry.description}</p>
