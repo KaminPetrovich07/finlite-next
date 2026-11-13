@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/auth/server";
 
-export type RecordKind = "policy" | "counterparty" | "costing" | "product" | "import1c" | "taxreports" | "asset" | "assetTax" | "stock" | "budget" | "calendar" | "industry" | "esf";
+export type RecordKind = "policy" | "counterparty" | "costing" | "product" | "import1c" | "taxreports" | "asset" | "assetTax" | "stock" | "budget" | "calendar" | "industry" | "esf" | "employee" | "payrun" | "hr";
 
 /** The table is new: tell the user how to create it instead of a bare 500. */
 function rethrow(e: unknown): never {
