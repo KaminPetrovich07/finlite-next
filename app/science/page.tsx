@@ -5,7 +5,8 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CHART } from "@/lib/chart-theme";
-import type { ScienceSnapshot, ScopeSnapshot, Trend, Work } from "@/lib/science/openalex";
+import { workLinks, type ScienceSnapshot, type ScopeSnapshot, type Trend, type Work } from "@/lib/science/openalex";
+import { externalSearches, type SearchResult } from "@/lib/science/search";
 
 const card = "rounded-2xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5";
 const n0 = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -66,6 +67,8 @@ export default function SciencePage() {
               ))}
             </div>
             <p className="-mt-2 text-xs text-fl-cream/50">{scope.note}</p>
+
+            <Search />
 
             <Overview s={scope} />
 
@@ -141,9 +144,10 @@ function Overview({ s }: { s: ScopeSnapshot }) {
   const growth = prev ? Math.round(((last - prev) / prev) * 1000) / 10 : null;
   return (
     <section className={card}>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div><p className="text-xs text-fl-cream/55">Всего работ в области</p><p className="num font-display text-2xl font-semibold text-fl-cream">{n0(s.totalWorks)}</p></div>
         <div><p className="text-xs text-fl-cream/55">Опубликовано в {s.windows.after[1]}</p><p className="num font-display text-2xl font-semibold text-fl-cream">{n0(last)}</p></div>
+        <div><p className="text-xs text-fl-cream/55">В открытом доступе</p><p className="num font-display text-2xl font-semibold text-fl-cream">{s.oaShare === null || s.oaShare === undefined ? "—" : `${s.oaShare.toLocaleString("ru-RU")} %`}</p><p className="text-[11px] text-fl-cream/45">работ за {s.windows.recent[0]}–{s.windows.recent[1]}</p></div>
         <div><p className="text-xs text-fl-cream/55">К {s.windows.after[1] - 1} году</p><p className={`num font-display text-2xl font-semibold ${growth === null ? "text-fl-cream" : growth >= 0 ? "text-fl-green" : "text-fl-red"}`}>{growth === null ? "—" : `${growth > 0 ? "+" : ""}${growth.toLocaleString("ru-RU")} %`}</p></div>
       </div>
       {s.byYear.length > 1 && (
@@ -190,25 +194,121 @@ function TrendList({ title, items }: { title: string; items: Trend[] }) {
 
 function WorkList({ works }: { works: Work[] }) {
   if (!works.length) return <p className="mt-3 text-sm text-fl-cream/50">Нет данных.</p>;
+  return <ol className="mt-3 divide-y divide-fl-line/60">{works.map((w, i) => <WorkItem key={w.id} w={w} n={i + 1} />)}</ol>;
+}
+
+const LICENSE: Record<string, string> = { "cc-by": "CC BY — можно читать, копировать и цитировать со ссылкой", "cc-by-sa": "CC BY-SA", "cc-by-nc": "CC BY-NC — некоммерческое использование", "cc-by-nc-nd": "CC BY-NC-ND", "cc-by-nd": "CC BY-ND", "cc0": "CC0 — общественное достояние", "public-domain": "общественное достояние" };
+const VERSION: Record<string, string> = { publishedVersion: "версия как в журнале", acceptedVersion: "принятая рукопись (текст как в журнале, без вёрстки)", submittedVersion: "препринт — до рецензирования" };
+
+function WorkItem({ w, n }: { w: Work; n: number }) {
+  const [open, setOpen] = useState(false);
+  const links = workLinks(w);
+  const free = links.find((l) => l.kind === "pdf" || l.kind === "oa");
   return (
-    <ol className="mt-3 divide-y divide-fl-line/60">
-      {works.map((w, i) => (
-        <li key={w.id} className="flex gap-3 py-2.5">
-          <span className="num w-6 shrink-0 pt-0.5 text-right text-sm text-fl-cream/40">{i + 1}</span>
-          <div className="min-w-0 flex-1">
-            {w.url ? <a href={w.url} target="_blank" rel="noreferrer" className="text-sm font-medium text-fl-cream hover:text-fl-gold">{w.title}</a> : <span className="text-sm font-medium text-fl-cream">{w.title}</span>}
-            {w.titleRu && w.titleRu !== w.title && <p className="text-[13px] text-fl-cream/60">{w.titleRu}</p>}
-            <p className="mt-0.5 text-xs text-fl-cream/50">
-              {w.authors.join(", ")}{w.moreAuthors ? ` и ещё ${w.moreAuthors}` : ""}{w.year ? ` · ${w.year}` : ""}{w.source ? ` · ${w.source}` : ""} · {TYPE[w.type] ?? w.type}
-              {w.oa && <span className="ml-1.5 text-fl-green">· открытый доступ</span>}
-            </p>
+    <li className="flex gap-3 py-2.5">
+      <span className="num w-6 shrink-0 pt-0.5 text-right text-sm text-fl-cream/40">{n}</span>
+      <div className="min-w-0 flex-1">
+        <button onClick={() => setOpen((v) => !v)} className="text-left text-sm font-medium text-fl-cream hover:text-fl-gold">{w.title}</button>
+        {w.titleRu && w.titleRu !== w.title && <p className="text-[13px] text-fl-cream/60">{w.titleRu}</p>}
+        <p className="mt-0.5 text-xs text-fl-cream/50">
+          {w.authors.join(", ")}{w.moreAuthors ? ` и ещё ${w.moreAuthors}` : ""}{w.year ? ` · ${w.year}` : ""}{w.source ? ` · ${w.source}` : ""} · {TYPE[w.type] ?? w.type}
+        </p>
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+          {free ? <a href={free.href} target="_blank" rel="noreferrer" className="font-semibold text-fl-green hover:underline">{free.label} ↗</a> : <span className="text-fl-cream/40">полный текст — у издателя</span>}
+          <button onClick={() => setOpen((v) => !v)} className="text-fl-gold hover:underline">{open ? "Скрыть" : w.abstract ? "Аннотация и ссылки" : "Ссылки"}</button>
+        </div>
+        {open && (
+          <div className="mt-2 rounded-lg bg-fl-surface-2 p-3 text-sm">
+            {w.abstract ? <p className="whitespace-pre-line leading-relaxed text-fl-cream/85">{w.abstract}</p> : <p className="text-fl-cream/55">Аннотация в открытых данных не опубликована — она есть на странице издателя.</p>}
+            {free && (
+              <p className="mt-2 text-xs text-fl-cream/60">
+                Бесплатная версия{w.oaVersion && VERSION[w.oaVersion] ? ` — ${VERSION[w.oaVersion]}` : ""}{w.license ? `; лицензия ${LICENSE[w.license] ?? w.license.toUpperCase()}` : ""}.
+                {" "}<a href={`https://translate.google.com/translate?sl=auto&tl=ru&u=${encodeURIComponent(free.href)}`} target="_blank" rel="noreferrer" className="text-fl-gold hover:underline">Открыть в переводе на русский ↗</a>
+              </p>
+            )}
+            <div className="mt-2 flex flex-wrap gap-2">
+              {links.map((l) => (
+                <a key={l.kind} href={l.href} target="_blank" rel="noreferrer" className={`rounded-md border px-2.5 py-1 text-xs ${l.kind === "pdf" || l.kind === "oa" ? "border-fl-green/50 text-fl-green" : "border-fl-line text-fl-cream/75 hover:border-fl-gold"}`}>{l.label} ↗</a>
+              ))}
+            </div>
+            {links.some((l) => l.kind === "scopus") && <p className="mt-1.5 text-[11px] text-fl-cream/45">Scopus откроется, если у вас есть доступ (обычно через вуз или библиотеку).</p>}
           </div>
-          <div className="shrink-0 text-right">
-            <p className="num text-sm font-semibold text-fl-cream">{n0(w.cited)}</p>
-            <p className="text-[11px] text-fl-cream/45">цитирований</p>
+        )}
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="num text-sm font-semibold text-fl-cream">{n0(w.cited)}</p>
+        <p className="text-[11px] text-fl-cream/45">цитирований</p>
+      </div>
+    </li>
+  );
+}
+
+/** Поиск по мировой литературе: OpenAlex + ссылки на русскоязычные и открытые библиотеки. */
+function Search() {
+  const [q, setQ] = useState("");
+  const [scope, setScope] = useState<"both" | "accounting" | "finance" | "all">("both");
+  const [oa, setOa] = useState(true);
+  const [sort, setSort] = useState<"relevance" | "cited" | "new">("relevance");
+  const [from, setFrom] = useState("");
+  const [page, setPage] = useState(1);
+  const [res, setRes] = useState<(SearchResult & { query: string }) | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [asked, setAsked] = useState("");
+
+  async function run(p = 1) {
+    const query = q.trim();
+    if (query.length < 2) return;
+    setBusy(true); setErr(null); setAsked(query);
+    const params = new URLSearchParams({ q: query, scope, oa: oa ? "1" : "0", sort, page: String(p), ...(from ? { from } : {}) });
+    try {
+      const r = await fetch(`/api/science/search?${params}`);
+      const b = await r.json();
+      if (!r.ok) throw new Error(b.error ?? "Поиск не удался");
+      setRes({ ...b, query }); setPage(p);
+    } catch (e: any) { setErr(e.message); setRes(null); } finally { setBusy(false); }
+  }
+  const pages = res ? Math.min(10, Math.ceil(res.total / res.perPage)) : 0;
+  const sel = "rounded-md border border-fl-line bg-fl-charcoal-2 px-2 py-1.5 text-sm text-fl-cream";
+  return (
+    <section className={card}>
+      <h2 className="font-display text-lg font-semibold text-fl-cream">Поиск по мировой литературе</h2>
+      <p className="mt-0.5 text-sm text-fl-cream/60">По названиям, аннотациям и полным текстам. С отметкой «только открытый доступ» — работы, которые можно прочитать бесплатно и легально.</p>
+      <form onSubmit={(e) => { e.preventDefault(); run(1); }} className="mt-3 flex flex-wrap gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Например: IFRS 16 leases, audit quality, ESG disclosure, Islamic finance" className="min-w-[240px] flex-1 rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none" />
+        <button disabled={busy || q.trim().length < 2} className="rounded-md bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-40">{busy ? "Ищу…" : "Найти"}</button>
+      </form>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-fl-cream/60">
+        <select value={scope} onChange={(e) => setScope(e.target.value as typeof scope)} className={sel}>
+          <option value="both">Учёт, аудит и финансы</option><option value="accounting">Только учёт и аудит</option><option value="finance">Только финансы</option><option value="all">Вся наука</option>
+        </select>
+        <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className={sel}>
+          <option value="relevance">Сначала подходящие</option><option value="cited">Сначала цитируемые</option><option value="new">Сначала новые</option>
+        </select>
+        <label className="flex items-center gap-1">с года <input inputMode="numeric" value={from} onChange={(e) => setFrom(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="2015" className={`${sel} w-20`} /></label>
+        <label className="flex items-center gap-1.5 text-sm text-fl-cream/80"><input type="checkbox" checked={oa} onChange={(e) => setOa(e.target.checked)} className="h-4 w-4" /> только открытый доступ</label>
+      </div>
+      {err && <p className="mt-3 text-sm text-fl-red">{err}</p>}
+      {res && (
+        <>
+          <p className="mt-3 text-xs text-fl-cream/55">Найдено: {n0(res.total)}{res.total > res.perPage ? ` · страница ${res.page} из ${pages}` : ""}</p>
+          <WorkList works={res.works} />
+          {pages > 1 && (
+            <div className="mt-2 flex gap-2 text-sm">
+              <button disabled={busy || page <= 1} onClick={() => run(page - 1)} className="rounded-md border border-fl-line px-3 py-1 disabled:opacity-40">← Назад</button>
+              <button disabled={busy || page >= pages} onClick={() => run(page + 1)} className="rounded-md border border-fl-line px-3 py-1 disabled:opacity-40">Дальше →</button>
+            </div>
+          )}
+        </>
+      )}
+      {asked && (
+        <div className="mt-4 border-t border-fl-line pt-3">
+          <p className="text-xs text-fl-cream/55">Тот же запрос в других библиотеках — в том числе на русском языке:</p>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            {externalSearches(asked).map((x) => <a key={x.label} href={x.href} target="_blank" rel="noreferrer" title={x.note} className="rounded-md border border-fl-line px-2.5 py-1 text-xs text-fl-cream/80 hover:border-fl-gold">{x.label} ↗</a>)}
           </div>
-        </li>
-      ))}
-    </ol>
+        </div>
+      )}
+    </section>
   );
 }

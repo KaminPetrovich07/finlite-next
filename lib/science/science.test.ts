@@ -115,3 +115,42 @@ test("database: снимок сохраняется и читается; при 
     await prisma.$disconnect();
   }
 });
+
+test("аннотация из инвертированного индекса OpenAlex", async () => {
+  const { abstractFromIndex } = await import("./openalex");
+  const idx = { "This": [0], "study": [1, 6], "examines": [2], "audit": [3], "quality": [4], ".": [5], "Our": [7], "results": [8], "matter": [9] };
+  assert.equal(abstractFromIndex(idx), "This study examines audit quality. study Our results matter");
+  assert.equal(abstractFromIndex({ "Short": [0] }), null, "слишком коротко — не аннотация");
+  assert.equal(abstractFromIndex(null), null);
+});
+
+test("ссылки на работу: бесплатная версия, издатель, Scopus с DOI, Google Академия", async () => {
+  const { workLinks } = await import("./openalex");
+  const l = workLinks({ doi: "https://doi.org/10.1111/1475-679X.12345", title: "Audit quality", oaPdf: "https://repo.example.edu/a.pdf", oaUrl: "https://repo.example.edu/a", url: null });
+  assert.deepEqual(l.map((x) => x.kind), ["pdf", "oa", "publisher", "scopus", "scholar"]);
+  assert.equal(l[2].href, "https://doi.org/10.1111/1475-679X.12345");
+  assert.match(l[3].href, /s=DOI\(10\.1111%2F1475-679X\.12345\)$/);
+  const none = workLinks({ doi: null, title: "Без DOI", oaPdf: "javascript:alert(1)", oaUrl: null, url: null });
+  assert.deepEqual(none.map((x) => x.kind), ["scholar"], "небезопасные ссылки отбрасываются");
+});
+
+test("поиск: параметры, адрес запроса OpenAlex, кэш и лимит", async () => {
+  const { normalizeParams, searchUrl, parseSearch, makeLimiter, TtlCache, externalSearches } = await import("./search");
+  assert.equal(normalizeParams({ q: " a " }), null);
+  const p = normalizeParams({ q: "IFRS 16  leases", scope: "accounting", oa: "1", from: "2018", sort: "cited", page: "99" })!;
+  assert.deepEqual(p, { q: "IFRS 16 leases", scope: "accounting", oa: true, from: 2018, to: null, sort: "cited", page: 10 });
+  const u = new URL(searchUrl(p, "K"));
+  assert.equal(u.searchParams.get("search"), "IFRS 16 leases");
+  assert.equal(u.searchParams.get("sort"), "cited_by_count:desc");
+  assert.equal(u.searchParams.get("api_key"), "K");
+  const f = u.searchParams.get("filter")!;
+  assert.ok(f.includes("primary_topic.subfield.id:1402") && f.includes("open_access.is_oa:true") && f.includes("publication_year:2018-2100"), f);
+  assert.ok(!new URL(searchUrl({ ...p, scope: "all", oa: false, from: null }, undefined)).searchParams.get("filter")!.includes("subfield"));
+  assert.equal(parseSearch({ meta: { count: 1234 }, results: [WORK] }, 2).works[0].id, "W2120917837");
+  const lim = makeLimiter(2, 1000);
+  assert.deepEqual([lim("ip", 0), lim("ip", 1), lim("ip", 2), lim("ip", 1500)], [true, true, false, true]);
+  const c = new TtlCache<number>(1000, 2);
+  c.set("a", 1, 0); c.set("b", 2, 0); c.set("c", 3, 0);
+  assert.equal(c.get("a", 10), undefined, "вытеснено"); assert.equal(c.get("c", 10), 3); assert.equal(c.get("c", 2000), undefined, "устарело");
+  assert.ok(externalSearches("аудит").some((x) => x.href.startsWith("https://cyberleninka.ru/search?q=%D0")));
+});

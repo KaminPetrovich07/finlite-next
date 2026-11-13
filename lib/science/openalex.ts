@@ -40,6 +40,16 @@ export interface Work {
   moreAuthors: number;
   countries: string[];
   topic: string | null;
+  /** аннотация (из OpenAlex), если издатель её открыл */
+  abstract?: string | null;
+  abstractRu?: string;
+  /** бесплатная легальная версия полного текста (открытый доступ: журнал, репозиторий, препринт) */
+  oaPdf?: string | null;
+  oaUrl?: string | null;
+  /** лицензия открытой версии: cc-by, cc-by-nc … */
+  license?: string | null;
+  /** какая версия открыта: publishedVersion — как в журнале, acceptedVersion — принятая рукопись, submittedVersion — препринт */
+  oaVersion?: string | null;
 }
 
 export interface Journal { id: string; name: string; works: number; hIndex: number | null; meanCited: number | null; oa: boolean; type: string | null; url: string | null }
@@ -55,6 +65,8 @@ export interface ScopeSnapshot {
   /** окна для трендов: [from, to] включительно */
   windows: { before: [number, number]; after: [number, number]; recent: [number, number] };
   totalWorks: number;
+  /** доля работ в открытом доступе за последние 5 лет, % */
+  oaShare: number | null;
   byYear: YearCount[];
   topCited: Work[];
   topRecent: Work[];
@@ -79,6 +91,18 @@ export interface ScienceSnapshot {
 type J = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 const shortId = (id: string | null | undefined) => (id ?? "").replace(/^https?:\/\/openalex\.org\//, "");
 
+/** OpenAlex stores abstracts as an inverted index (word → positions); put the words back in order. */
+export function abstractFromIndex(idx: unknown): string | null {
+  if (!idx || typeof idx !== "object") return null;
+  const words: string[] = [];
+  for (const [word, positions] of Object.entries(idx as Record<string, unknown>)) {
+    if (!Array.isArray(positions)) continue;
+    for (const p of positions) if (Number.isInteger(p) && p >= 0 && p < 5000) words[p as number] = word;
+  }
+  const text = words.filter((x) => x !== undefined).join(" ").replace(/\s+([,.;:!?)])/g, "$1").replace(/\(\s+/g, "(").trim();
+  return text.length >= 40 ? text : null;
+}
+
 export function parseWork(w: J): Work {
   const auth: J[] = Array.isArray(w?.authorships) ? w.authorships : [];
   const countries = new Set<string>();
@@ -102,7 +126,26 @@ export function parseWork(w: J): Work {
     moreAuthors: Math.max(0, auth.length - 3),
     countries: [...countries],
     topic: w?.primary_topic?.display_name ?? null,
+    abstract: abstractFromIndex(w?.abstract_inverted_index),
+    oaPdf: w?.best_oa_location?.pdf_url ?? null,
+    oaUrl: w?.best_oa_location?.landing_page_url ?? w?.open_access?.oa_url ?? null,
+    license: w?.best_oa_location?.license ?? null,
+    oaVersion: w?.best_oa_location?.version ?? null,
   };
+}
+
+/** Where to read or find the work: the free version, the publisher, Scopus (with the reader's own access), Google Scholar. */
+export function workLinks(w: Pick<Work, "doi" | "title" | "oaPdf" | "oaUrl" | "url">): Array<{ kind: "pdf" | "oa" | "publisher" | "scopus" | "scholar"; label: string; href: string }> {
+  const out: Array<{ kind: "pdf" | "oa" | "publisher" | "scopus" | "scholar"; label: string; href: string }> = [];
+  const safe = (u: string | null | undefined) => (u && /^https?:\/\//i.test(u) ? u : null);
+  const doi = w.doi ? w.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, "") : null;
+  if (safe(w.oaPdf)) out.push({ kind: "pdf", label: "Читать бесплатно (PDF)", href: w.oaPdf! });
+  if (safe(w.oaUrl) && w.oaUrl !== w.oaPdf) out.push({ kind: "oa", label: out.length ? "Открытая версия" : "Читать бесплатно", href: w.oaUrl! });
+  if (doi) out.push({ kind: "publisher", label: "У издателя (DOI)", href: `https://doi.org/${doi}` });
+  else if (safe(w.url)) out.push({ kind: "publisher", label: "Источник", href: w.url! });
+  if (doi) out.push({ kind: "scopus", label: "В Scopus", href: `https://www.scopus.com/results/results.uri?src=s&sot=b&sdt=b&s=${encodeURIComponent(`DOI(${doi})`)}` });
+  out.push({ kind: "scholar", label: "Google Академия", href: `https://scholar.google.com/scholar?q=${encodeURIComponent(doi ? doi : `"${w.title}"`)}` });
+  return out;
 }
 
 export function parseGroups(body: J): Array<{ key: string; name: string; count: number }> {
@@ -152,7 +195,7 @@ export function windowsFor(now: Date): ScopeSnapshot["windows"] {
 
 export type Fetcher = (url: string) => Promise<J>;
 
-const WORK_FIELDS = "id,doi,display_name,publication_year,cited_by_count,type,open_access,primary_location,authorships,primary_topic";
+const WORK_FIELDS = "id,doi,display_name,publication_year,cited_by_count,type,open_access,best_oa_location,primary_location,authorships,primary_topic,abstract_inverted_index";
 const PAPERS = "type:article|review";
 
 export function url(path: string, params: Record<string, string | number>, apiKey?: string): string {
@@ -180,6 +223,9 @@ export async function fetchScope(scope: Scope, get: Fetcher, now = new Date(), a
   const byYear = (await groups(`${sf},publication_year:${firstYear}-${w.after[1]}`, "publication_year"))
     .map((x) => ({ year: Number(x.key), count: x.count })).filter((x) => Number.isFinite(x.year)).sort((a, b) => a.year - b.year);
   const totalWorks = (await get(url("/works", { filter: sf, per_page: 1, select: "id" }, apiKey)))?.meta?.count ?? 0;
+  const oaGroups = await groups(`${sf},${yr(w.recent)}`, "open_access.is_oa");
+  const oaTrue = oaGroups.find((g) => g.key === "true")?.count ?? 0, oaAll = oaGroups.reduce((x, g) => x + g.count, 0);
+  const oaShare = oaAll ? Math.round((oaTrue / oaAll) * 1000) / 10 : null;
 
   const srcGroups = (await groups(`${sf},${yr(w.recent)}`, "primary_location.source.id")).slice(0, 12);
   let journals: Journal[] = [];
@@ -201,7 +247,7 @@ export async function fetchScope(scope: Scope, get: Fetcher, now = new Date(), a
 
   return {
     key: scope.key, title: scope.title, note: scope.note, subfield: scope.subfield, windows: w,
-    totalWorks, byYear, topCited, topRecent, topBooks, journals,
+    totalWorks, oaShare, byYear, topCited, topRecent, topBooks, journals,
     topics: trends(topicsBefore, topicsAfter, 20 * scale, 12),
     keywords: trends(kwBefore, kwAfter, 30 * scale, 20),
     centralAsia: {
