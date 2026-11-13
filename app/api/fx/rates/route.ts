@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError, logActivity, requireAdmin, requireUser, route } from "@/lib/auth/server";
-import { fetchNbkr, loadRates, saveRate } from "@/lib/fx/store";
+import { bishkekToday, ensureFresh, fetchNbkr, loadRates, saveRate } from "@/lib/fx/store";
 import { AUTH_ON } from "@/lib/auth/mode";
 import { rateOn } from "@/lib/fx/fx";
 
@@ -19,12 +19,17 @@ export const GET = route(async (req: NextRequest) => {
     const r = rateOn(await loadRates(date, [code]), code, date);
     return NextResponse.json({ rate: r });
   }
-  const today = new Date(Date.now() + 6 * 3600 * 1000).toISOString().slice(0, 10);
-  const all = await loadRates(today);
+  await ensureFresh();
+  const today = bishkekToday();
+  const ahead = new Date(Date.now() + (6 + 24 * 7) * 3600 * 1000).toISOString().slice(0, 10);
+  const all = await loadRates(ahead);
   const since = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+  // курс, действующий сегодня, и уже опубликованный курс на следующие дни (НБКР объявляет его накануне)
   const latest = new Map<string, { date: string; code: string; rate: number }>();
-  for (const r of all) latest.set(r.code, r);
-  return NextResponse.json({ latest: [...latest.values()].sort((a, b) => a.code.localeCompare(b.code)), history: all.filter((r) => r.date >= since) });
+  const next = new Map<string, { date: string; code: string; rate: number }>();
+  for (const r of all) (r.date <= today ? latest : next).set(r.code, r);
+  const byCode = (m: typeof latest) => [...m.values()].sort((a, b) => a.code.localeCompare(b.code));
+  return NextResponse.json({ today, latest: byCode(latest), next: byCode(next), history: all.filter((r) => r.date >= since && r.date <= today) });
 });
 
 const Body = z.union([

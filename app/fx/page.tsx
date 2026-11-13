@@ -15,7 +15,7 @@ const monthEnd = () => { const n = new Date(Date.now() + 6 * 3600 * 1000); retur
 
 export default function FxPage() {
   const { companies, companyId, setCompanyId, company, loaded } = useCompanies();
-  const [rates, setRates] = useState<{ latest: Array<{ date: string; code: string; rate: number }>; history: Array<{ date: string; code: string; rate: number }> } | null>(null);
+  const [rates, setRates] = useState<{ today?: string; latest: Array<{ date: string; code: string; rate: number }>; next?: Array<{ date: string; code: string; rate: number }>; history: Array<{ date: string; code: string; rate: number }> } | null>(null);
   const [date, setDate] = useState(monthEnd());
   const [reval, setReval] = useState<{ rows: RevalRow[]; missing: string[]; lines: Array<{ account: string; debit: number; credit: number }>; posted: boolean } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -44,7 +44,11 @@ export default function FxPage() {
     try {
       const r = await fetch("/api/fx/rates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "nbkr" }) });
       const b = await r.json(); if (!r.ok) throw new Error(b.error);
-      show(`Курсы НБКР загружены: ${b.loaded.map((x: any) => `${d(x.date)} — ${x.count}`).join("; ")}`);
+      const today = rates?.today ?? new Date(Date.now() + 6 * 3600 * 1000).toISOString().slice(0, 10);
+      const daily = b.loaded[0] as { date: string; count: number } | undefined;
+      show(daily && daily.date > today
+        ? `НБКР уже опубликовал курсы на ${d(daily.date)} — они вступят в силу с этой даты; сегодня действует прежний курс`
+        : `Курсы НБКР загружены: ${b.loaded.map((x: any) => `на ${d(x.date)} — ${x.count} валют`).join("; ")}`);
       await loadRates(); await loadReval();
     } catch (e: any) { show(e.message, "error"); } finally { setBusy(null); }
   }
@@ -74,7 +78,7 @@ export default function FxPage() {
       <section className={`${card} mb-5 p-4 sm:p-5`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-lg font-semibold text-fl-cream">Курсы НБКР</h2>
-          <button type="button" onClick={fetchNbkr} disabled={busy !== null} className="rounded-lg border border-fl-line px-3 py-2 text-sm text-fl-cream hover:border-fl-gold disabled:opacity-40">{busy === "nbkr" ? "Загружаю…" : "Загрузить сегодняшние курсы"}</button>
+          <button type="button" onClick={fetchNbkr} disabled={busy !== null} className="rounded-lg border border-fl-line px-3 py-2 text-sm text-fl-cream hover:border-fl-gold disabled:opacity-40">{busy === "nbkr" ? "Загружаю…" : "Обновить курсы НБКР"}</button>
         </div>
         {rates && rates.latest.length > 0 ? (
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -82,11 +86,18 @@ export default function FxPage() {
               <div key={r.code} className="rounded-lg border border-fl-line px-3 py-2">
                 <p className="text-xs text-fl-cream/50">{r.code} · {CURRENCY_NAME[r.code] ?? ""}</p>
                 <p className="num font-display text-xl font-semibold text-fl-cream">{r.rate.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</p>
-                <p className="text-xs text-fl-cream/45">на {d(r.date)}</p>
+                <p className="text-xs text-fl-cream/45">действует с {d(r.date)}</p>
+                {(() => {
+                  const n = rates.next?.find((x) => x.code === r.code);
+                  if (!n) return null;
+                  const diff = n.rate - r.rate;
+                  return <p className="mt-0.5 text-xs text-fl-cream/60">с {d(n.date)}: <span className="num">{n.rate.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</span> <span className={diff > 0 ? "text-fl-red" : diff < 0 ? "text-fl-green" : ""}>{diff > 0 ? "▲" : diff < 0 ? "▼" : "="}{diff ? Math.abs(diff).toLocaleString("ru-RU", { maximumFractionDigits: 4 }) : ""}</span></p>;
+                })()}
               </div>
             ))}
           </div>
-        ) : <p className="mt-2 text-sm text-fl-cream/60">Курсов в базе ещё нет — нажмите «Загрузить сегодняшние курсы». Дальше они загружаются каждый день автоматически.</p>}
+        ) : <p className="mt-2 text-sm text-fl-cream/60">Курсов в базе ещё нет — нажмите «Обновить курсы НБКР». Дальше они загружаются каждый день автоматически.</p>}
+        <p className="mt-2 text-xs text-fl-cream/45">НБКР устанавливает официальный курс один раз в день и публикует его накануне. Программа загружает курсы каждое утро, а если загрузка не прошла — при открытии этой страницы.</p>
         {rates && rates.latest.some((r) => !["USD", "EUR", "RUB", "KZT", "CNY"].includes(r.code)) && (
           <details className="mt-3 text-sm text-fl-cream/70">
             <summary className="cursor-pointer text-fl-gold">Прочие валюты (еженедельные курсы)</summary>

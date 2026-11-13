@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchNbkr } from "@/lib/fx/store";
+import { recordError } from "@/lib/monitor/errors";
 import { runReminders } from "@/lib/calendar/server";
 import { collect } from "@/lib/news/collect";
 import { publishFxDaily } from "@/lib/news/fxpost";
@@ -19,7 +20,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Нет доступа" }, { status: 401 });
   }
   const result: Record<string, unknown> = {};
-  try { result.fx = await fetchNbkr(); } catch (e) { result.fx = { error: e instanceof Error ? e.message : String(e) }; }
+  try { result.fx = await fetchNbkr(); } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    result.fx = { error: message };
+    // иначе курс молча «застывает» на вчерашнем — администратор узнаёт об этом в «Ошибках» и в Telegram
+    await recordError({ source: "server", message: `Курсы НБКР не загрузились по расписанию: ${message}`, url: "/api/cron/daily" });
+  }
   try { result.fxPost = await publishFxDaily(); } catch (e) { result.fxPost = { error: e instanceof Error ? e.message : String(e) }; }
   try { result.news = (await collect({ force: true })).map((r) => ({ source: r.source, added: r.added, ...(r.error ? { error: r.error } : {}) })); } catch (e) { result.news = { error: e instanceof Error ? e.message : String(e) }; }
   try { result.reminders = await runReminders(); } catch (e) { result.reminders = { error: e instanceof Error ? e.message : String(e) }; }
