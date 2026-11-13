@@ -9,7 +9,8 @@
 const dev = process.env.NODE_ENV !== "production";
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
+  // 'wasm-unsafe-eval' — распознавание чеков (tesseract.js) компилирует WebAssembly в браузере; это не разрешает eval()
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${dev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: https:${dev ? " http:" : ""}`,
   "font-src 'self' data:",

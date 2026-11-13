@@ -5,6 +5,7 @@ import { NEW_COMPANY, useCompanies } from "@/components/ledger/useCompanies";
 import { PeriodPicker } from "@/components/ledger/PeriodPicker";
 import { EntryCard } from "@/components/ledger/EntryCard";
 import { EntryForm } from "@/components/ledger/EntryForm";
+import { ReceiptScan } from "@/components/ledger/ReceiptScan";
 import { PayrollForm } from "@/components/ledger/PayrollForm";
 import { Notice } from "@/components/ledger/statements";
 import { useToast } from "@/components/Toast";
@@ -25,7 +26,7 @@ export default function LedgerPage() {
   const [pickerKey, setPickerKey] = useState(0);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<null | "manual" | "opening" | "payroll">(null);
+  const [form, setForm] = useState<null | "manual" | "opening" | "payroll" | "receipt">(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
@@ -96,7 +97,7 @@ export default function LedgerPage() {
   async function save(entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string }> }) {
     const res = await fetch("/api/ledger", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...entry, companyId, source: form }),
+      body: JSON.stringify({ ...entry, companyId, source: form === "opening" ? "opening" : "manual" }),
     });
     const body = await res.json();
     if (!res.ok) { toast.show(body.error ?? "Проводка не сохранена", "error"); return false; }
@@ -213,6 +214,9 @@ export default function LedgerPage() {
           <button onClick={() => setForm("manual")} className="shrink-0 rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
             Новая проводка
           </button>
+          <button onClick={() => setForm("receipt")} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream">
+            Чек по фото
+          </button>
           <button onClick={() => setForm("opening")} className="shrink-0 rounded-md border border-fl-gold/40 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10">
             Ввести начальные остатки
           </button>
@@ -230,9 +234,10 @@ export default function LedgerPage() {
 
       {form && period && (
         <div id="fl-entry-form" className="mb-6 scroll-mt-20">
-          {form === "payroll"
+          {form === "receipt" ? <ReceiptScan defaultDate={todayIso() >= period.from && todayIso() <= period.to ? todayIso() : period.from} onSubmit={save} onCancel={() => setForm(null)} />
+            : form === "payroll"
             ? <PayrollForm defaultDate={period.to} onSubmit={savePayroll} onCancel={() => setForm(null)} />
-            : <EntryForm key={form} mode={form} defaultDate={form === "manual" && todayIso() >= period.from && todayIso() <= period.to ? todayIso() : period.from} onSubmit={save} onCancel={() => setForm(null)} parties={parties} items={items} />}
+            : <EntryForm key={form} mode={form as "manual" | "opening"} defaultDate={form === "manual" && todayIso() >= period.from && todayIso() <= period.to ? todayIso() : period.from} onSubmit={save} onCancel={() => setForm(null)} parties={parties} items={items} />}
         </div>
       )}
 
