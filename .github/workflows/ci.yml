@@ -40,7 +40,18 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Схема базы
-        run: npx prisma db push --skip-generate
+        # после перехода на миграции (npm run db:baseline) — применяем их и проверяем, что схема
+        # не разошлась с миграциями; до перехода — как раньше, db push
+        run: |
+          if [ -d prisma/migrations ]; then
+            npx prisma migrate deploy
+            psql postgresql://postgres:postgres@localhost:5432/postgres -c "CREATE DATABASE finlite_shadow" >/dev/null
+            npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
+              --shadow-database-url postgresql://postgres:postgres@localhost:5432/finlite_shadow --exit-code \
+              || { echo "::error::Схема prisma/schema.prisma изменена без миграции — выполните npm run db:migrate -- --name <изменение>"; exit 1; }
+          else
+            npx prisma db push --skip-generate
+          fi
       - name: Типы
         run: npx prisma generate && npx tsc --noEmit
       - name: Тесты

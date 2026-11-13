@@ -1,7 +1,8 @@
 "use client";
 
-// Чек по фото: QR-код и текст распознаются прямо в браузере (фото никуда не отправляется),
-// найденные дата, сумма, продавец и ИНН подставляются в проводку — пользователь проверяет и проводит.
+// Чек по фото: QR-код и текст распознаются прямо в браузере, найденные дата, сумма, продавец и ИНН
+// подставляются в проводку — пользователь проверяет и проводит. Само фото уходит на сервер, только если
+// отмечено «Прикрепить фото к проводке».
 import { useRef, useState } from "react";
 import { AccountPicker } from "./AccountPicker";
 import { parseReceipt, type ReceiptData } from "@/lib/receipt/parse";
@@ -31,15 +32,18 @@ function binarize(src: HTMLCanvasElement): HTMLCanvasElement {
   return c;
 }
 
-export function ReceiptScan({ defaultDate, onSubmit, onCancel }: { defaultDate: string; onSubmit: (e: { date: string; description: string; lines: Line[] }) => Promise<boolean>; onCancel: () => void }) {
+export function ReceiptScan({ defaultDate, onSubmit, onCancel }: { defaultDate: string; onSubmit: (e: { date: string; description: string; lines: Line[]; photo?: File }) => Promise<boolean>; onCancel: () => void }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [stage, setStage] = useState<string | null>(null);
   const [data, setData] = useState<ReceiptData | null>(null);
   const [f, setF] = useState({ date: defaultDate, total: "", seller: "", inn: "", account: "8490", pay: "1110", vat: false, vatSum: "", description: "" });
   const [text, setText] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [keepPhoto, setKeepPhoto] = useState(false);
 
   async function read(file: File) {
+    setPhoto(file);
     setData(null); setText("");
     const url = URL.createObjectURL(file); setPreview(url);
     const img = new Image(); img.src = url; await img.decode();
@@ -112,8 +116,9 @@ export function ReceiptScan({ defaultDate, onSubmit, onCancel }: { defaultDate: 
             {f.vatSum && <label className="flex items-center gap-2 text-sm text-fl-cream/75"><input type="checkbox" checked={f.vat} onChange={(e) => setF({ ...f, vat: e.target.checked })} /> Компания — плательщик НДС: выделить НДС {f.vatSum} на счёт 1540</label>}
             {data?.checkUrl && <a href={data.checkUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-sm text-fl-gold underline">Проверить чек на сайте налоговой службы</a>}
             {lines.length > 0 && <p className="text-xs text-fl-cream/55">Проводка: {lines.map((l) => `${l.debit ? "Дт" : "Кт"} ${l.account} ${(l.debit || l.credit).toLocaleString("ru-RU")}`).join(" · ")}</p>}
+            {photo && <label className="flex items-center gap-2 text-sm text-fl-cream/75"><input type="checkbox" checked={keepPhoto} onChange={(e) => setKeepPhoto(e.target.checked)} /> Прикрепить фото чека к проводке (сохранится на сервере)</label>}
             <div className="flex flex-wrap gap-2">
-              <button disabled={!lines.length || !f.date} onClick={async () => { if (await onSubmit({ date: f.date, description: f.description || "Покупка по чеку", lines })) { setPreview(null); setData(null); } }} className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-40">Провести</button>
+              <button disabled={!lines.length || !f.date} onClick={async () => { if (await onSubmit({ date: f.date, description: f.description || "Покупка по чеку", lines, ...(keepPhoto && photo ? { photo } : {}) })) { setPreview(null); setData(null); setPhoto(null); } }} className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-40">Провести</button>
               <button onClick={() => input.current?.click()} className="rounded-lg border border-fl-line px-4 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Другое фото</button>
             </div>
             {text && <details className="text-xs text-fl-cream/50"><summary className="cursor-pointer">Распознанный текст</summary><pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-fl-surface-2 p-2">{text}</pre></details>}

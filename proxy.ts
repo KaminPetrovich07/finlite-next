@@ -7,7 +7,7 @@ import { overLimit, PROBE } from "@/lib/security/guard";
 //    the visitor is sent to /login. Whether the session is valid and what it
 //    may access is decided by the API on every request — this is only routing.
 
-const PUBLIC = ["/login", "/register", "/reset", "/privacy", "/terms", "/pricing", "/tax-rules"];
+const PUBLIC = ["/login", "/register", "/reset", "/privacy", "/terms", "/pricing", "/tax-rules", "/manifest.webmanifest"];
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const ipOf = (req: NextRequest) => req.headers.get("x-real-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "?";

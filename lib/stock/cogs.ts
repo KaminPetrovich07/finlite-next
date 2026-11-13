@@ -1,6 +1,8 @@
 // ════════════════════════════════════════════════════════════════════════
 // lib/stock/cogs.ts — автоматическое списание себестоимости проданного по
-// средней (скользящей) себестоимости, МСФО (IAS) 2, п. 25, 27.
+// формуле из учётной политики: средняя (скользящая) себестоимость или ФИФО,
+// МСФО (IAS) 2, п. 25, 27. Для ФИФО каждая партия поступления хранится со
+// своей ценой, и продажа списывает сначала самые ранние партии.
 //
 // Продажа — строка выручки (61xx) с номенклатурой и количеством. Для неё
 // ищется остаток той же номенклатуры на счетах запасов (товары 1610, готовая
@@ -33,9 +35,36 @@ export interface CogsProposal {
   /** quantity on hand before this sale */
   onHand: number;
   problem: string | null;
+  /** cost formula used: moving average or FIFO */
+  method: CogsMethod;
 }
 
-interface Pos { qty: number; amount: number; unit: string; name: string }
+/** «wavg» — средневзвешенная (скользящая), «fifo» — ФИФО. Индивидуальная идентификация считается по средней. */
+export type CogsMethod = "wavg" | "fifo";
+export const cogsMethodOf = (costFormula: string | null | undefined): CogsMethod => (costFormula === "fifo" ? "fifo" : "wavg");
+
+interface Layer { qty: number; cost: number } // cost — per unit
+interface Pos { qty: number; amount: number; unit: string; name: string; layers: Layer[] }
+
+const q3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** Cost of the first `qty` units of the FIFO layers (does not consume them). */
+function fifoCost(layers: Layer[], qty: number): number {
+  let left = qty, sum = 0;
+  for (const l of layers) {
+    if (left <= 1e-9) break;
+    const take = Math.min(l.qty, left);
+    sum += take * l.cost; left -= take;
+  }
+  return sum;
+}
+function consume(layers: Layer[], qty: number): void {
+  let left = qty;
+  while (left > 1e-9 && layers.length) {
+    const l = layers[0];
+    if (l.qty <= left + 1e-9) { left -= l.qty; layers.shift(); } else { l.qty = q3(l.qty - left); left = 0; }
+  }
+}
 
 export const cogsRef = (entryId: string, lineIndex: number) => `${entryId}:${lineIndex}`;
 
@@ -43,7 +72,7 @@ export const cogsRef = (entryId: string, lineIndex: number) => `${entryId}:${lin
  * Sales in `period` that have no write-off yet, with the cost to write off.
  * `entries` — the whole journal up to the period end (earlier rows give stock).
  */
-export function pendingCogs(entries: LedgerEntry[], period: Period): CogsProposal[] {
+export function pendingCogs(entries: LedgerEntry[], period: Period, method: CogsMethod = "wavg"): CogsProposal[] {
   const done = new Set(entries.filter((e) => e.source === "cogs" && e.sourceRef).map((e) => e.sourceRef!));
   const pos = new Map<string, Pos>(); // account|item
   const out: CogsProposal[] = [];
@@ -52,10 +81,17 @@ export function pendingCogs(entries: LedgerEntry[], period: Period): CogsProposa
   const apply = (l: LedgerLine) => {
     if (!STOCK.test(l.account) || !l.item) return;
     const k = `${l.account}|${itemKey(l.item)}`;
-    const p = pos.get(k) ?? { qty: 0, amount: 0, unit: l.unit ?? "", name: l.item.trim() };
+    const p = pos.get(k) ?? { qty: 0, amount: 0, unit: l.unit ?? "", name: l.item.trim(), layers: [] };
     const q = Number(l.qty ?? 0);
-    if (l.debit > 0) { p.qty += q; p.amount += l.debit; }
-    else { p.qty -= q; p.amount -= l.credit; }
+    if (l.debit > 0) {
+      p.qty += q; p.amount += l.debit;
+      if (q > 0) p.layers.push({ qty: q, cost: l.debit / q });
+      else if (p.layers.length) { const last = p.layers[p.layers.length - 1]; last.cost += l.debit / last.qty; } // доплата к последней партии
+    } else {
+      p.qty -= q; p.amount -= l.credit;
+      if (q > 0) consume(p.layers, q);
+      else if (p.qty > 0) { const k2 = 1 - l.credit / (p.amount + l.credit || 1); for (const x of p.layers) x.cost *= k2; } // уценка без количества
+    }
     p.qty = Math.round(p.qty * 1000) / 1000;
     p.amount = round2(p.amount);
     if (!p.unit && l.unit) p.unit = l.unit;
@@ -77,18 +113,21 @@ export function pendingCogs(entries: LedgerEntry[], period: Period): CogsProposa
       const inPeriod = e.date >= period.from;
       const pick = candidates.find((c) => c.p!.qty >= qty - 1e-9) ?? candidates[0];
       if (!pick) {
-        if (inPeriod) out.push({ saleEntryId: e.id, lineIndex: i, date: e.date, item: l.item.trim(), unit: l.unit ?? "", qty, stockAccount: null, cogsAccount: "7200", avgCost: 0, amount: 0, onHand: 0, problem: "Нет остатка этой номенклатуры на счетах запасов — сначала проведите поступление с количеством" });
+        if (inPeriod) out.push({ saleEntryId: e.id, lineIndex: i, date: e.date, item: l.item.trim(), unit: l.unit ?? "", qty, stockAccount: null, cogsAccount: "7200", avgCost: 0, amount: 0, onHand: 0, problem: "Нет остатка этой номенклатуры на счетах запасов — сначала проведите поступление с количеством", method });
         return;
       }
       const p = pick.p!;
       const avg = p.amount / p.qty;
       const enough = p.qty >= qty - 1e-9;
-      const amount = enough && Math.abs(p.qty - qty) < 1e-9 ? round2(p.amount) : round2(avg * qty);
+      const layered = p.layers.reduce((s2, x) => s2 + x.qty, 0) >= qty - 1e-9;
+      const amount = enough && Math.abs(p.qty - qty) < 1e-9 ? round2(p.amount)
+        : method === "fifo" && layered ? round2(fifoCost(p.layers, qty)) : round2(avg * qty);
       const proposal: CogsProposal = {
         saleEntryId: e.id, lineIndex: i, date: e.date, item: p.name, unit: p.unit || l.unit || "", qty,
         stockAccount: pick.acc, cogsAccount: pick.acc === "1610" ? "7200" : "7000",
-        avgCost: round2(avg), amount, onHand: p.qty,
+        avgCost: method === "fifo" && layered && qty > 0 ? round2(amount / qty) : round2(avg), amount, onHand: p.qty,
         problem: enough ? null : `Продано ${qty}, на остатке ${p.qty} — проверьте поступления или количество в продаже`,
+        method,
       };
       if (inPeriod) out.push(proposal);
       // the write-off happens (or will happen) — keep the running stock right for later sales
@@ -100,7 +139,7 @@ export function pendingCogs(entries: LedgerEntry[], period: Period): CogsProposa
 
 export function cogsLines(p: CogsProposal): LedgerLine[] {
   return [
-    { account: p.cogsAccount, debit: p.amount, credit: 0, item: p.item, qty: p.qty, unit: p.unit || null, memo: `по средней ${p.avgCost.toLocaleString("ru-RU")} за ед.` },
+    { account: p.cogsAccount, debit: p.amount, credit: 0, item: p.item, qty: p.qty, unit: p.unit || null, memo: p.method === "fifo" ? `по ФИФО, ${p.avgCost.toLocaleString("ru-RU")} за ед.` : `по средней ${p.avgCost.toLocaleString("ru-RU")} за ед.` },
     { account: p.stockAccount!, debit: 0, credit: p.amount, item: p.item, qty: p.qty, unit: p.unit || null },
   ];
 }
@@ -112,7 +151,7 @@ export function stockWithAverage(entries: LedgerEntry[], to: string): Array<{ ac
     for (const l of e.lines) {
       if (!STOCK.test(l.account) || !l.item) continue;
       const k = `${l.account}|${itemKey(l.item)}`;
-      const p = m.get(k) ?? { account: l.account, qty: 0, amount: 0, unit: l.unit ?? "", name: l.item.trim() };
+      const p = m.get(k) ?? { account: l.account, qty: 0, amount: 0, unit: l.unit ?? "", name: l.item.trim(), layers: [] };
       const q = Number(l.qty ?? 0);
       p.qty = Math.round((p.qty + (l.debit > 0 ? q : -q)) * 1000) / 1000;
       p.amount = round2(p.amount + l.debit - l.credit);

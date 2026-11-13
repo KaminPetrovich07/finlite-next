@@ -12,13 +12,17 @@ import { GROUPS, type Action, type CloseResult, type Step } from "@/lib/close/ch
 
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 const card = "rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5";
+const dmy = (iso: string) => iso.slice(0, 10).split("-").reverse().join(".");
+const todayIso = () => new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 10); // Бишкек
+interface Lock { through: string | null; at: string | null; by: string | null; canLock: boolean; canUnlock: boolean }
+
 const ICON = { ok: { s: "✓", c: "bg-fl-green/15 text-fl-green" }, warn: { s: "!", c: "bg-fl-amber/20 text-fl-amber" }, error: { s: "×", c: "bg-fl-red/15 text-fl-red" } } as const;
 
 export default function ClosePage() {
   const { companies, companyId, setCompanyId, company, loaded } = useCompanies();
   const [period, setPeriodState] = useState<{ from: string; to: string } | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
-  const [data, setData] = useState<(CloseResult & { demo: boolean }) | null>(null);
+  const [data, setData] = useState<(CloseResult & { demo: boolean; lock?: Lock }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [onlyIssues, setOnlyIssues] = useState(false);
@@ -60,6 +64,25 @@ export default function ClosePage() {
       if (a.kind === "taxes") { await post("/api/statements/taxes", { companyId, from: period.from, to: period.to }); show("Налоги начислены"); }
       if (a.kind === "close") { await post("/api/ledger/close", { companyId, from: period.from, to: period.to }); show("Период закрыт"); }
       if (a.kind === "entry") { await post("/api/ledger", { companyId, source: "manual", ...a.entry }); show("Проводка записана в журнал"); }
+      await load();
+    } catch (e: any) { show(e.message, "error"); } finally { setBusy(null); }
+  }
+
+  async function setLock(through: string | null) {
+    if (!data?.lock) return;
+    let reason: string | undefined;
+    const opening = !through || (data.lock.through !== null && through < data.lock.through);
+    if (opening) {
+      const r = window.prompt("Снятие запрета откроет уже закрытый период для изменений. Укажите причину — она останется в истории журнала:");
+      if (r === null) return;
+      reason = r.trim();
+    } else if (!data.closed && !window.confirm(`Период ещё не закрыт через 5999. Запретить изменения по ${dmy(through!)} всё равно?`)) return;
+    setBusy("lock");
+    try {
+      const r = await fetch("/api/close/lock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, through, reason }) });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.error ?? "Не удалось изменить запрет");
+      show(through ? `Изменения по ${dmy(through)} запрещены` : "Запрет снят — период открыт для изменений");
       await load();
     } catch (e: any) { show(e.message, "error"); } finally { setBusy(null); }
   }
@@ -114,6 +137,37 @@ export default function ClosePage() {
             {data.demo && <p className="mt-3 text-xs text-fl-cream/55">Демо открыто только для просмотра: действия доступны в своей компании или в копии демо.</p>}
           </section>
 
+
+          {data.lock && !data.demo && (
+            <section className={`${card} mb-5 ${data.lock.through && period && period.to <= data.lock.through ? "border-fl-green/40" : ""}`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h2 className="font-display text-[15px] font-semibold text-fl-cream">
+                    {data.lock.through ? <>🔒 Изменения запрещены по {dmy(data.lock.through)}</> : "Запрет изменений не установлен"}
+                  </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-fl-cream/65">
+                    {data.lock.through
+                      ? <>Проводки с датой по {dmy(data.lock.through)} включительно нельзя добавить, изменить или удалить — ни вручную, ни из выписок, ЭСФ, 1С, зарплаты и других разделов. Ошибку прошлого периода исправляют сторнировочной проводкой в открытом периоде.{data.lock.at ? <> Установлен {new Date(data.lock.at).toLocaleString("ru-RU", { timeZone: "Asia/Bishkek", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}{data.lock.by ? `, ${data.lock.by}` : ""}.</> : null}</>
+                      : <>После закрытия месяца и сдачи отчётности запретите изменения: тогда сданные цифры не поменяются задним числом. Снять запрет сможет только владелец компании, с указанием причины — это попадёт в историю журнала.</>}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                  {period && data.lock.canLock && (!data.lock.through || period.to > data.lock.through) && (
+                    <button type="button" disabled={busy !== null || period.to > todayIso()} onClick={() => setLock(period.to)}
+                      title={period.to > todayIso() ? "Период ещё не закончился" : undefined}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40 ${data.closed ? "bg-fl-accent text-fl-on-accent hover:bg-fl-accent-hover" : "border border-fl-gold/60 text-fl-cream hover:bg-fl-gold/10"}`}>
+                      {busy === "lock" ? "…" : `Запретить изменения по ${dmy(period.to)}`}
+                    </button>
+                  )}
+                  {data.lock.through && data.lock.canUnlock && (
+                    <button type="button" disabled={busy !== null} onClick={() => setLock(null)}
+                      className="text-xs text-fl-cream/55 underline-offset-2 hover:text-fl-red hover:underline disabled:opacity-40">Снять запрет…</button>
+                  )}
+                  {data.lock.through && !data.lock.canUnlock && <span className="text-[11px] text-fl-cream/45">Снять запрет может владелец компании</span>}
+                </div>
+              </div>
+            </section>
+          )}
           <div className="flex flex-col gap-4">
             {GROUPS.map((g) => {
               const list = data.steps.filter((s) => s.group === g && (!onlyIssues || s.status !== "ok"));

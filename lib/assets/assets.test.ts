@@ -6,7 +6,7 @@ import { normalizeAsset, type FixedAsset } from "./types";
 import { pendingCogs, cogsLines, stockWithAverage } from "@/lib/stock/cogs";
 import { parseNbkrXml, rateOn, revaluation, isMonetary } from "@/lib/fx/fx";
 import { validateEntry } from "@/lib/ledger/engine";
-import type { LedgerEntry } from "@/lib/ledger/types";
+import type { LedgerEntry, LedgerLine } from "@/lib/ledger/types";
 
 const near = (a: number, b: number, msg = "") => assert.ok(Math.abs(a - b) < 0.011, `${msg} ${a} ≠ ${b}`);
 
@@ -123,4 +123,27 @@ test("Валюта: курсы НБКР и переоценка по IAS 21", ()
   const after = [...entries, { id: "fx", date: "2026-10-31", description: "fx", source: "fx" as const, sourceRef: "2026-10-31", lines: v.lines }];
   const again = revaluation(after, "2026-11-30", rates);
   assert.equal(again.lines.length, 0);
+});
+
+test("FIFO: продажа списывает сначала ранние партии", async () => {
+  const { pendingCogs: pc, cogsLines: cl } = await import("@/lib/stock/cogs");
+  const mk = (id: string, date: string, lines: LedgerLine[]): LedgerEntry => ({ id, date, description: id, source: "manual", lines });
+  const entries: LedgerEntry[] = [
+    mk("p1", "2026-10-01", [{ account: "1610", debit: 1000, credit: 0, item: "Кофе", qty: 10, unit: "кг" }, { account: "3110", debit: 0, credit: 1000 }]),
+    mk("p2", "2026-10-05", [{ account: "1610", debit: 1500, credit: 0, item: "Кофе", qty: 10, unit: "кг" }, { account: "3110", debit: 0, credit: 1500 }]),
+    mk("s1", "2026-10-10", [{ account: "1210", debit: 3000, credit: 0 }, { account: "6110", debit: 0, credit: 3000, item: "Кофе", qty: 12, unit: "кг" }]),
+  ];
+  const [avg] = pc(entries, { from: "2026-10-01", to: "2026-10-31" });
+  assert.equal(avg.method, "wavg");
+  assert.equal(avg.amount, 1500); // 12 × 125
+  const [fifo] = pc(entries, { from: "2026-10-01", to: "2026-10-31" }, "fifo");
+  assert.equal(fifo.method, "fifo");
+  assert.equal(fifo.amount, 1300); // 10 × 100 + 2 × 150
+  assert.match(cl(fifo)[0].memo ?? "", /ФИФО/);
+  // the second sale after posting the first takes the rest of the second batch
+  const posted = [...entries, { ...mk("c1", "2026-10-10", cl(fifo)), source: "cogs" as const, sourceRef: "s1:1" },
+    mk("s2", "2026-10-20", [{ account: "1210", debit: 2000, credit: 0 }, { account: "6110", debit: 0, credit: 2000, item: "Кофе", qty: 8, unit: "кг" }])];
+  const [second] = pc(posted, { from: "2026-10-01", to: "2026-10-31" }, "fifo");
+  assert.equal(second.saleEntryId, "s2");
+  assert.equal(second.amount, 1200); // остаток 8 × 150 — весь остаток, сходится с балансом
 });

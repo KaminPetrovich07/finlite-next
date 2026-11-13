@@ -32,7 +32,10 @@ export async function GET(req: NextRequest) {
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: 2000,
     });
-    return NextResponse.json(rows.map(toLedgerEntry));
+    // сколько документов прикреплено к каждой проводке
+    const counts = rows.length ? await prisma.attachment.groupBy({ by: ["entryId"], where: { companyId, entryId: { in: rows.map((r) => r.id) } }, _count: { _all: true } }).catch(() => []) : [];
+    const n = new Map(counts.map((c) => [c.entryId, c._count._all]));
+    return NextResponse.json(rows.map((r) => ({ ...toLedgerEntry(r), ...(n.get(r.id) ? { attachments: n.get(r.id) } : {}) })));
   } catch (e) {
     if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "База данных недоступна" }, { status: 503 });

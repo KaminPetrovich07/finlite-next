@@ -1,5 +1,7 @@
 import { ErrorReporter } from "@/components/ErrorReporter";
-import type { Metadata } from "next";
+import { VersionTracker } from "@/components/VersionTracker";
+import type { Metadata, Viewport } from "next";
+import { InstallApp } from "@/components/InstallApp";
 import "@fontsource/manrope/500.css";
 import "@fontsource/manrope/600.css";
 import "@fontsource/manrope/700.css";
@@ -17,7 +19,12 @@ import { MobileTabs } from "@/components/MobileTabs";
 export const metadata: Metadata = {
   title: "FinLite KG",
   description: "Учёт, налоги и отчётность для бизнеса в Кыргызстане",
+  applicationName: "FinLite KG",
+  appleWebApp: { capable: true, title: "FinLite", statusBarStyle: "default" },
+  icons: { icon: [{ url: "/icons/icon-192.png", sizes: "192x192" }], apple: "/icons/apple-touch-icon.png" },
 };
+
+export const viewport: Viewport = { themeColor: "#12151C" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -32,6 +39,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MobileTabs />
         <CommandPalette />
         <ErrorReporter />
+        <VersionTracker />
+        <InstallApp />
       </body>
     </html>
   );

@@ -15,12 +15,16 @@ interface Line { account: string; debit: string; credit: string; memo: string; p
 interface Props {
   mode: "manual" | "opening";
   defaultDate: string;
-  onSubmit: (entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string; currency?: string; amountCur?: number }> }) => Promise<boolean>;
+  onSubmit: (entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string; currency?: string; amountCur?: number }>; repeat?: { day: number } }) => Promise<boolean>;
   onCancel: () => void;
   /** контрагенты, уже встречавшиеся в журнале — подсказки для поля */
   parties?: string[];
   /** номенклатура из журнала — подсказки */
   items?: string[];
+  /** изменение существующей проводки: её дата, содержание и строки */
+  initial?: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string | null; party?: string | null; item?: string | null; qty?: number | null; unit?: string | null; currency?: string | null; amountCur?: number | null }> };
+  /** дата, по которую включительно период закрыт для изменений — предупреждение до отправки */
+  lockedThrough?: string | null;
 }
 
 const blank = (): Line => ({ account: "", debit: "", credit: "", memo: "", party: "", item: "", qty: "", unit: "", currency: "", amountCur: "", rate: null, showCur: false });
@@ -30,10 +34,22 @@ const FX_ACCOUNTS = new Set(["1120", "1220", "1230"]);
 const wantsParty = (acc: string) => !!SETTLE[acc] || /^(61|16|17)/.test(acc);
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 
-export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [], items = [] }: Props) {
-  const [date, setDate] = useState(defaultDate);
-  const [description, setDescription] = useState(mode === "opening" ? "Начальные остатки" : "");
-  const [lines, setLines] = useState<Line[]>(mode === "opening" ? [blank(), blank(), blank(), blank()] : [blank(), blank()]);
+export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [], items = [], initial, lockedThrough }: Props) {
+  const [date, setDate] = useState(initial?.date ?? defaultDate);
+  const [description, setDescription] = useState(initial?.description ?? (mode === "opening" ? "Начальные остатки" : ""));
+  const [lines, setLines] = useState<Line[]>(() => initial
+    ? [...initial.lines.map((l): Line => ({
+        ...blank(), account: l.account,
+        debit: l.debit ? formatNumber(l.debit, 2) : "", credit: l.credit ? formatNumber(l.credit, 2) : "",
+        memo: l.memo ?? "", party: l.party ?? "", item: l.item ?? "", qty: l.qty ? String(l.qty).replace(".", ",") : "", unit: l.unit ?? "",
+        currency: l.currency ?? "", amountCur: l.amountCur ? formatNumber(l.amountCur, 2) : "", showCur: !!l.currency,
+      })), blank()]
+    : mode === "opening" ? [blank(), blank(), blank(), blank()] : [blank(), blank()]);
+  const editing = !!initial;
+  // «повторять каждый месяц» — регулярная операция: аренда, связь, подписки
+  const [repeat, setRepeat] = useState(false);
+  const [repeatDay, setRepeatDay] = useState<number | null>(null);
+  const dateLocked = !!lockedThrough && !!date && date <= lockedThrough;
   const [saving, setSaving] = useState(false);
   const [view] = useAccountView();
   const ifrs = view === "ifrs";
@@ -107,10 +123,12 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
         unit: l.unit.trim() || undefined,
         ...(l.currency && parseFormattedNumber(l.amountCur) > 0 ? { currency: l.currency, amountCur: parseFormattedNumber(l.amountCur) } : {}),
       })),
+      ...(repeat && mode === "manual" && !editing ? { repeat: { day: repeatDay ?? Math.min(Number(date.slice(8, 10)) || 1, 28) } } : {}),
     });
     setSaving(false);
-    if (ok) {
+    if (ok && !editing) {
       setLines(mode === "opening" ? [blank(), blank(), blank(), blank()] : [blank(), blank()]);
+      setRepeat(false); setRepeatDay(null);
       if (mode === "manual") { setDescription(""); setDescTouched(false); setTpl(null); setTv({ total: "", vat: tv.vat, party: "", item: "", qty: "", unit: "" }); }
     }
   }
@@ -119,7 +137,7 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
     <form onSubmit={submit} className="rounded-xl border border-fl-gold/25 bg-fl-charcoal-2 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-lg font-semibold text-fl-cream">
-          {mode === "opening" ? "Начальные остатки" : "Новая проводка"}
+          {editing ? "Изменение проводки" : mode === "opening" ? "Начальные остатки" : "Новая проводка"}
         </h2>
         <AccountViewToggle />
       </div>
@@ -130,7 +148,11 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
         </p>
       )}
 
-      {mode === "manual" && (
+      {editing && (
+        <p className="mt-1 text-sm text-fl-cream/55">Прежняя версия сохранится в истории проводки: кто и когда изменил, что было до и после.</p>
+      )}
+
+      {mode === "manual" && !editing && (
         <div className="mt-4">
           <p className="mb-2 text-xs text-fl-cream/50">Типовая операция — строки заполнятся сами, их можно поправить</p>
           <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:thin] sm:flex-wrap sm:overflow-visible">
@@ -262,6 +284,32 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
         </button>
       </div>
 
+      {mode === "manual" && !editing && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-fl-cream/75">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} className="h-4 w-4" />
+            Повторять каждый месяц
+          </label>
+          {repeat && (
+            <label className="flex items-center gap-2 text-xs text-fl-cream/60">
+              числа
+              <select value={repeatDay ?? Math.min(Number(date.slice(8, 10)) || 1, 28)} onChange={(e) => setRepeatDay(Number(e.target.value))}
+                className="rounded-md border border-fl-line bg-fl-charcoal-2 px-2 py-1 text-sm text-fl-cream">
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
+                <option value={31}>последнего</option>
+              </select>
+              <span>— следующие месяцы проведутся сами; остановить можно в «Регулярных операциях»</span>
+            </label>
+          )}
+        </div>
+      )}
+
+      {dateLocked && (
+        <p className="mt-4 rounded-md border border-fl-amber/40 bg-fl-amber/10 px-3 py-2 text-sm text-fl-amber">
+          Период по {lockedThrough!.split("-").reverse().join(".")} закрыт для изменений. Выберите дату в открытом периоде — исправление прошлого месяца проводят сторно текущей датой.
+        </p>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-fl-line pt-4">
         <p className="text-sm text-fl-cream/60">
           Дебет <span className="num text-fl-cream">{formatNumber(totals.dr, 2)}</span>
@@ -276,10 +324,10 @@ export function EntryForm({ mode, defaultDate, onSubmit, onCancel, parties = [],
           <button type="button" onClick={onCancel} className="rounded-md px-4 py-2.5 text-sm text-fl-cream/60 hover:text-fl-cream">Отмена</button>
           <button
             type="submit"
-            disabled={!ready || saving}
+            disabled={!ready || saving || dateLocked}
             className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {saving ? "Сохраняю…" : "Провести"}
+            {saving ? "Сохраняю…" : editing ? "Сохранить изменения" : "Провести"}
           </button>
         </div>
       </div>

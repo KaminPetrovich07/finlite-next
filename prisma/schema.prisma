@@ -50,6 +50,10 @@ model User {
   paidUntil      DateTime?
   planNote       String?
   lastLoginAt    DateTime?
+  totpSecret     String?
+  totpEnabledAt  DateTime?
+  totpLastStep   Int?
+  totpBackup     String[]
   createdAt      DateTime  @default(now())
   ownedCompanies Company[]     @relation("CompanyOwner")
   access         CompanyAccess[]
@@ -105,6 +109,12 @@ model Company {
   esgReports       EsgReport[]
   records          CompanyRecord[]
   submissions      Submission[]
+  entryEvents      EntryEvent[]
+  attachments      Attachment[]
+  /// запрет изменений: проводки с датой по этот день включительно нельзя добавить, изменить или удалить
+  lockedThrough DateTime?
+  lockedAt      DateTime?
+  lockedByName  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -256,6 +266,11 @@ model JournalEntry {
   bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
   bankTransactionId String?          @unique
   lines       JournalLine[]
+  /// кто ввёл и кто последним изменил проводку (имя хранится копией: запись переживёт удаление пользователя)
+  createdById   String?
+  createdByName String?
+  updatedAt     DateTime?
+  updatedByName String?
   createdAt   DateTime @default(now())
 
   @@index([companyId, date])
@@ -312,6 +327,8 @@ model CompanyRecord {
   kind      String
   key       String
   data      Json
+  /// вкладка браузера, сохранившая последней (X-FL-Client): её же повторные сохранения не считаются конфликтом
+  updatedBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -593,4 +610,45 @@ model Submission {
 
   @@unique([assignmentId, userId])
   @@index([companyId])
+}
+
+/// История журнала проводок: кто, когда и что добавил, изменил или удалил.
+/// Пишется автоматически при любой записи в журнал (lib/ledger/guard.ts); снимок проводки — до и после.
+/// Также сюда попадают установка и снятие запрета изменений периода.
+model EntryEvent {
+  id        String   @id @default(cuid())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+  /// без внешнего ключа: история удалённой проводки остаётся
+  entryId   String?
+  action    String   // create | update | delete | import | lock | unlock | attach | detach
+  source    String?
+  entryDate DateTime?
+  userId    String?
+  userName  String?
+  before    Json?
+  after     Json?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([entryId])
+}
+
+/// Скан или фото первичного документа, прикреплённое к проводке. Хранится в самой базе (bytea):
+/// изображения сжимаются в браузере до ~1600 px, файл — не больше 4 МБ. Удаление проводки
+/// файл не удаляет — он остаётся для истории.
+model Attachment {
+  id        String   @id @default(cuid())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+  entryId   String?
+  name      String
+  mime      String
+  size      Int
+  data      Bytes
+  userName  String?
+  createdAt DateTime @default(now())
+
+  @@index([companyId, entryId])
 }

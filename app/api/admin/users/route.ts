@@ -10,7 +10,7 @@ export const GET = route(async () => {
       orderBy: { createdAt: "desc" },
       select: {
         id: true, email: true, name: true, organization: true, phone: true, role: true, blocked: true,
-        plan: true, paidUntil: true, planNote: true, createdAt: true, lastLoginAt: true, lockedUntil: true, consentAt: true,
+        plan: true, paidUntil: true, planNote: true, createdAt: true, lastLoginAt: true, lockedUntil: true, consentAt: true, totpEnabledAt: true,
         _count: { select: { ownedCompanies: true, feedback: true } },
       },
     }),

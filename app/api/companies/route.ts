@@ -19,7 +19,7 @@ export const GET = route(async () => {
     // открытый режим: все компании, полный доступ
     const all = await prisma.company.findMany({
       orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, inn: true, activity: true, defaultRegime: true, patentAmount: true, createdAt: true, _count: { select: { journalEntries: true } } },
+      select: { id: true, name: true, inn: true, activity: true, defaultRegime: true, patentAmount: true, lockedThrough: true, createdAt: true, _count: { select: { journalEntries: true } } },
     });
     return NextResponse.json(all.map(({ _count, ...c }) => ({ ...c, entries: _count.journalEntries, access: "edit", own: true, manage: true, adminView: false, owner: null })));
   }
@@ -29,7 +29,7 @@ export const GET = route(async () => {
     where: admin ? {} : { OR: [{ ownerId: me.id }, { access: { some: { userId: me.id } } }] },
     orderBy: { createdAt: "desc" },
     select: {
-      id: true, name: true, inn: true, activity: true, defaultRegime: true, patentAmount: true, createdAt: true, ownerId: true,
+      id: true, name: true, inn: true, activity: true, defaultRegime: true, patentAmount: true, lockedThrough: true, createdAt: true, ownerId: true,
       owner: { select: { email: true, name: true } },
       access: { where: { userId: me.id }, select: { level: true } },
       _count: { select: { journalEntries: true } },

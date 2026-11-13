@@ -146,7 +146,7 @@ function Metrics() {
 interface U {
   id: string; email: string; name: string | null; organization: string | null; phone: string | null; role: string; blocked: boolean;
   plan: string; paidUntil: string | null; planNote: string | null; createdAt: string; lastLoginAt: string | null; lastSeenAt: string | null;
-  lockedUntil: string | null; companies: number; entries: number; feedback: number;
+  lockedUntil: string | null; companies: number; entries: number; feedback: number; totpEnabledAt?: string | null;
 }
 
 function Users() {
@@ -187,7 +187,7 @@ function Users() {
               {list.map((u) => (
                 <tr key={u.id} className={`border-t border-fl-line align-top ${u.blocked ? "opacity-50" : ""}`}>
                   <td className="py-2 pr-3">
-                    <p className="font-medium text-fl-cream">{u.name ?? "—"} {u.role === "admin" && <span className="text-xs text-fl-gold">админ</span>}{u.blocked && <span className="ml-1 text-xs text-fl-red">заблокирован</span>}</p>
+                    <p className="font-medium text-fl-cream">{u.name ?? "—"} {u.role === "admin" && <span className="text-xs text-fl-gold">админ</span>}{u.blocked && <span className="ml-1 text-xs text-fl-red">заблокирован</span>}{u.totpEnabledAt && <span className="ml-1 text-xs text-fl-green" title="Двухфакторный вход включён">2FA</span>}</p>
                     <p className="text-xs text-fl-cream/60">{u.email}{u.phone ? ` · ${u.phone}` : ""}</p>
                     {u.organization && <p className="text-xs text-fl-cream/60">{u.organization}</p>}
                     <p className="text-xs text-fl-cream/45">с {date(u.createdAt)}</p>
@@ -210,6 +210,7 @@ function Users() {
                     <button onClick={() => reset(u.id)} className="text-fl-info hover:underline">ссылка сброса</button>
                     <button onClick={() => patch(u.id, { blocked: !u.blocked })} className="text-fl-red/80 hover:underline">{u.blocked ? "разблокировать" : "заблокировать"}</button>
                     {u.lockedUntil && new Date(u.lockedUntil) > new Date() && <button onClick={() => patch(u.id, { unlock: true })} className="text-fl-cream/70 hover:underline">снять блокировку входа</button>}
+                    {u.totpEnabledAt && <button onClick={() => { if (confirm("Выключить двухфакторный вход этому пользователю? Делайте это, только убедившись, что обращается сам владелец аккаунта (потерян телефон и резервные коды).")) patch(u.id, { reset2fa: true }); }} className="text-fl-cream/70 hover:underline">сбросить 2FA</button>}
                     <button onClick={() => patch(u.id, { role: u.role === "admin" ? "user" : "admin" })} className="text-fl-cream/60 hover:underline">{u.role === "admin" ? "снять админа" : "сделать админом"}</button>
                   </td>
                 </tr>

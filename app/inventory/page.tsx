@@ -20,6 +20,7 @@ interface Data {
   pending: CogsProposal[];
   settings: { auto: boolean };
   readOnly: boolean;
+  method?: "wavg" | "fifo";
 }
 
 export default function InventoryPage() {
@@ -78,7 +79,8 @@ export default function InventoryPage() {
       <header className="mb-6">
         <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Склад</h1>
         <p className="mt-1 max-w-3xl text-sm text-fl-cream/60">
-          Остатки по номенклатуре со средней себестоимостью и списание себестоимости проданного по средней (МСФО (IAS) 2).
+          Остатки по номенклатуре со средней себестоимостью и списание себестоимости проданного по формуле из учётной
+          политики — по средней или по ФИФО (МСФО (IAS) 2).
           Продажа — проводка по выручке, где указаны номенклатура и количество; себестоимость берётся по остатку той же
           номенклатуры на дату продажи.
         </p>
@@ -112,6 +114,7 @@ export default function InventoryPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="font-display text-lg font-semibold text-fl-cream">Продажи без списания себестоимости: {data.pending.length}</h2>
+                <p className="text-xs text-fl-cream/50">Формула: {data.method === "fifo" ? "ФИФО — сначала списываются самые ранние партии" : "средняя (скользящая) себестоимость"} · <a href="/policy" className="text-fl-gold underline-offset-2 hover:underline">изменить в учётной политике</a></p>
                 <p className="text-sm text-fl-cream/55">{ready.length ? `Готово к списанию ${ready.length} на ${formatNumber(ready.reduce((s, p) => s + p.amount, 0), 2)} сом.` : "Все продажи периода списаны."}</p>
               </div>
               {!data.readOnly && <button type="button" onClick={postAll} disabled={busy || !ready.length} className="rounded-lg bg-fl-accent px-3 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-40">{busy ? "Списываю…" : `Списать (${ready.length})`}</button>}
@@ -119,7 +122,7 @@ export default function InventoryPage() {
             {data.pending.length > 0 && (
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[760px] text-sm">
-                  <thead><tr className="text-xs text-fl-cream/50">{["Дата", "Номенклатура", "Продано", "На остатке", "Средняя цена", "Себестоимость", ""].map((h, i) => <th key={i} className={`py-1.5 font-medium ${i >= 2 && i <= 5 ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
+                  <thead><tr className="text-xs text-fl-cream/50">{["Дата", "Номенклатура", "Продано", "На остатке", data.method === "fifo" ? "Цена за ед." : "Средняя цена", "Себестоимость", ""].map((h, i) => <th key={i} className={`py-1.5 font-medium ${i >= 2 && i <= 5 ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
                   <tbody>
                     {data.pending.map((p) => (
                       <tr key={`${p.saleEntryId}:${p.lineIndex}`} className="border-t border-fl-line/60 align-top">

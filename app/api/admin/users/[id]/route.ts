@@ -11,6 +11,8 @@ const Schema = z.object({
   paidUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   planNote: z.string().max(500).nullable().optional(),
   unlock: z.boolean().optional(),
+  /** пользователь потерял телефон и резервные коды — выключить двухфакторный вход (после проверки личности) */
+  reset2fa: z.boolean().optional(),
 });
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -32,10 +34,11 @@ export const PATCH = route(async (req: NextRequest, { params }: Ctx) => {
       ...(d.paidUntil !== undefined ? { paidUntil: d.paidUntil ? new Date(d.paidUntil + "T23:59:59+06:00") : null } : {}),
       ...(d.planNote !== undefined ? { planNote: d.planNote } : {}),
       ...(d.unlock ? { lockedUntil: null, failedLogins: 0 } : {}),
+      ...(d.reset2fa ? { totpSecret: null, totpEnabledAt: null, totpLastStep: null, totpBackup: [] } : {}),
     },
     select: { id: true, email: true, role: true, blocked: true, plan: true, paidUntil: true, planNote: true },
   });
-  if (d.blocked) await prisma.session.deleteMany({ where: { userId: id } });
+  if (d.blocked || d.reset2fa) await prisma.session.deleteMany({ where: { userId: id } });
   await logActivity("admin_user_update", null, { userId: id, ...d });
   return NextResponse.json(user);
 });

@@ -22,9 +22,18 @@ interface Props {
   /** accounts to highlight (the ones the user drilled into) */
   highlight?: string[];
   onDelete?: (id: string) => void;
+  /** manual entries and opening balances can be edited in place */
+  onEdit?: (entry: LedgerEntry) => void;
+  onHistory?: (entry: LedgerEntry) => void;
+  onAttachments?: (entry: LedgerEntry) => void;
+  /** the entry's date is in a period closed for changes */
+  locked?: boolean;
 }
 
-export function EntryCard({ entry, highlight = [], onDelete }: Props) {
+const EDITABLE = new Set(["manual", "opening"]);
+const dt = (iso: string) => new Date(iso).toLocaleString("ru-RU", { timeZone: "Asia/Bishkek", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+export function EntryCard({ entry, highlight = [], onDelete, onEdit, onHistory, onAttachments, locked = false }: Props) {
   const total = entry.lines.reduce((s, l) => s + l.debit, 0);
   const [view] = useAccountView();
   const ifrs = view === "ifrs";
@@ -38,11 +47,30 @@ export function EntryCard({ entry, highlight = [], onDelete }: Props) {
             <span className={`ml-2 inline-block rounded border px-1.5 py-px text-[11px] ${SOURCE_TONE[entry.source] ?? ""}`}>
               {SOURCE_LABEL[entry.source] ?? entry.source}
             </span>
+            {entry.sourceRef?.startsWith("rec:") && <span className="ml-1.5 inline-block rounded border border-fl-line px-1.5 py-px text-[11px] text-fl-cream/55">↻ регулярная</span>}
+            {(entry.createdByName || entry.updatedAt) && (
+              <span className="ml-2 text-[11px] text-fl-cream/40">
+                {entry.createdByName && <>ввёл {entry.createdByName}</>}
+                {entry.updatedAt && <>{entry.createdByName ? " · " : ""}изменил{entry.updatedByName ? ` ${entry.updatedByName}` : ""} {dt(entry.updatedAt)}</>}
+              </span>
+            )}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
           <span className="num text-sm text-fl-cream/80">{formatNumber(total, 2)}</span>
-          {onDelete && entry.source !== "bank" && (
+          {locked && <span title="Период закрыт для изменений" className="rounded border border-fl-line px-1.5 py-px text-[11px] text-fl-cream/50">🔒 период закрыт</span>}
+          {onAttachments && (
+            <button onClick={() => onAttachments(entry)} title="Документы проводки" className={`text-xs underline-offset-2 hover:underline ${entry.attachments ? "text-fl-gold" : "text-fl-cream/45 hover:text-fl-cream"}`}>
+              📎{entry.attachments ? ` ${entry.attachments}` : ""}
+            </button>
+          )}
+          {onHistory && (
+            <button onClick={() => onHistory(entry)} className="text-xs text-fl-cream/45 underline-offset-2 hover:text-fl-cream hover:underline">История</button>
+          )}
+          {onEdit && !locked && EDITABLE.has(entry.source) && (
+            <button onClick={() => onEdit(entry)} className="text-xs text-fl-cream/45 underline-offset-2 hover:text-fl-gold hover:underline">Изменить</button>
+          )}
+          {onDelete && !locked && entry.source !== "bank" && (
             <button
               onClick={() => onDelete(entry.id)}
               className="text-xs text-fl-cream/40 underline-offset-2 hover:text-fl-red hover:underline"

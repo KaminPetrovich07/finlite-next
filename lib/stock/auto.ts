@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/db";
 import { getRecord } from "@/lib/records";
 import { createEntry, loadEntries } from "@/lib/ledger/repo";
-import { cogsLines, cogsRef, pendingCogs } from "./cogs";
+import { cogsLines, cogsMethodOf, cogsRef, pendingCogs, type CogsMethod } from "./cogs";
 
 export interface StockSettings { auto: boolean }
 
@@ -11,12 +11,20 @@ export async function stockSettings(companyId: string): Promise<StockSettings> {
   try { return { auto: false, ...((await getRecord<StockSettings>(companyId, "stock")) ?? {}) }; } catch { return { auto: false }; }
 }
 
+/**
+ * Cost formula from the saved accounting policy (ФИФО or average). Until the policy is saved — the
+ * average, as before: the policy page only suggests a formula, the company has not chosen it yet.
+ */
+export async function cogsMethodFor(companyId: string): Promise<CogsMethod> {
+  try { return cogsMethodOf((await getRecord<{ costFormula?: string }>(companyId, "policy"))?.costFormula); } catch { return "wavg"; }
+}
+
 /** Post the write-offs for one sale entry. Never throws: a failed write-off must not undo the sale. */
 export async function autoCogsFor(companyId: string, entryId: string, date: string): Promise<number> {
   try {
     if (!(await stockSettings(companyId)).auto) return 0;
     const entries = await loadEntries(companyId, date);
-    const todo = pendingCogs(entries, { from: date, to: date }).filter((p) => p.saleEntryId === entryId && !p.problem && p.amount > 0);
+    const todo = pendingCogs(entries, { from: date, to: date }, await cogsMethodFor(companyId)).filter((p) => p.saleEntryId === entryId && !p.problem && p.amount > 0);
     for (const p of todo) {
       await createEntry(prisma, {
         companyId, date: p.date, source: "cogs", sourceRef: cogsRef(p.saleEntryId, p.lineIndex),

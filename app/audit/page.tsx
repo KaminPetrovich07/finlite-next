@@ -8,6 +8,7 @@ import { PeriodPicker } from "@/components/ledger/PeriodPicker";
 import { CHART } from "@/lib/chart-theme";
 import { DEMO_PERIOD } from "@/lib/ledger/demo";
 import type { AnomalyReport, Severity } from "@/lib/audit/anomalies";
+import { ChangeLog } from "@/components/ledger/ChangeLog";
 
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 const TONE: Record<Severity, string> = { high: "border-fl-red/50 bg-fl-red/[0.06]", medium: "border-fl-amber/50 bg-fl-amber/[0.06]", info: "border-fl-line" };
@@ -22,6 +23,8 @@ export default function AuditPage() {
   const [r, setR] = useState<AnomalyReport | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [only, setOnly] = useState<Severity | "all">("all");
+  const [tab, setTab] = useState<"checks" | "changes">("checks");
+  useEffect(() => { if (new URLSearchParams(location.search).get("tab") === "changes") setTab("changes"); }, []);
 
   useEffect(() => {
     if (!loaded || period) return;
@@ -54,7 +57,14 @@ export default function AuditPage() {
         </label>
         <div><span className="mb-1 block text-xs text-fl-cream/55">Период</span>{period && <PeriodPicker key={key} from={period.from} to={period.to} onChange={(p) => setPeriod((c) => (c && c.from === p.from && c.to === p.to ? c : p))} />}</div>
       </div>
-      {err ? <p className="text-sm text-fl-red">{err}</p> : !r ? <p className="text-sm text-fl-cream/50">Проверяю…</p> : (
+      {!company?.demo && (
+        <div className="mb-5 flex gap-1 rounded-xl bg-fl-surface-2 p-1 text-sm sm:inline-flex">
+          {([["checks", "Подозрительные операции"], ["changes", "Журнал изменений"]] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} className={`flex-1 rounded-lg px-3 py-1.5 sm:flex-none ${tab === k ? "bg-fl-charcoal-2 font-semibold text-fl-cream shadow-card" : "text-fl-cream/60 hover:text-fl-cream"}`}>{l}</button>
+          ))}
+        </div>
+      )}
+      {tab === "changes" && !company?.demo && period ? <ChangeLog companyId={companyId} from={period.from} to={period.to} /> : err ? <p className="text-sm text-fl-red">{err}</p> : !r ? <p className="text-sm text-fl-cream/50">Проверяю…</p> : (
         <div className="space-y-5">
           <div className="flex flex-wrap gap-2 text-sm">
             {([["all", `Все: ${r.findings.length}`], ["high", `Важно: ${count("high")}`], ["medium", `Проверить: ${count("medium")}`], ["info", `К сведению: ${count("info")}`]] as const).map(([k, l]) => (

@@ -8,12 +8,10 @@ import { DEMO_COMPANY } from "@/lib/ledger/demo";
 import { allows, isAdmin, levelFor, type Level } from "@/lib/auth/access";
 import { getCurrentUser, type CurrentUser } from "@/lib/auth/session";
 import { AUTH_ON } from "@/lib/auth/mode";
+import { encodeVersions, requestContext, VERSIONS_HEADER } from "@/lib/request-context";
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+import { HttpError } from "@/lib/http-error";
+export { HttpError };
 
 export type Access = "edit" | "view";
 
@@ -82,21 +80,29 @@ export function checkOrigin(req: Request): void {
   if (!host || originHost !== host) throw new HttpError(403, "Запрос с другого сайта отклонён");
 }
 
-/** Wraps a route handler: CSRF check; HttpError → JSON with its status; anything else → 503/500. */
+/**
+ * Wraps a route handler: CSRF check; HttpError → JSON with its status; anything else → 503/500.
+ * Versions of the company records the handler read or wrote go back in the X-FL-Versions header.
+ */
 export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>) {
-  return async (...args: A): Promise<Response> => {
-    try {
-      if (args[0] instanceof Request) checkOrigin(args[0]);
-      return await fn(...args);
-    } catch (e) {
-      if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
-      console.error(e);
-      const req = args[0] instanceof Request ? args[0] : null;
-      await recordError({ source: "api", message: e instanceof Error ? `${e.name}: ${e.message}` : String(e), stack: e instanceof Error ? e.stack : null, url: req ? `${req.method} ${new URL(req.url).pathname}` : null });
-      const db = e instanceof Error && /prisma|database|connect|ECONN/i.test(e.message + e.constructor.name);
-      return NextResponse.json({ error: db ? "База данных недоступна" : "Внутренняя ошибка сервера" }, { status: db ? 503 : 500 });
-    }
-  };
+  return (...args: A): Promise<Response> => requestContext.run({ versions: new Map() }, () => handle(fn, args));
+}
+
+async function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response>, args: A): Promise<Response> {
+  try {
+    if (args[0] instanceof Request) checkOrigin(args[0]);
+    const res = await fn(...args);
+    const versions = requestContext.getStore()?.versions;
+    if (versions?.size) { try { res.headers.set(VERSIONS_HEADER, encodeVersions(versions)); } catch { /* immutable headers */ } }
+    return res;
+  } catch (e) {
+    if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
+    console.error(e);
+    const req = args[0] instanceof Request ? args[0] : null;
+    await recordError({ source: "api", message: e instanceof Error ? `${e.name}: ${e.message}` : String(e), stack: e instanceof Error ? e.stack : null, url: req ? `${req.method} ${new URL(req.url).pathname}` : null });
+    const db = e instanceof Error && /prisma|database|connect|ECONN/i.test(e.message + e.constructor.name);
+    return NextResponse.json({ error: db ? "База данных недоступна" : "Внутренняя ошибка сервера" }, { status: db ? 503 : 500 });
+  }
 }
 
 /** Records who did what (admin panel, metrics); never breaks a request. */

@@ -7,6 +7,8 @@ import { companyRegime, countUnpostedBankTx } from "@/lib/ledger/repo";
 import { DEMO_COMPANY } from "@/lib/ledger/demo";
 import { hasProduction } from "@/lib/policy/types";
 import { isRegimeKey } from "@/lib/tax-engine";
+import { prisma } from "@/lib/db";
+import { canManage } from "@/lib/auth/access";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,8 +19,14 @@ export const GET = route(async (req: NextRequest) => {
   const sp = req.nextUrl.searchParams;
   const companyId = sp.get("companyId"), from = sp.get("from") ?? "", to = sp.get("to") ?? "";
   if (!ISO.test(from) || !ISO.test(to) || from > to) throw new HttpError(400, "Неверный период");
-  await requireCompany(companyId, "view");
+  const level = await requireCompany(companyId, "view");
   const demo = companyId === DEMO_COMPANY.id;
+  const lockRow = demo ? null : await prisma.company.findUnique({ where: { id: companyId! }, select: { lockedThrough: true, lockedAt: true, lockedByName: true } });
+  const lock = {
+    through: lockRow?.lockedThrough ? lockRow.lockedThrough.toISOString().slice(0, 10) : null,
+    at: lockRow?.lockedAt ?? null, by: lockRow?.lockedByName ?? null,
+    canLock: !demo && level !== "view", canUnlock: !demo && canManage(level),
+  };
   const [cost, cp, reg, unposted] = await Promise.all([
     costingContext(companyId!, from, to),
     cpContext(companyId!),
@@ -42,5 +50,5 @@ export const GET = route(async (req: NextRequest) => {
       outputsSet: Object.values(outputs).some((v) => v > 0),
     },
   });
-  return NextResponse.json({ ...res, demo });
+  return NextResponse.json({ ...res, demo, lock });
 });

@@ -5,6 +5,11 @@ import { NEW_COMPANY, useCompanies } from "@/components/ledger/useCompanies";
 import { PeriodPicker } from "@/components/ledger/PeriodPicker";
 import { EntryCard } from "@/components/ledger/EntryCard";
 import { EntryForm } from "@/components/ledger/EntryForm";
+import { EntryHistory } from "@/components/ledger/EntryHistory";
+import { RecurringPanel } from "@/components/ledger/RecurringPanel";
+import { Attachments } from "@/components/ledger/Attachments";
+import { uploadAttachment } from "@/components/ledger/attach-upload";
+import { nextMonth } from "@/lib/ledger/recurring";
 import { ReceiptScan } from "@/components/ledger/ReceiptScan";
 import { PayrollForm } from "@/components/ledger/PayrollForm";
 import { Notice } from "@/components/ledger/statements";
@@ -28,7 +33,13 @@ export default function LedgerPage() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<null | "manual" | "opening" | "payroll" | "receipt">(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<LedgerEntry | null>(null);
+  const [historyOf, setHistoryOf] = useState<LedgerEntry | null>(null);
+  const [docsOf, setDocsOf] = useState<LedgerEntry | null>(null);
   const toast = useToast();
+  const lockedThrough = company?.lockedThrough ? company.lockedThrough.slice(0, 10) : null;
+  const isLocked = (e: LedgerEntry) => !!lockedThrough && e.date <= lockedThrough;
+  useEffect(() => { if (form) setEditing(null); }, [form]);
 
   const setPeriod = useCallback((p: { from: string; to: string }) => {
     setPeriodState((cur) => (cur && cur.from === p.from && cur.to === p.to ? cur : p));
@@ -59,11 +70,11 @@ export default function LedgerPage() {
 
   const isDemo = !!company?.demo;
 
-  // /ledger?new=1 и ?payroll=1 — из нижней панели телефона и поиска
+  // /ledger?new=1, ?payroll=1, ?receipt=1 — из нижней панели телефона, поиска и ярлыков установленного приложения
   useEffect(() => {
     if (!loaded || !period || isDemo || readOnly) return;
     const sp = new URLSearchParams(window.location.search);
-    const want = sp.get("new") ? "manual" : sp.get("payroll") ? "payroll" : null;
+    const want = sp.get("new") ? "manual" : sp.get("payroll") ? "payroll" : sp.get("receipt") ? "receipt" : null;
     if (!want) return;
     setForm(want);
     history.replaceState(null, "", "/ledger");
@@ -94,17 +105,51 @@ export default function LedgerPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function save(entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string }> }) {
+  const [recKey, setRecKey] = useState(0);
+
+  async function save(entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number; memo?: string; party?: string; item?: string; qty?: number; unit?: string }>; repeat?: { day: number }; photo?: File }) {
+    const { repeat, photo, ...data } = entry;
     const res = await fetch("/api/ledger", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...entry, companyId, source: form === "opening" ? "opening" : "manual" }),
+      body: JSON.stringify({ ...data, companyId, source: form === "opening" ? "opening" : "manual" }),
     });
     const body = await res.json();
     if (!res.ok) { toast.show(body.error ?? "Проводка не сохранена", "error"); return false; }
-    toast.show("Проводка сохранена — отчётность обновлена");
+    if (repeat) {
+      // эта проводка — первый месяц; дальше шаблон проводится сам
+      const r = await fetch("/api/ledger/recurring", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId, description: data.description, lines: data.lines, day: repeat.day, from: nextMonth(data.date.slice(0, 7)) }),
+      });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) toast.show(`Проводка сохранена, но регулярную операцию создать не удалось: ${b.error ?? "ошибка"}`, "error");
+      else { toast.show("Проводка сохранена; со следующего месяца она будет проводиться сама"); setRecKey((k) => k + 1); }
+    } else toast.show("Проводка сохранена — отчётность обновлена");
+    if (photo && body.id) {
+      try { await uploadAttachment(body.id, photo); } catch (e: any) { toast.show(`Проводка сохранена, но фото не прикрепилось: ${e.message}`, "error"); }
+    }
     setForm(null);
     load();
     return true;
+  }
+
+  async function update(entry: { date: string; description: string; lines: Array<{ account: string; debit: number; credit: number }> }) {
+    if (!editing) return false;
+    const res = await fetch(`/api/ledger/${editing.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(entry),
+    });
+    const body = await res.json();
+    if (!res.ok) { toast.show(body.error ?? "Изменения не сохранены", "error"); return false; }
+    toast.show("Проводка изменена — прежняя версия в истории");
+    setEditing(null);
+    load();
+    return true;
+  }
+
+  function startEdit(e: LedgerEntry) {
+    setForm(null);
+    setEditing(e);
+    setTimeout(() => document.getElementById("fl-entry-form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
   async function remove(id: string) {
@@ -211,7 +256,7 @@ export default function LedgerPage() {
         </div>
       ) : (
         <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
-          <button onClick={() => setForm("manual")} className="shrink-0 rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
+          <button onClick={() => { setEditing(null); setForm("manual"); }} className="shrink-0 rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
             Новая проводка
           </button>
           <button onClick={() => setForm("receipt")} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream">
@@ -232,12 +277,21 @@ export default function LedgerPage() {
         </div>
       )}
 
-      {form && period && (
+      {editing && period && (
+        <div id="fl-entry-form" className="mb-6 scroll-mt-20">
+          <EntryForm key={`edit-${editing.id}`} mode={editing.source === "opening" ? "opening" : "manual"} defaultDate={editing.date} initial={editing}
+            onSubmit={update} onCancel={() => setEditing(null)} parties={parties} items={items} lockedThrough={lockedThrough} />
+        </div>
+      )}
+
+      {!isDemo && companyId && <RecurringPanel companyId={companyId} readOnly={readOnly} refreshKey={recKey} onPosted={load} toast={(m, k) => toast.show(m, k)} />}
+
+      {form && period && !editing && (
         <div id="fl-entry-form" className="mb-6 scroll-mt-20">
           {form === "receipt" ? <ReceiptScan defaultDate={todayIso() >= period.from && todayIso() <= period.to ? todayIso() : period.from} onSubmit={save} onCancel={() => setForm(null)} />
             : form === "payroll"
             ? <PayrollForm defaultDate={period.to} onSubmit={savePayroll} onCancel={() => setForm(null)} />
-            : <EntryForm key={form} mode={form as "manual" | "opening"} defaultDate={form === "manual" && todayIso() >= period.from && todayIso() <= period.to ? todayIso() : period.from} onSubmit={save} onCancel={() => setForm(null)} parties={parties} items={items} />}
+            : <EntryForm key={form} mode={form as "manual" | "opening"} defaultDate={form === "manual" && todayIso() >= period.from && todayIso() <= period.to ? todayIso() : period.from} onSubmit={save} onCancel={() => setForm(null)} parties={parties} items={items} lockedThrough={lockedThrough} />}
         </div>
       )}
 
@@ -249,7 +303,7 @@ export default function LedgerPage() {
             <div>
               <h2 className="mb-2 font-display text-lg font-semibold text-fl-cream">Начальные остатки</h2>
               <div className="space-y-2.5">
-                {opening.map((e) => <EntryCard key={e.id} entry={e} onDelete={readOnly ? undefined : remove} />)}
+                {opening.map((e) => <EntryCard key={e.id} entry={e} locked={isLocked(e)} onDelete={readOnly ? undefined : remove} onEdit={readOnly ? undefined : startEdit} onHistory={isDemo ? undefined : setHistoryOf} onAttachments={isDemo ? undefined : setDocsOf} />)}
               </div>
             </div>
           )}
@@ -265,13 +319,18 @@ export default function LedgerPage() {
               </Notice>
             ) : (
               <div className="space-y-2.5">
-                {inPeriod.map((e) => <EntryCard key={e.id} entry={e} onDelete={readOnly ? undefined : remove} />)}
+                {inPeriod.map((e) => <EntryCard key={e.id} entry={e} locked={isLocked(e)} onDelete={readOnly ? undefined : remove} onEdit={readOnly ? undefined : startEdit} onHistory={isDemo ? undefined : setHistoryOf} onAttachments={isDemo ? undefined : setDocsOf} />)}
               </div>
             )}
           </div>
         </section>
       )}
 
+      {lockedThrough && !isDemo && (
+        <p className="mt-6 text-xs text-fl-cream/45">🔒 Изменения по {lockedThrough.split("-").reverse().join(".")} запрещены — снять запрет может владелец компании на странице «Закрытие месяца».</p>
+      )}
+      <Attachments entry={docsOf} readOnly={readOnly} locked={!!docsOf && isLocked(docsOf)} onClose={() => setDocsOf(null)} onChanged={load} />
+      <EntryHistory companyId={companyId} entryId={historyOf?.id ?? null} title={historyOf?.description} onClose={() => setHistoryOf(null)} />
       <toast.ToastContainer />
     </main>
   );

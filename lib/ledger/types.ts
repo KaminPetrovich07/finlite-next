@@ -49,6 +49,13 @@ export interface LedgerEntry {
   sourceRef?: string | null;
   bankTransactionId?: string | null;
   lines: LedgerLine[];
+  /** who entered and who last changed the entry (from the database; absent in the demo) */
+  createdByName?: string | null;
+  createdAt?: string | null;
+  updatedByName?: string | null;
+  updatedAt?: string | null;
+  /** how many scanned documents are attached (journal page only) */
+  attachments?: number;
 }
 
 export interface Period {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { card, ErrorNote, field, ghostBtn } from "@/components/auth/ui";
+import { TwoFactor } from "@/components/auth/TwoFactor";
 
 interface Me {
   user: { id: string; email: string; name: string | null; organization: string | null; role: string; plan: string; paidUntil: string | null } | null;
@@ -55,6 +56,7 @@ export default function AccountPage() {
         <a href="/pricing" className={`${ghostBtn} mt-3 inline-block`}>Тарифы</a>
       </section>
       <Password />
+      <TwoFactor />
       <Sessions />
       <Messages />
       <Data />

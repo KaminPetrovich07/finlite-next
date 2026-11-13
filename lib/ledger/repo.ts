@@ -33,6 +33,9 @@ export function toLedgerEntry(row: EntryRow): LedgerEntry {
     source: row.source as EntrySource,
     sourceRef: row.sourceRef,
     bankTransactionId: row.bankTransactionId,
+    ...(row.createdByName ? { createdByName: row.createdByName } : {}),
+    ...(row.createdAt ? { createdAt: row.createdAt.toISOString() } : {}),
+    ...(row.updatedAt ? { updatedAt: row.updatedAt.toISOString(), updatedByName: row.updatedByName } : {}),
     lines: row.lines.map((l) => ({
       account: l.accountCode,
       debit: Number(l.debit),
@@ -67,6 +70,8 @@ export interface NewEntry {
   sourceRef?: string | null;
   bankTransactionId?: string | null;
   lines: LedgerLine[];
+  /** who to show as the author when it is not the signed-in user (e.g. «по расписанию») */
+  createdByName?: string | null;
 }
 
 export async function createEntry(db: Db, e: NewEntry) {
@@ -78,6 +83,7 @@ export async function createEntry(db: Db, e: NewEntry) {
       source: e.source,
       sourceRef: e.sourceRef ?? null,
       bankTransactionId: e.bankTransactionId ?? null,
+      ...(e.createdByName ? { createdByName: e.createdByName } : {}),
       lines: {
         create: e.lines.map((l) => ({
           accountCode: l.account,

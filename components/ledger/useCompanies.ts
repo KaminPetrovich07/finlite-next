@@ -12,6 +12,10 @@ export interface CompanyOption {
   /** "edit" — can post entries and change settings; "view" — read-only */
   access?: "edit" | "view";
   own?: boolean;
+  /** owner or administrator: may share the company and lift the period lock */
+  manage?: boolean;
+  /** entries dated on or before this day (YYYY-MM-DD…) cannot be added, changed or deleted */
+  lockedThrough?: string | null;
 }
 
 /** Value of the «+ Добавить компанию…» option in company selects. */
