@@ -22,6 +22,7 @@ export type Feature =
   | "budget"        // план-факт и прогноз денежных средств
   | "reminders"     // напоминания о сроках в Telegram и на почту
   | "industry"      // отраслевые расширения: банк, госсектор, страховщик
+  | "consolidation" // консолидированная отчётность группы компаний
   | "talentContacts"// контакты специалистов в реестре
   | "publish"       // подача статей в «Новости и наука»
   | "priority";     // приоритетная поддержка
@@ -52,7 +53,7 @@ export interface Plan {
 }
 
 const BASE: Feature[] = ["bankImport", "exchange1c", "exports", "sharing"];
-const MAX: Feature[] = [...BASE, "esg", "packages", "fixedAssets", "fx", "esf", "budget", "reminders", "talentContacts"];
+const MAX: Feature[] = [...BASE, "esg", "packages", "fixedAssets", "fx", "esf", "budget", "reminders", "talentContacts", "consolidation"];
 const SCIENCE: Feature[] = [...BASE, "esg", "packages", "fixedAssets", "fx", "budget", "industry", "publish"];
 
 export const PLANS: Record<PlanKey, Plan> = {
@@ -72,7 +73,7 @@ export const PLANS: Record<PlanKey, Plan> = {
     key: "max", name: "Макс", priceKgs: 4990, priceYearKgs: 49900, paid: true, public: true,
     tagline: "Аутсорс-бухгалтерия и растущий бизнес",
     companies: 10, entriesPerMonth: null, features: MAX,
-    bullets: ["До 10 компаний", "Без ограничения проводок", "Всё из «Про»", "Основные средства, валюта, ЭСФ", "План-факт и прогноз денег", "Напоминания о сроках в Telegram", "ESG и пакеты для аудитора", "Контакты в реестре специалистов"],
+    bullets: ["До 10 компаний", "Без ограничения проводок", "Всё из «Про»", "Основные средства, валюта, ЭСФ", "План-факт и прогноз денег", "Напоминания о сроках в Telegram", "ESG и пакеты для аудитора", "Консолидированная отчётность группы", "Контакты в реестре специалистов"],
   },
   premium: {
     key: "premium", name: "Enterprise", priceKgs: 25000, priceYearKgs: 0, contract: true, paid: true, public: true,
@@ -147,7 +148,7 @@ export const FEATURE_LABEL: Record<Feature, string> = {
   bankImport: "Банковские выписки", exchange1c: "Обмен с 1С", exports: "Выгрузка в Word и Excel", sharing: "Совместный доступ",
   esg: "ESG и бережливое производство", packages: "Пакеты для аудитора и руководителя", fixedAssets: "Основные средства",
   fx: "Валюта и курсовые разницы", esf: "ЭСФ: загрузка и выгрузка XML", budget: "План-факт и прогноз денег", reminders: "Напоминания о сроках",
-  industry: "Отраслевые расширения", talentContacts: "Контакты специалистов", publish: "Публикация статей", priority: "Приоритетная поддержка",
+  industry: "Отраслевые расширения", consolidation: "Консолидация группы компаний", talentContacts: "Контакты специалистов", publish: "Публикация статей", priority: "Приоритетная поддержка",
 };
 
 export function planKey(key: string | null | undefined): PlanKey {

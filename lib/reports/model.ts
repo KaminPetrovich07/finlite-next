@@ -49,10 +49,12 @@ export interface Section {
 }
 
 export type PackageKey = "full" | "ifrs" | "executive" | "audit" | "management" | "esg";
+/** Documents that are not company packages (they are not listed on the «Пакеты» page). */
+export type DocKind = PackageKey | "consolidation";
 export type FormatKey = "pdf" | "docx" | "xlsx";
 
 export interface ReportDoc {
-  package: PackageKey;
+  package: DocKind;
   title: string;
   subtitle?: string;
   /** print a table of contents after the cover (long reports) */
