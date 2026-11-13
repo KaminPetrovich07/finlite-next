@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { demoEntries, DEMO_COMPANY } from "@/lib/ledger/demo";
-import { createEntry } from "@/lib/ledger/repo";
+import { createDemoCopy } from "@/lib/ledger/demo-copy";
 import { logActivity, requireUser, route } from "@/lib/auth/server";
 import { assertCanCreateCompany } from "@/lib/server/plan-guard";
 import { AUTH_ON } from "@/lib/auth/mode";
@@ -14,21 +13,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 export const POST = route(async () => {
   const me = AUTH_ON ? await requireUser() : await getCurrentUser();
   await assertCanCreateCompany(me);
-  const company = await prisma.company.create({
-    data: { name: `${DEMO_COMPANY.name} (копия)`, defaultRegime: DEMO_COMPANY.regime, patentAmount: DEMO_COMPANY.patentAmount, activity: DEMO_COMPANY.activity, ownerId: me?.id ?? null },
-  });
-  await prisma.$transaction(async (db) => {
-    for (const e of demoEntries()) {
-      await createEntry(db, {
-        companyId: company.id,
-        date: e.date,
-        description: e.description,
-        source: e.source === "demo" ? "manual" : e.source,
-        sourceRef: e.sourceRef,
-        lines: e.lines,
-      });
-    }
-  });
+  const company = await createDemoCopy(me?.id ?? null);
   await logActivity("demo_copy", company.id);
   return NextResponse.json({ id: company.id, name: company.name }, { status: 201 });
 });

@@ -57,6 +57,9 @@ model User {
   activities     ActivityLog[]
   sessions       Session[]
   resets         PasswordReset[]
+  studyGroups    StudyGroup[]
+  studyMembers   StudyMember[]
+  submissions    Submission[]
 }
 
 /// A signed-in browser. id = SHA-256 of the cookie token (the token itself is never stored).
@@ -101,6 +104,7 @@ model Company {
   journalEntries   JournalEntry[]
   esgReports       EsgReport[]
   records          CompanyRecord[]
+  submissions      Submission[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -523,4 +527,70 @@ model AppSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// ── Учебный режим: группы, задания, работы студентов с автопроверкой ─────────
+/// Учебная группа преподавателя; студенты вступают по коду.
+model StudyGroup {
+  id          String        @id @default(cuid())
+  name        String
+  code        String        @unique
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId     String
+  members     StudyMember[]
+  assignments Assignment[]
+  createdAt   DateTime      @default(now())
+
+  @@index([ownerId])
+}
+
+model StudyMember {
+  id        String     @id @default(cuid())
+  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId   String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime   @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+/// Задание: с какой компании студент начинает и с чем сравниваются его обороты за период.
+model Assignment {
+  id            String       @id @default(cuid())
+  group         StudyGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId       String
+  title         String
+  text          String
+  preset        String?      // встроенное задание из пособия, например "beles-oct-2026"
+  baseCompanyId String?      // null — копия демо-компании ОсОО «Белес»
+  periodFrom    String       // YYYY-MM-DD
+  periodTo      String
+  key           Json         // эталонные обороты: { "1410": { "d": 280000, "c": 280000 }, … }
+  showAnswers   Boolean      @default(false)
+  dueAt         DateTime?
+  submissions   Submission[]
+  createdAt     DateTime     @default(now())
+
+  @@index([groupId])
+}
+
+/// Работа студента: его копия компании и результат последней проверки.
+model Submission {
+  id           String     @id @default(cuid())
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId    String
+  score        Float?
+  result       Json?
+  checks       Int        @default(0)
+  checkedAt    DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@unique([assignmentId, userId])
+  @@index([companyId])
 }

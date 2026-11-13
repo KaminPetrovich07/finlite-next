@@ -28,9 +28,9 @@ export function readBackupBytes(buf: Buffer): unknown {
 const CHUNK = 1000;
 async function inChunks<T>(rows: T[], fn: (part: T[]) => Promise<unknown>) { for (let i = 0; i < rows.length; i += CHUNK) await fn(rows.slice(i, i + CHUNK)); }
 
-export async function importCompany(raw: unknown, ownerId: string | null) {
+export async function importCompany(raw: unknown, ownerId: string | null, name?: string) {
   const plan = planImport(raw, () => randomUUID().replace(/-/g, ""));
-  const company = await prisma.company.create({ data: { ...plan.company, name: `${plan.company.name} (из копии)`, ownerId } });
+  const company = await prisma.company.create({ data: { ...plan.company, name: name ?? `${plan.company.name} (из копии)`, ownerId } });
   try {
     await prisma.$transaction(async (db) => {
       await inChunks(plan.bankTransactions, (p) => db.bankTransaction.createMany({ data: p.map((t) => ({ ...t, companyId: company.id })) as never }));
