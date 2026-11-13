@@ -1,0 +1,236 @@
+// ════════════════════════════════════════════════════════════════════════
+// lib/science/openalex.ts — мировая наука по учёту, аудиту и финансам из OpenAlex
+// (openalex.org — открытый индекс ≈ 320 млн научных работ, CC0).
+//
+// Раз в неделю собирается «снимок» по каждой области (подобласти классификатора ASJC):
+//   • самые цитируемые работы — за всё время и за последние 5 лет; самые цитируемые книги;
+//   • ведущие журналы и сборники (по числу публикаций за 5 лет, h-индекс, средняя цитируемость);
+//   • число публикаций по годам;
+//   • мировые тренды — темы и ключевые слова, которые растут быстрее всего
+//     (публикации за последние 3 полных года против трёх предыдущих);
+//   • Центральная Азия — публикации авторов из Кыргызстана и соседних стран, самые цитируемые из них.
+// Около 13 запросов на область; без ключа OpenAlex даёт ~1000 запросов в день.
+// Разбор ответов — чистые функции (тесты на образцах ответов).
+// ════════════════════════════════════════════════════════════════════════
+
+export const API = "https://api.openalex.org";
+
+export interface Scope { key: string; title: string; subfield: number; note: string }
+
+/** Области: подобласти классификатора ASJC в OpenAlex. */
+export const SCOPES: Scope[] = [
+  { key: "accounting", title: "Бухгалтерский учёт и аудит", subfield: 1402, note: "Финансовая и управленческая отчётность, аудит, МСФО, раскрытие информации, ESG-отчётность, налоговый учёт" },
+  { key: "finance", title: "Финансы", subfield: 2003, note: "Корпоративные финансы, банки, страхование, рынки капитала, финансовые риски" },
+];
+
+export const CENTRAL_ASIA: Record<string, string> = { KG: "Кыргызстан", KZ: "Казахстан", UZ: "Узбекистан", TJ: "Таджикистан", TM: "Туркменистан" };
+
+export interface Work {
+  id: string;
+  title: string;
+  titleRu?: string;
+  year: number | null;
+  cited: number;
+  type: string;
+  doi: string | null;
+  url: string | null;
+  oa: boolean;
+  source: string | null;
+  authors: string[];
+  moreAuthors: number;
+  countries: string[];
+  topic: string | null;
+}
+
+export interface Journal { id: string; name: string; works: number; hIndex: number | null; meanCited: number | null; oa: boolean; type: string | null; url: string | null }
+/** approx — в раннем окне тема не вошла в 200 крупнейших: «было» — не больше указанного, рост — не меньше */
+export interface Trend { id: string; name: string; nameRu?: string; before: number; after: number; growth: number; approx?: boolean }
+export interface YearCount { year: number; count: number }
+
+export interface ScopeSnapshot {
+  key: string;
+  title: string;
+  note: string;
+  subfield: number;
+  /** окна для трендов: [from, to] включительно */
+  windows: { before: [number, number]; after: [number, number]; recent: [number, number] };
+  totalWorks: number;
+  byYear: YearCount[];
+  topCited: Work[];
+  topRecent: Work[];
+  topBooks: Work[];
+  journals: Journal[];
+  topics: Trend[];
+  keywords: Trend[];
+  centralAsia: { byCountry: Array<{ code: string; name: string; count: number }>; works: Work[] };
+}
+
+export interface ScienceSnapshot {
+  source: "OpenAlex";
+  updatedAt: string;
+  scopes: ScopeSnapshot[];
+  errors: string[];
+  /** original text → Russian, reused between updates */
+  translations: Record<string, string>;
+}
+
+// ── parsing (pure) ──────────────────────────────────────────────────────
+
+type J = any; // eslint-disable-line @typescript-eslint/no-explicit-any
+const shortId = (id: string | null | undefined) => (id ?? "").replace(/^https?:\/\/openalex\.org\//, "");
+
+export function parseWork(w: J): Work {
+  const auth: J[] = Array.isArray(w?.authorships) ? w.authorships : [];
+  const countries = new Set<string>();
+  for (const a of auth) {
+    for (const c of a?.countries ?? []) if (typeof c === "string") countries.add(c.toUpperCase());
+    for (const i of a?.institutions ?? []) if (i?.country_code) countries.add(String(i.country_code).toUpperCase());
+  }
+  const doi = typeof w?.doi === "string" && w.doi ? w.doi : null;
+  const src = w?.primary_location?.source ?? null;
+  return {
+    id: shortId(w?.id),
+    title: String(w?.display_name ?? w?.title ?? "").replace(/<[^>]+>/g, "").trim() || "Без названия",
+    year: typeof w?.publication_year === "number" ? w.publication_year : null,
+    cited: Number(w?.cited_by_count ?? 0) || 0,
+    type: String(w?.type ?? "article"),
+    doi,
+    url: doi ?? w?.primary_location?.landing_page_url ?? (w?.id ? String(w.id) : null),
+    oa: !!w?.open_access?.is_oa,
+    source: src?.display_name ?? null,
+    authors: auth.slice(0, 3).map((a) => a?.author?.display_name).filter(Boolean),
+    moreAuthors: Math.max(0, auth.length - 3),
+    countries: [...countries],
+    topic: w?.primary_topic?.display_name ?? null,
+  };
+}
+
+export function parseGroups(body: J): Array<{ key: string; name: string; count: number }> {
+  const g: J[] = Array.isArray(body?.group_by) ? body.group_by : [];
+  return g.map((x) => ({ key: shortId(String(x?.key ?? "")), name: String(x?.key_display_name ?? x?.key ?? ""), count: Number(x?.count ?? 0) || 0 }))
+    .filter((x) => x.key && x.key !== "unknown" && x.key !== "null");
+}
+
+export function parseJournal(s: J, works: number): Journal {
+  const st = s?.summary_stats ?? {};
+  return {
+    id: shortId(s?.id), name: String(s?.display_name ?? ""), works,
+    hIndex: typeof st.h_index === "number" ? st.h_index : null,
+    meanCited: typeof st["2yr_mean_citedness"] === "number" ? Math.round(st["2yr_mean_citedness"] * 100) / 100 : null,
+    oa: !!s?.is_oa, type: s?.type ?? null, url: s?.homepage_url ?? null,
+  };
+}
+
+/**
+ * Fastest-growing items between two equal windows. Small items are noise: an item needs at least
+ * `minAfter` works in the later window; growth is relative, sorted by growth, then by size.
+ */
+export function trends(before: Array<{ key: string; name: string; count: number }>, after: Array<{ key: string; name: string; count: number }>, minAfter: number, limit: number): Trend[] {
+  const b = new Map(before.map((x) => [x.key, x.count]));
+  // OpenAlex returns the 200 largest groups: an item missing from the earlier window had at most its smallest count
+  const floor = before.length >= 200 ? Math.min(...before.map((x) => x.count)) : 0;
+  return after
+    .filter((x) => x.count >= minAfter)
+    .map((x) => {
+      const known = b.has(x.key);
+      const prev = known ? b.get(x.key)! : floor;
+      const growth = prev > 0 ? Math.round(((x.count - prev) / prev) * 1000) / 10 : 999;
+      return { id: x.key, name: x.name, before: prev, after: x.count, growth, ...(known ? {} : { approx: true }) };
+    })
+    .filter((x) => x.growth > 0) // тренды — только растущие
+    .sort((p, q) => q.growth - p.growth || q.after - p.after)
+    .slice(0, limit);
+}
+
+/** Windows for the trends: the last three complete years against the three before. */
+export function windowsFor(now: Date): ScopeSnapshot["windows"] {
+  const y = now.getUTCFullYear() - 1; // текущий год ещё не закончен и индексируется с опозданием
+  return { before: [y - 5, y - 3], after: [y - 2, y], recent: [y - 4, y] };
+}
+
+// ── requests ────────────────────────────────────────────────────────────
+
+export type Fetcher = (url: string) => Promise<J>;
+
+const WORK_FIELDS = "id,doi,display_name,publication_year,cited_by_count,type,open_access,primary_location,authorships,primary_topic";
+const PAPERS = "type:article|review";
+
+export function url(path: string, params: Record<string, string | number>, apiKey?: string): string {
+  const q = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
+  if (apiKey) q.set("api_key", apiKey);
+  return `${API}${path}?${q.toString()}`;
+}
+
+/** One scope: ~13 requests, sequential (OpenAlex allows 10 per second without a key). */
+export async function fetchScope(scope: Scope, get: Fetcher, now = new Date(), apiKey?: string): Promise<ScopeSnapshot> {
+  const w = windowsFor(now);
+  const sf = `primary_topic.subfield.id:${scope.subfield}`;
+  const yr = (a: [number, number]) => `publication_year:${a[0]}-${a[1]}`;
+  const works = async (filter: string, n: number) => {
+    const b = await get(url("/works", { filter, sort: "cited_by_count:desc", per_page: n, select: WORK_FIELDS }, apiKey));
+    return (Array.isArray(b?.results) ? b.results : []).map(parseWork);
+  };
+  const groups = async (filter: string, by: string) => parseGroups(await get(url("/works", { filter, group_by: by }, apiKey)));
+
+  const topCited = await works(`${sf},${PAPERS}`, 15);
+  const topRecent = await works(`${sf},${PAPERS},${yr(w.recent)}`, 15);
+  const topBooks = await works(`${sf},type:book`, 10);
+
+  const firstYear = w.after[1] - 24;
+  const byYear = (await groups(`${sf},publication_year:${firstYear}-${w.after[1]}`, "publication_year"))
+    .map((x) => ({ year: Number(x.key), count: x.count })).filter((x) => Number.isFinite(x.year)).sort((a, b) => a.year - b.year);
+  const totalWorks = (await get(url("/works", { filter: sf, per_page: 1, select: "id" }, apiKey)))?.meta?.count ?? 0;
+
+  const srcGroups = (await groups(`${sf},${yr(w.recent)}`, "primary_location.source.id")).slice(0, 12);
+  let journals: Journal[] = [];
+  if (srcGroups.length) {
+    const b = await get(url("/sources", { filter: `openalex:${srcGroups.map((s) => s.key).join("|")}`, per_page: srcGroups.length, select: "id,display_name,summary_stats,is_oa,type,homepage_url" }, apiKey));
+    const info = new Map<string, J>((Array.isArray(b?.results) ? b.results : []).map((s: J) => [shortId(s.id), s]));
+    journals = srcGroups.map((g) => (info.has(g.key) ? parseJournal(info.get(g.key), g.count) : { id: g.key, name: g.name, works: g.count, hIndex: null, meanCited: null, oa: false, type: null, url: null }));
+  }
+
+  const topicsBefore = await groups(`${sf},${yr(w.before)}`, "primary_topic.id");
+  const topicsAfter = await groups(`${sf},${yr(w.after)}`, "primary_topic.id");
+  const kwBefore = await groups(`${sf},${yr(w.before)}`, "keywords.id");
+  const kwAfter = await groups(`${sf},${yr(w.after)}`, "keywords.id");
+  const scale = Math.max(1, Math.round(topicsAfter.reduce((s, x) => s + x.count, 0) / 2000));
+
+  const ca = Object.keys(CENTRAL_ASIA).join("|");
+  const caGroups = await groups(`${sf},${yr(w.recent)},authorships.institutions.country_code:${ca}`, "authorships.institutions.country_code");
+  const caWorks = await works(`${sf},authorships.institutions.country_code:${ca}`, 10);
+
+  return {
+    key: scope.key, title: scope.title, note: scope.note, subfield: scope.subfield, windows: w,
+    totalWorks, byYear, topCited, topRecent, topBooks, journals,
+    topics: trends(topicsBefore, topicsAfter, 20 * scale, 12),
+    keywords: trends(kwBefore, kwAfter, 30 * scale, 20),
+    centralAsia: {
+      byCountry: Object.entries(CENTRAL_ASIA).map(([code, name]) => ({ code, name, count: caGroups.find((g) => g.key.toUpperCase() === code)?.count ?? 0 })).sort((a, b) => b.count - a.count),
+      works: caWorks,
+    },
+  };
+}
+
+/** Strings worth translating into Russian (titles, topics, keywords) that are not translated yet. */
+export function untranslated(snap: ScienceSnapshot): string[] {
+  const out = new Set<string>();
+  for (const s of snap.scopes) {
+    for (const w of [...s.topCited, ...s.topRecent, ...s.topBooks, ...s.centralAsia.works]) out.add(w.title);
+    for (const t of [...s.topics, ...s.keywords]) out.add(t.name);
+  }
+  return [...out].filter((t) => t && !snap.translations[t] && !/[а-яё]/i.test(t));
+}
+
+/** Puts the known translations onto the snapshot items. */
+export function applyTranslations(snap: ScienceSnapshot): ScienceSnapshot {
+  const tr = snap.translations;
+  const w = (x: Work): Work => (tr[x.title] ? { ...x, titleRu: tr[x.title] } : x);
+  const t = (x: Trend): Trend => (tr[x.name] ? { ...x, nameRu: tr[x.name] } : x);
+  return {
+    ...snap,
+    scopes: snap.scopes.map((s) => ({
+      ...s, topCited: s.topCited.map(w), topRecent: s.topRecent.map(w), topBooks: s.topBooks.map(w),
+      topics: s.topics.map(t), keywords: s.keywords.map(t), centralAsia: { ...s.centralAsia, works: s.centralAsia.works.map(w) },
+    })),
+  };
+}

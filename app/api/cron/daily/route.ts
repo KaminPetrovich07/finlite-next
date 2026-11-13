@@ -5,6 +5,7 @@ import { runReminders } from "@/lib/calendar/server";
 import { collect } from "@/lib/news/collect";
 import { publishFxDaily } from "@/lib/news/fxpost";
 import { runRecurringAll } from "@/lib/ledger/recurring-server";
+import { refreshIfStale } from "@/lib/science/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -32,5 +33,7 @@ export async function GET(req: NextRequest) {
   // регулярные операции (аренда, связь, подписки): проводки за наступившие даты
   try { result.recurring = await runRecurringAll(); } catch (e) { result.recurring = { error: e instanceof Error ? e.message : String(e) }; }
   try { result.reminders = await runReminders(); } catch (e) { result.reminders = { error: e instanceof Error ? e.message : String(e) }; }
+  // наука: сводка OpenAlex раз в неделю, в остальные дни — перевод того, что осталось
+  try { result.science = await refreshIfStale(); } catch (e) { result.science = { error: e instanceof Error ? e.message : String(e) }; }
   return NextResponse.json({ ok: true, ...result });
 }
