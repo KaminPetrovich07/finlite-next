@@ -4,7 +4,7 @@ import {
   AlignmentType, BorderStyle, Document, Footer, Header, PageNumber, PageOrientation, Packer, Paragraph,
   Table, TableCell, TableRow, TabStopPosition, TabStopType, TextRun, WidthType,
 } from "docx";
-import type { Align, DocBlock, OfficialDoc } from "./model";
+import { placeHeads, type Align, type DocBlock, type OfficialDoc } from "./model";
 
 const FONT = "Times New Roman";
 const BASE = 24; // half-points → 12 pt
@@ -20,7 +20,7 @@ const run = (text: string, o: { bold?: boolean; italics?: boolean; size?: number
 const thin = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
 
 function table(b: Extract<DocBlock, { t: "table" }>): Table {
-  const cols = b.head?.length ?? b.rows[0]?.length ?? 1;
+  const cols = b.head?.length ?? b.rows[0]?.length ?? (b.heads ? b.heads[0].reduce((a, h) => a + (h.colSpan ?? 1), 0) : 1);
   const widths = b.widths ?? Array(cols).fill(1);
   const total = widths.reduce((a, w) => a + w, 0);
   const size = b.small ? SMALL : 20;
@@ -35,7 +35,24 @@ function table(b: Extract<DocBlock, { t: "table" }>): Table {
       })),
     });
   const rows: TableRow[] = [];
-  if (b.head) rows.push(new TableRow({ tableHeader: true, children: b.head.map((h, i) => cell(h, i, true)) }));
+  if (b.heads) {
+    placeHeads(b.heads, cols).forEach((row) => rows.push(new TableRow({
+      tableHeader: true,
+      cantSplit: true,
+      children: row.map(({ cell: h, col }) => {
+        const span = h.colSpan ?? 1;
+        const w = widths.slice(col, col + span).reduce((a, x) => a + x, 0);
+        return new TableCell({
+          width: { size: Math.round((w / total) * 100), type: WidthType.PERCENTAGE },
+          columnSpan: span > 1 ? span : undefined,
+          rowSpan: (h.rowSpan ?? 1) > 1 ? h.rowSpan : undefined,
+          borders: { top: thin, bottom: thin, left: thin, right: thin },
+          margins: { top: 20, bottom: 20, left: 40, right: 40 },
+          children: String(h.text).split("\n").map((line) => new Paragraph({ alignment: AlignmentType.CENTER, children: [run(line, { size: size - 2 })] })),
+        });
+      }),
+    })));
+  } else if (b.head) rows.push(new TableRow({ tableHeader: true, children: b.head.map((h, i) => cell(h, i, true)) }));
   b.rows.forEach((r, ri) => rows.push(new TableRow({
     cantSplit: true,
     children: r.map((c, i) => cell(c, i, !!b.total && ri === b.rows.length - 1)),
@@ -103,7 +120,7 @@ function blocks(list: DocBlock[]): Array<Paragraph | Table> {
         break;
       case "fields":
         for (const [k, v] of b.items) {
-          out.push(new Paragraph({ spacing: { after: 60 }, children: [run(`${k}: `), new TextRun({ text: v || "                              ", font: FONT, size: BASE, underline: {} })] }));
+          out.push(new Paragraph({ spacing: { after: 60 }, children: [run(`${k}: `), v ? new TextRun({ text: v, font: FONT, size: BASE, underline: {} }) : run("______________________________")] }));
         }
         break;
       case "note":

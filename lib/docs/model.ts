@@ -10,6 +10,24 @@
 
 export type Align = "l" | "c" | "r";
 
+/** One cell of a multi-level table header. */
+export interface HeadCell { text: string; colSpan?: number; rowSpan?: number }
+
+/** Lays multi-level header cells onto the column grid: start column of every cell. */
+export function placeHeads(heads: HeadCell[][], cols: number): Array<Array<{ cell: HeadCell; col: number }>> {
+  const busy: boolean[][] = heads.map(() => Array(cols).fill(false));
+  return heads.map((row, r) => {
+    let c = 0;
+    return row.map((cell) => {
+      while (c < cols && busy[r][c]) c++;
+      const col = c, cs = cell.colSpan ?? 1, rs = cell.rowSpan ?? 1;
+      for (let rr = r; rr < Math.min(heads.length, r + rs); rr++) for (let cc = col; cc < Math.min(cols, col + cs); cc++) busy[rr][cc] = true;
+      c = col + cs;
+      return { cell, col };
+    });
+  });
+}
+
 export type DocBlock =
   /** right-aligned block, e.g. «УТВЕРЖДЕНО приказом …» or the form code */
   | { t: "right"; lines: string[]; small?: boolean }
@@ -24,6 +42,8 @@ export type DocBlock =
   | {
       t: "table";
       head?: string[];
+      /** multi-level header (бланки альбома): replaces `head`; cells span columns/rows */
+      heads?: HeadCell[][];
       /** a second header row (e.g. «дебет / кредит» under «Сумма») */
       rows: string[][];
       widths?: number[];

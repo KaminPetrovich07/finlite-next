@@ -2,7 +2,7 @@
 // no network). Same blocks as the Word renderer.
 import PdfPrinter from "pdfmake";
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
-import type { Align, DocBlock, OfficialDoc } from "./model";
+import { placeHeads, type Align, type DocBlock, type OfficialDoc } from "./model";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const vfs: Record<string, string> = require("pdfmake/build/vfs_fonts");
@@ -22,12 +22,26 @@ const BASE = 10;
 const SMALL = 8;
 
 function table(b: Extract<DocBlock, { t: "table" }>): Content {
-  const cols = b.head?.length ?? b.rows[0]?.length ?? 1;
+  const cols = b.head?.length ?? b.rows[0]?.length ?? (b.heads ? b.heads[0].reduce((a, h) => a + (h.colSpan ?? 1), 0) : 1);
   const widths = b.widths ?? Array(cols).fill(1);
   const total = widths.reduce((a, w) => a + w, 0);
   const size = b.small ? 7.5 : 8.5;
   const body: TableCell[][] = [];
-  if (b.head) body.push(b.head.map((h) => ({ text: h, bold: true, fontSize: size, alignment: "center" })));
+  if (b.heads) {
+    const grid: TableCell[][] = b.heads.map(() => Array.from({ length: cols }, () => ({}) as TableCell));
+    // pdfmake не распределяет высоту ячеек с rowSpan — вместо объединения строк
+    // текст ставится в верхнюю ячейку, а у ячеек под ней убираются внутренние линии.
+    placeHeads(b.heads, cols).forEach((row, r) => row.forEach(({ cell: h, col }) => {
+      const rs = Math.min(h.rowSpan ?? 1, b.heads!.length - r);
+      for (let k = 0; k < rs; k++) {
+        const border = [true, k === 0, true, k === rs - 1];
+        grid[r + k][col] = k === 0
+          ? ({ text: h.text, fontSize: size - 1, alignment: "center", colSpan: h.colSpan, border } as TableCell)
+          : ({ text: "", colSpan: h.colSpan, border } as TableCell);
+      }
+    }));
+    body.push(...grid);
+  } else if (b.head) body.push(b.head.map((h) => ({ text: h, bold: true, fontSize: size, alignment: "center" })));
   b.rows.forEach((r, ri) => body.push(r.map((c, i) => ({
     text: c,
     fontSize: size,
@@ -35,7 +49,7 @@ function table(b: Extract<DocBlock, { t: "table" }>): Content {
     alignment: AL[b.align?.[i] ?? "l"],
   }))));
   return {
-    table: { headerRows: b.head ? 1 : 0, keepWithHeaderRows: b.head ? 1 : 0, widths: widths.map((w) => `${((w / total) * 100).toFixed(2)}%`), body, dontBreakRows: true },
+    table: { headerRows: b.heads ? b.heads.length : b.head ? 1 : 0, keepWithHeaderRows: b.heads ? b.heads.length : b.head ? 1 : 0, widths: widths.map((w) => `${((w / total) * 100).toFixed(2)}%`), body, dontBreakRows: true },
     layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, paddingTop: () => 2, paddingBottom: () => 2 },
     margin: [0, 2, 0, 8],
   };
