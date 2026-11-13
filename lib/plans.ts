@@ -75,7 +75,7 @@ export const PLANS: Record<PlanKey, Plan> = {
     bullets: ["До 10 компаний", "Без ограничения проводок", "Всё из «Про»", "Основные средства, валюта, ЭСФ", "План-факт и прогноз денег", "Напоминания о сроках в Telegram", "ESG и пакеты для аудитора", "Контакты в реестре специалистов"],
   },
   premium: {
-    key: "premium", name: "Премиум", priceKgs: 25000, priceYearKgs: 0, contract: true, paid: true, public: true,
+    key: "premium", name: "Enterprise", priceKgs: 25000, priceYearKgs: 0, contract: true, paid: true, public: true,
     tagline: "Банки, страховщики, госсектор, аудиторские фирмы",
     companies: 50, entriesPerMonth: null, features: [...MAX, "industry", "priority"],
     bullets: ["До 50 компаний", "Всё из «Макс»", "Отраслевые расширения: банк, госсектор, страховщик", "Нормативы НБКР, метод Мака, стресс-тесты", "Внедрение: настройка нормативов, загрузка данных, обучение команды", "Приоритетная поддержка"],
