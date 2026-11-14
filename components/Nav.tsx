@@ -6,6 +6,7 @@ import { FeedbackDialog } from "@/components/auth/FeedbackDialog";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { ALL_LINKS, HOME_LINK, isActive, NAV_GROUPS, type NavLink } from "@/lib/nav";
 import { openSearch } from "@/components/CommandPalette";
+import { LangSwitch, useT } from "@/components/i18n";
 
 
 export function Nav() {
@@ -14,6 +15,7 @@ export function Nav() {
   const [open, setOpen] = useState<string | null>(null);
   const [mobile, setMobile] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!open && !mobile) return;
@@ -29,7 +31,7 @@ export function Nav() {
   return (
     <nav ref={ref} className="sticky top-0 z-30 border-b border-fl-line bg-fl-charcoal-2/95 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5 sm:px-6">
-        <a href="/" className="flex flex-shrink-0 items-center gap-2" aria-label="FinLite KG — рабочий стол">
+        <a href="/" className="flex flex-shrink-0 items-center gap-2" aria-label={`FinLite KG — ${t("Рабочий стол")}`}>
           <Mark />
           <span className="font-display text-[15px] font-semibold tracking-tight text-fl-cream">
             FinLite<span className="ml-1 text-fl-gold">KG</span>
@@ -51,8 +53,8 @@ export function Nav() {
                     activeGroup ? "bg-fl-gold/15 font-medium text-fl-cream" : "text-fl-cream/70 hover:bg-fl-cream/5 hover:text-fl-cream"
                   }`}
                 >
-                  {g.title}
-                  {here && <span className="hidden text-fl-cream/55 lg:inline">· {here.label}</span>}
+                  {t(g.title)}
+                  {here && <span className="hidden text-fl-cream/55 lg:inline">· {t(here.label)}</span>}
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden className={`transition-transform ${open === g.title ? "rotate-180" : ""}`}>
                     <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -68,35 +70,36 @@ export function Nav() {
         </div>
 
         {/* phone: current page name */}
-        <span className="min-w-0 flex-1 truncate text-sm text-fl-cream/70 md:hidden">{current?.label}</span>
+        <span className="min-w-0 flex-1 truncate text-sm text-fl-cream/70 md:hidden">{current ? t(current.label) : ""}</span>
         <span className="hidden flex-1 md:block" />
 
         <button
           onClick={openSearch}
-          aria-label="Поиск по разделам"
-          title="Поиск по разделам (Ctrl+K)"
+          aria-label={t("Поиск по разделам")}
+          title={`${t("Поиск по разделам")} (Ctrl+K)`}
           className="flex h-9 flex-shrink-0 items-center gap-2 rounded-md border border-fl-line px-2.5 text-sm text-fl-cream/60 hover:border-fl-gold/50 hover:text-fl-cream"
         >
           <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden><path fill="currentColor" d="M8.5 2a6.5 6.5 0 0 1 5.18 10.43l4.2 4.2-1.06 1.06-4.2-4.2A6.5 6.5 0 1 1 8.5 2Zm0 1.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" /></svg>
-          <span className="hidden lg:inline">Найти</span>
+          <span className="hidden lg:inline">{t("Найти")}</span>
           <kbd className="hidden rounded border border-fl-line px-1 text-[10px] text-fl-cream/40 xl:inline">Ctrl K</kbd>
         </button>
         <button
           onClick={() => setFeedback(true)}
-          aria-label="Обратная связь создателю"
-          title="Обратная связь"
+          aria-label={t("Обратная связь создателю")}
+          title={t("Обратная связь")}
           className="hidden h-9 flex-shrink-0 items-center gap-1.5 rounded-md border border-fl-line px-2.5 text-sm text-fl-cream/75 hover:text-fl-cream sm:flex"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" strokeLinejoin="round" />
           </svg>
-          <span className="hidden lg:inline">Отзыв</span>
+          <span className="hidden lg:inline">{t("Отзыв")}</span>
         </button>
+        <LangSwitch className="hidden sm:flex" />
         <ThemeToggle />
         <UserMenu />
         <button
           onClick={() => setMobile((v) => !v)}
-          aria-label="Меню"
+          aria-label={t("Меню")}
           aria-expanded={mobile}
           className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-fl-line text-fl-cream/80 md:hidden"
         >
@@ -110,22 +113,23 @@ export function Nav() {
         <div className="max-h-[calc(100vh-60px)] overflow-y-auto border-t border-fl-line bg-fl-charcoal-2 px-4 pb-24 md:hidden">
           <button type="button" onClick={() => { setMobile(false); openSearch(); }} className="mt-3 flex w-full items-center gap-2 rounded-xl border border-fl-line bg-fl-surface-2 px-3 py-3 text-left text-sm text-fl-cream/55">
             <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden><path fill="currentColor" d="M8.5 2a6.5 6.5 0 0 1 5.18 10.43l4.2 4.2-1.06 1.06-4.2-4.2A6.5 6.5 0 1 1 8.5 2Zm0 1.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" /></svg>
-            Найти раздел или действие
+            {t("Найти раздел или действие")}
           </button>
-          <a href="/" className={`mt-2 block rounded-lg px-3 py-2.5 text-sm font-medium ${isActive("/", path) ? "bg-fl-gold/15 text-fl-cream" : "text-fl-cream/85"}`}>{HOME_LINK.label}</a>
+          <div className="mt-2 flex items-center justify-between rounded-lg px-1 text-sm text-fl-cream/70"><span>{t("Язык")}</span><LangSwitch /></div>
+          <a href="/" className={`mt-2 block rounded-lg px-3 py-2.5 text-sm font-medium ${isActive("/", path) ? "bg-fl-gold/15 text-fl-cream" : "text-fl-cream/85"}`}>{t(HOME_LINK.label)}</a>
           {NAV_GROUPS.map((g) => (
             <div key={g.title} className="pt-3">
-              <p className="label-caps px-2 pb-1.5">{g.title}</p>
+              <p className="label-caps px-2 pb-1.5">{t(g.title)}</p>
               <div className="grid grid-cols-2 gap-1">
                 {g.links.map((l) => (
                   <a key={l.href} href={l.href} aria-current={isActive(l.href, path) ? "page" : undefined}
-                    className={`rounded-lg px-3 py-2.5 text-sm leading-tight ${isActive(l.href, path) ? "bg-fl-gold/15 font-semibold text-fl-cream" : "bg-fl-surface-2/60 text-fl-cream/85 hover:bg-fl-surface-2"}`}>{l.label}</a>
+                    className={`rounded-lg px-3 py-2.5 text-sm leading-tight ${isActive(l.href, path) ? "bg-fl-gold/15 font-semibold text-fl-cream" : "bg-fl-surface-2/60 text-fl-cream/85 hover:bg-fl-surface-2"}`}>{t(l.label)}</a>
                 ))}
               </div>
             </div>
           ))}
           <button onClick={() => { setMobile(false); setFeedback(true); }} className="mt-4 w-full rounded-lg border border-fl-line px-3 py-2.5 text-left text-sm text-fl-cream/80">
-            Написать создателю
+            {t("Написать создателю")}
           </button>
         </div>
       )}
@@ -135,6 +139,7 @@ export function Nav() {
 }
 
 function MenuLink({ l, active }: { l: NavLink; active: boolean }) {
+  const t = useT();
   return (
     <a
       role="menuitem"
@@ -142,8 +147,8 @@ function MenuLink({ l, active }: { l: NavLink; active: boolean }) {
       aria-current={active ? "page" : undefined}
       className={`block rounded-lg px-3 py-2 ${active ? "bg-fl-gold/15" : "hover:bg-fl-surface-2"}`}
     >
-      <span className={`block text-sm ${active ? "font-semibold text-fl-cream" : "font-medium text-fl-cream/90"}`}>{l.label}</span>
-      <span className="block text-xs text-fl-cream/55">{l.desc}</span>
+      <span className={`block text-sm ${active ? "font-semibold text-fl-cream" : "font-medium text-fl-cream/90"}`}>{t(l.label)}</span>
+      <span className="block text-xs text-fl-cream/55">{t(l.desc)}</span>
     </a>
   );
 }
@@ -162,6 +167,7 @@ function Mark() {
 }
 
 function ThemeToggle() {
+  const t = useT();
   const [dark, setDark] = useState(false);
   useEffect(() => { setDark(document.documentElement.dataset.theme === "dark"); }, []);
 
@@ -176,8 +182,8 @@ function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      aria-label={dark ? "Включить светлую тему" : "Включить тёмную тему"}
-      title={dark ? "Светлая тема" : "Тёмная тема"}
+      aria-label={dark ? t("Включить светлую тему") : t("Включить тёмную тему")}
+      title={dark ? t("Светлая тема") : t("Тёмная тема")}
       className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-fl-line text-fl-cream/70 hover:text-fl-cream"
     >
       {dark ? (

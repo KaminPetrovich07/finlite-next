@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AUTH_ON } from "@/lib/auth/mode";
+import { useT } from "@/components/i18n";
 
 interface Me { user: { name: string | null; email: string; role: string } | null; plan?: { name: string } }
 
@@ -10,6 +11,7 @@ export function UserMenu() {
   const [me, setMe] = useState<Me | null>(null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     fetch("/api/auth/me").then((r) => r.json()).then(setMe).catch(() => setMe({ user: null }));
@@ -28,7 +30,7 @@ export function UserMenu() {
     if (!AUTH_ON) return null; // открытый режим: входить не нужно
     return (
       <a href="/login" className="flex h-9 flex-shrink-0 items-center rounded-md bg-fl-accent px-3 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
-        Войти
+        {t("Войти")}
       </a>
     );
   }
@@ -42,7 +44,7 @@ export function UserMenu() {
 
   return (
     <div ref={ref} className="relative flex-shrink-0">
-      <button onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} aria-label="Аккаунт"
+      <button onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} aria-label={t("Аккаунт")}
         className="flex h-9 w-9 items-center justify-center rounded-full bg-fl-gold/20 text-xs font-bold text-fl-cream hover:bg-fl-gold/30">
         {initials}
       </button>
@@ -51,15 +53,15 @@ export function UserMenu() {
           <div className="px-3 py-2">
             <p className="truncate text-sm font-semibold text-fl-cream">{u.name ?? u.email}</p>
             <p className="truncate text-xs text-fl-cream/55">{u.email}</p>
-            {me.plan && <p className="mt-0.5 text-xs text-fl-gold">Тариф «{me.plan.name}»</p>}
+            {me.plan && <p className="mt-0.5 text-xs text-fl-gold">{t("Тариф «{p}»", { p: t(me.plan.name) })}</p>}
           </div>
           <div className="my-1 border-t border-fl-line" />
-          <a role="menuitem" href="/account" className="block rounded-lg px-3 py-2 text-sm text-fl-cream/90 hover:bg-fl-surface-2">Мой аккаунт</a>
-          <a role="menuitem" href="/companies" className="block rounded-lg px-3 py-2 text-sm text-fl-cream/90 hover:bg-fl-surface-2">Мои компании</a>
-          {u.role === "admin" && <a role="menuitem" href="/admin" className="block rounded-lg px-3 py-2 text-sm text-fl-cream/90 hover:bg-fl-surface-2">Администрирование</a>}
-          <a role="menuitem" href="/pricing" className="block rounded-lg px-3 py-2 text-sm text-fl-cream/90 hover:bg-fl-surface-2">Тарифы</a>
+          <a role="menuitem" href="/account" className="block rounded-lg px-3 py-2 text-sm text-fl-cream/90 hover:bg-fl-surface-2">{t("Мой аккаунт")}</a>
+          <a role="menuitem" href="/companies" className="block rounded-lg px-3 py-2 text-sm text-fl-cream/90 hover:bg-fl-surface-2">{t("Мои компании")}</a>
+          {u.role === "admin" && <a role="menuitem" href="/admin" className="block rounded-lg px-3 py-2 text-sm text-fl-cream/90 hover:bg-fl-surface-2">{t("Администрирование")}</a>}
+          <a role="menuitem" href="/pricing" className="block rounded-lg px-3 py-2 text-sm text-fl-cream/90 hover:bg-fl-surface-2">{t("Тарифы")}</a>
           <div className="my-1 border-t border-fl-line" />
-          <button role="menuitem" onClick={logout} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-fl-cream/90 hover:bg-fl-surface-2">Выйти</button>
+          <button role="menuitem" onClick={logout} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-fl-cream/90 hover:bg-fl-surface-2">{t("Выйти")}</button>
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MONTHS } from "@/lib/tax-engine";
 import { monthPeriod, quarterPeriod, yearPeriod, type PeriodKind } from "@/lib/ledger/period";
+import { useT } from "@/components/i18n";
 
 interface Props {
   from: string;
@@ -21,6 +22,7 @@ const YEARS = [2024, 2025, 2026, 2027];
 const field = "rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
 
 export function PeriodPicker({ from, to, onChange }: Props) {
+  const t = useT();
   const [kind, setKind] = useState<PeriodKind>(() => inferKind(from, to));
   const [year, setYear] = useState(Number(from.slice(0, 4)));
   const [month, setMonth] = useState(Number(from.slice(5, 7)));
@@ -35,7 +37,7 @@ export function PeriodPicker({ from, to, onChange }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div role="tablist" aria-label="Тип периода" className="flex rounded-md border border-fl-line p-0.5">
+      <div role="tablist" aria-label={t("Тип периода")} className="flex rounded-md border border-fl-line p-0.5">
         {KINDS.map((k) => (
           <button
             key={k.kind}
@@ -46,31 +48,31 @@ export function PeriodPicker({ from, to, onChange }: Props) {
               kind === k.kind ? "bg-fl-gold/15 text-fl-gold-bright" : "text-fl-cream/55 hover:text-fl-cream"
             }`}
           >
-            {k.label}
+            {t(k.label)}
           </button>
         ))}
       </div>
 
       {kind !== "custom" && (
-        <select aria-label="Год" value={year} onChange={(e) => setYear(Number(e.target.value))} className={field}>
+        <select aria-label={t("Год")} value={year} onChange={(e) => setYear(Number(e.target.value))} className={field}>
           {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
       )}
       {kind === "month" && (
-        <select aria-label="Месяц" value={month} onChange={(e) => setMonth(Number(e.target.value))} className={field}>
+        <select aria-label={t("Месяц")} value={month} onChange={(e) => setMonth(Number(e.target.value))} className={field}>
           {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
         </select>
       )}
       {kind === "quarter" && (
-        <select aria-label="Квартал" value={quarter} onChange={(e) => setQuarter(Number(e.target.value))} className={field}>
-          {[1, 2, 3, 4].map((q) => <option key={q} value={q}>{q} квартал</option>)}
+        <select aria-label={t("Квартал")} value={quarter} onChange={(e) => setQuarter(Number(e.target.value))} className={field}>
+          {[1, 2, 3, 4].map((q) => <option key={q} value={q}>{t("{q} квартал", { q })}</option>)}
         </select>
       )}
       {kind === "custom" && (
         <>
-          <input type="date" aria-label="С" value={from} max={to} onChange={(e) => e.target.value && onChange({ from: e.target.value, to })} className={field} />
+          <input type="date" aria-label={t("С")} value={from} max={to} onChange={(e) => e.target.value && onChange({ from: e.target.value, to })} className={field} />
           <span className="text-fl-cream/40">—</span>
-          <input type="date" aria-label="По" value={to} min={from} onChange={(e) => e.target.value && onChange({ from, to: e.target.value })} className={field} />
+          <input type="date" aria-label={t("По")} value={to} min={from} onChange={(e) => e.target.value && onChange({ from, to: e.target.value })} className={field} />
         </>
       )}
     </div>

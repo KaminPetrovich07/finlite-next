@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ALL_LINKS, NAV_ACTIONS, NAV_GROUPS, type NavLink } from "@/lib/nav";
+import { translate } from "@/lib/i18n";
+import { useT } from "@/components/i18n";
 
 const RECENT = "finlite:recentPages";
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е");
@@ -14,7 +16,8 @@ export const openSearch = () => window.dispatchEvent(new Event("fl:search"));
 const groupOf = new Map<string, string>(NAV_GROUPS.flatMap((g) => g.links.map((l) => [l.href, g.title] as [string, string])));
 
 function score(l: NavLink, words: string[]): number {
-  const label = norm(l.label), rest = norm(`${l.desc} ${l.keywords ?? ""} ${groupOf.get(l.href) ?? ""}`);
+  // ищем и по-русски, и по-кыргызски, на каком бы языке ни был интерфейс
+  const label = norm(`${l.label} ${translate("ky", l.label)}`), rest = norm(`${l.desc} ${translate("ky", l.desc)} ${l.keywords ?? ""} ${groupOf.get(l.href) ?? ""}`);
   let s = 0;
   for (const w of words) {
     if (label.startsWith(w)) s += 5;
@@ -38,6 +41,7 @@ export function CommandPalette() {
   const [recent, setRecent] = useState<string[]>([]);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   // запоминаем открытые разделы
   useEffect(() => {
@@ -97,23 +101,23 @@ export function CommandPalette() {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-fl-charcoal/60 p-3 pt-[10vh] backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-      <div role="dialog" aria-modal aria-label="Поиск по разделам" className="w-full max-w-xl overflow-hidden rounded-2xl border border-fl-line bg-fl-charcoal-2 shadow-2xl">
+      <div role="dialog" aria-modal aria-label={t("Поиск по разделам")} className="w-full max-w-xl overflow-hidden rounded-2xl border border-fl-line bg-fl-charcoal-2 shadow-2xl">
         <div className="flex items-center gap-3 border-b border-fl-line px-4">
           <svg aria-hidden viewBox="0 0 20 20" className="h-5 w-5 shrink-0 text-fl-cream/40"><path fill="currentColor" d="M8.5 2a6.5 6.5 0 0 1 5.18 10.43l4.2 4.2-1.06 1.06-4.2-4.2A6.5 6.5 0 1 1 8.5 2Zm0 1.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" /></svg>
-          <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={key} placeholder="Раздел или действие: проводка, НДС, баланс, зарплата…"
+          <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={key} placeholder={t("Раздел или действие: проводка, НДС, баланс, зарплата…")}
             className="w-full bg-transparent py-4 text-base text-fl-cream placeholder:text-fl-cream/35 focus:outline-none" />
           <kbd className="hidden rounded border border-fl-line px-1.5 py-0.5 text-[11px] text-fl-cream/45 sm:block">Esc</kbd>
         </div>
         <div ref={list} className="max-h-[60vh] overflow-y-auto p-2">
-          {items.length === 0 && <p className="px-3 py-6 text-center text-sm text-fl-cream/50">Ничего не нашлось. Попробуйте другое слово: «касса», «отчёт», «налог».</p>}
+          {items.length === 0 && <p className="px-3 py-6 text-center text-sm text-fl-cream/50">{t("Ничего не нашлось. Попробуйте другое слово: «касса», «отчёт», «налог».")}</p>}
           {items.map(({ l, group }, i) => (
             <div key={`${group}-${l.href}-${l.label}`}>
-              {(i === 0 || items[i - 1].group !== group) && <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-fl-cream/40">{group}</p>}
+              {(i === 0 || items[i - 1].group !== group) && <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-fl-cream/40">{t(group)}</p>}
               <button type="button" data-i={i} onMouseEnter={() => setHi(i)} onClick={() => go(l.href)}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left ${i === hi ? "bg-fl-gold/15" : ""}`}>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-fl-cream">{l.label}</span>
-                  <span className="block truncate text-xs text-fl-cream/55">{l.desc}</span>
+                  <span className="block text-sm font-medium text-fl-cream">{t(l.label)}</span>
+                  <span className="block truncate text-xs text-fl-cream/55">{t(l.desc)}</span>
                 </span>
                 {i === hi && <span className="text-xs text-fl-cream/40">↵</span>}
               </button>
@@ -121,7 +125,7 @@ export function CommandPalette() {
           ))}
         </div>
         <div className="hidden items-center gap-4 border-t border-fl-line px-4 py-2 text-[11px] text-fl-cream/40 sm:flex">
-          <span>↑↓ выбрать</span><span>↵ открыть</span><span>Ctrl K или / — открыть поиск в любом месте</span>
+          <span>↑↓ {t("выбрать")}</span><span>↵ {t("открыть")}</span><span>{t("Ctrl K или / — открыть поиск в любом месте")}</span>
         </div>
       </div>
     </div>

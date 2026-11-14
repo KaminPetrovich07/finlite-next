@@ -5,6 +5,7 @@ import { NEW_COMPANY, useCompanies } from "@/components/ledger/useCompanies";
 import { formatNumber } from "@/lib/format";
 import { ago, KindBadge } from "@/components/community/NewsCard";
 import type { PostKind } from "@/lib/news/types";
+import { useLang, useT } from "@/components/i18n";
 
 const card = "rounded-2xl border border-fl-line bg-fl-charcoal-2 shadow-card";
 const today = () => new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 10); // Бишкек
@@ -29,23 +30,25 @@ interface News { id: string; kind: PostKind; title: string; sourceName: string |
 const SOURCE: Record<string, string> = { manual: "вручную", bank: "из выписки", opening: "остатки", closing: "закрытие", payroll: "зарплата", esf: "ЭСФ", depreciation: "амортизация", cogs: "себестоимость", fx: "курсовые", import1c: "из 1С", demo: "демо" };
 
 function Step({ done, n, title, text, href, cta }: { done: boolean; n: number; title: string; text: string; href: string; cta: string }) {
+  const t = useT();
   return (
     <li className={`flex gap-3 rounded-xl p-3 ${done ? "opacity-60" : "bg-fl-surface-2/70"}`}>
       <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-fl-green text-white" : "border-2 border-fl-gold text-fl-gold"}`}>{done ? "✓" : n}</span>
       <div className="min-w-0 flex-1">
-        <p className={`text-sm font-semibold ${done ? "text-fl-cream/70 line-through decoration-fl-cream/30" : "text-fl-cream"}`}>{title}</p>
-        {!done && <p className="mt-0.5 text-xs text-fl-cream/60">{text}</p>}
+        <p className={`text-sm font-semibold ${done ? "text-fl-cream/70 line-through decoration-fl-cream/30" : "text-fl-cream"}`}>{t(title)}</p>
+        {!done && text && <p className="mt-0.5 text-xs text-fl-cream/60">{t(text)}</p>}
       </div>
-      {!done && <a href={href} className="self-center whitespace-nowrap rounded-lg bg-fl-accent px-3 py-1.5 text-xs font-semibold text-fl-on-accent hover:bg-fl-accent-hover">{cta}</a>}
+      {!done && <a href={href} className="self-center whitespace-nowrap rounded-lg bg-fl-accent px-3 py-1.5 text-xs font-semibold text-fl-on-accent hover:bg-fl-accent-hover">{t(cta)}</a>}
     </li>
   );
 }
 
 function Tile({ label, value, note, href, children }: { label: string; value: string; note?: string; href?: string; children?: React.ReactNode }) {
+  const t = useT();
   const body = (
     <>
       <p className="text-xs font-medium text-fl-cream/55">{label}</p>
-      <p className="num mt-1 font-display text-2xl font-bold tracking-tight text-fl-cream">{value}{value !== "—" && <span className="ml-1 text-sm font-medium text-fl-cream/45">сом</span>}</p>
+      <p className="num mt-1 font-display text-2xl font-bold tracking-tight text-fl-cream">{value}{value !== "—" && <span className="ml-1 text-sm font-medium text-fl-cream/45">{t("сом")}</span>}</p>
       {note && <p className="mt-0.5 text-xs text-fl-cream/50">{note}</p>}
       {children}
     </>
@@ -78,6 +81,7 @@ const ACTIONS: Array<{ href: string; label: string; text: string; icon: string }
 ];
 
 export default function Home() {
+  const t = useT();
   const { companies, companyId, setCompanyId, company, loaded } = useCompanies();
   const [stat, setStat] = useState<Stat | null>(null);
   const [events, setEvents] = useState<Ev[]>([]);
@@ -86,7 +90,14 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [hideSteps, setHideSteps] = useState(false);
   const [dateLabel, setDateLabel] = useState("");
-  useEffect(() => { setDateLabel(new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })); }, []);
+  const lang = useLang();
+  useEffect(() => {
+    const d = new Date();
+    // кыргызча форма — вручную: не во всех браузерах есть данные локали ky
+    setDateLabel(lang === "ky"
+      ? `${d.getDate()}-${["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"][d.getMonth()]}, ${["жекшемби", "дүйшөмбү", "шейшемби", "шаршемби", "бейшемби", "жума", "ишемби"][d.getDay()]}`
+      : d.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" }));
+  }, [lang]);
   const year = today().slice(0, 4);
 
   useEffect(() => {
@@ -139,21 +150,21 @@ export default function Home() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="min-h-5 text-sm text-fl-cream/55">{dateLabel}</p>
-          <h1 className="font-display text-2xl font-bold text-fl-cream sm:text-3xl">Рабочий стол</h1>
+          <h1 className="font-display text-2xl font-bold text-fl-cream sm:text-3xl">{t("Рабочий стол")}</h1>
         </div>
         {loaded && (
-          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} aria-label="Компания"
+          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} aria-label={t("Компания")}
             className="max-w-full rounded-lg border border-fl-line bg-fl-charcoal-2 px-3 py-2 text-sm font-medium text-fl-cream sm:max-w-xs">
             {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            <option value={NEW_COMPANY}>+ Добавить компанию…</option>
+            <option value={NEW_COMPANY}>+ {t("Добавить компанию…")}</option>
           </select>
         )}
       </header>
 
       {isDemo && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-fl-gold/30 bg-fl-gold/10 px-4 py-3">
-          <p className="text-sm text-fl-cream/80">Это демо-компания: всё можно посмотреть, но не изменить. Чтобы вести свой учёт — создайте компанию.</p>
-          <a href="/companies" className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Создать свою компанию</a>
+          <p className="text-sm text-fl-cream/80">{t("Это демо-компания: всё можно посмотреть, но не изменить. Чтобы вести свой учёт — создайте компанию.")}</p>
+          <a href="/companies" className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">{t("Создать свою компанию")}</a>
         </div>
       )}
       {error && <p className="mt-4 rounded-lg border border-fl-red/40 bg-fl-red/10 px-4 py-3 text-sm text-fl-red">{error}</p>}
@@ -161,10 +172,10 @@ export default function Home() {
       {showSteps && (
         <section className={`${card} mt-5 p-4 sm:p-5`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-semibold text-fl-cream">Первые шаги</h2>
+            <h2 className="font-display text-lg font-semibold text-fl-cream">{t("Первые шаги")}</h2>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-fl-cream/55">{doneSteps} из {steps.length}</span>
-              <button type="button" onClick={() => { setHideSteps(true); try { localStorage.setItem(`finlite:steps-hidden:${companyId}`, "1"); } catch { /* */ } }} className="text-xs text-fl-cream/45 hover:text-fl-cream">скрыть</button>
+              <span className="text-xs text-fl-cream/55">{t("{a} из {b}", { a: doneSteps, b: steps.length })}</span>
+              <button type="button" onClick={() => { setHideSteps(true); try { localStorage.setItem(`finlite:steps-hidden:${companyId}`, "1"); } catch { /* */ } }} className="text-xs text-fl-cream/45 hover:text-fl-cream">{t("скрыть")}</button>
             </div>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-fl-surface-2"><div className="h-full rounded-full bg-fl-green transition-all" style={{ width: `${(doneSteps / steps.length) * 100}%` }} /></div>
@@ -177,14 +188,14 @@ export default function Home() {
       <section className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {!k ? Array.from({ length: 4 }).map((_, i) => <div key={i} className={`${card} h-28 animate-pulse`} />) : (
           <>
-            <Tile label="Деньги: касса и банк" value={money(k.cash)} note="на сегодня" href="/reports" />
-            <Tile label={`Выручка с начала ${year}`} value={money(k.revenue)} note={k.thisMonth ? `в этом месяце ${money(k.thisMonth.revenue)}` : "в этом месяце пока нет"} href="/reports">
+            <Tile label={t("Деньги: касса и банк")} value={money(k.cash)} note={t("на сегодня")} href="/reports" />
+            <Tile label={t("Выручка с начала {y}", { y: year })} value={money(k.revenue)} note={k.thisMonth ? t("в этом месяце {s}", { s: money(k.thisMonth.revenue) }) : t("в этом месяце пока нет")} href="/reports">
               {k.monthly.length > 1 && <Bars data={k.monthly} />}
             </Tile>
-            <Tile label={`Прибыль с начала ${year}`} value={money(k.profit)} note={k.revenue ? `рентабельность ${Math.round((k.profit / k.revenue) * 100)} %` : undefined} href="/executive" />
+            <Tile label={t("Прибыль с начала {y}", { y: year })} value={money(k.profit)} note={k.revenue ? t("рентабельность {p} %", { p: Math.round((k.profit / k.revenue) * 100) }) : undefined} href="/executive" />
             {k.taxes === null
-              ? <Tile label="Налоги по расчёту" value="—" note="выберите налоговый режим компании" href="/companies" />
-              : <Tile label="Налоги по расчёту" value={money(k.taxes)} note="с начала года — суммы и сроки" href="/taxreports" />}
+              ? <Tile label={t("Налоги по расчёту")} value="—" note={t("выберите налоговый режим компании")} href="/companies" />
+              : <Tile label={t("Налоги по расчёту")} value={money(k.taxes)} note={t("с начала года — суммы и сроки")} href="/taxreports" />}
           </>
         )}
       </section>
@@ -195,8 +206,8 @@ export default function Home() {
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-fl-gold/15 text-fl-gold">
               <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={a.icon} /></svg>
             </span>
-            <span className="text-sm font-semibold text-fl-cream">{a.label}</span>
-            <span className="hidden text-xs text-fl-cream/55 sm:block">{a.text}</span>
+            <span className="text-sm font-semibold text-fl-cream">{t(a.label)}</span>
+            <span className="hidden text-xs text-fl-cream/55 sm:block">{t(a.text)}</span>
           </a>
         ))}
       </section>
@@ -204,12 +215,12 @@ export default function Home() {
       <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className={`${card} p-4 sm:p-5`}>
           <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-semibold text-fl-cream">Последние операции</h2>
-            <a href="/ledger" className="text-sm text-fl-gold hover:underline">весь журнал</a>
+            <h2 className="font-display text-lg font-semibold text-fl-cream">{t("Последние операции")}</h2>
+            <a href="/ledger" className="text-sm text-fl-gold hover:underline">{t("весь журнал")}</a>
           </div>
           {k && k.recent.length === 0 && (
             <div className="mt-4 rounded-xl bg-fl-surface-2 p-4 text-sm text-fl-cream/70">
-              Операций в этом году ещё нет. <a href="/ledger?new=1" className="font-medium text-fl-gold hover:underline">Проведите первую</a> — например, «Продажа в долг» или «Оплата поставщику».
+              {t("Операций в этом году ещё нет.")} <a href="/ledger?new=1" className="font-medium text-fl-gold hover:underline">{t("Проведите первую")}</a> — {t("например, «Продажа в долг» или «Оплата поставщику».")}
             </div>
           )}
           <ul className="mt-3 divide-y divide-fl-line/70">
@@ -220,7 +231,7 @@ export default function Home() {
                   <span className="num w-12 shrink-0 text-xs text-fl-cream/50">{e.date.slice(8)}.{e.date.slice(5, 7)}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-fl-cream">{e.description}</span>
-                    <span className="text-xs text-fl-cream/45">{SOURCE[e.source] ?? e.source}</span>
+                    <span className="text-xs text-fl-cream/45">{t(SOURCE[e.source] ?? e.source)}</span>
                   </span>
                   <span className="num shrink-0 text-sm font-medium text-fl-cream">{formatNumber(sum, 2)}</span>
                 </li>
@@ -232,20 +243,20 @@ export default function Home() {
         <div className="space-y-5">
           <section className={`${card} p-4 sm:p-5`}>
             <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-semibold text-fl-cream">Ближайшие сроки</h2>
-              <a href="/calendar" className="text-sm text-fl-gold hover:underline">календарь</a>
+              <h2 className="font-display text-lg font-semibold text-fl-cream">{t("Ближайшие сроки")}</h2>
+              <a href="/calendar" className="text-sm text-fl-gold hover:underline">{t("календарь")}</a>
             </div>
-            {upcoming.length === 0 && <p className="mt-3 text-sm text-fl-cream/60">Ближайших сроков по этой компании нет.</p>}
+            {upcoming.length === 0 && <p className="mt-3 text-sm text-fl-cream/60">{t("Ближайших сроков по этой компании нет.")}</p>}
             <ul className="mt-3 space-y-2">
               {upcoming.map((e) => (
                 <li key={e.key} className={`rounded-xl px-3 py-2 ${e.daysLeft < 0 ? "bg-fl-red/10" : e.daysLeft <= 5 ? "bg-fl-amber/10" : "bg-fl-surface-2/70"}`}>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-sm font-semibold text-fl-cream">{e.form}</span>
                     <span className={`text-xs font-medium ${e.daysLeft < 0 ? "text-fl-red" : e.daysLeft <= 5 ? "text-fl-amber" : "text-fl-cream/55"}`}>
-                      {e.daysLeft < 0 ? `просрочен ${-e.daysLeft} дн.` : e.daysLeft === 0 ? "сегодня" : `через ${e.daysLeft} дн.`}
+                      {e.daysLeft < 0 ? t("просрочен {n} дн.", { n: -e.daysLeft }) : e.daysLeft === 0 ? t("сегодня") : t("через {n} дн.", { n: e.daysLeft })}
                     </span>
                   </div>
-                  <p className="text-xs text-fl-cream/60">{e.title}, {e.periodLabel}{e.amount ? ` · ${money(e.amount)} сом` : ""}</p>
+                  <p className="text-xs text-fl-cream/60">{e.title}, {e.periodLabel}{e.amount ? ` · ${money(e.amount)} ${t("сом")}` : ""}</p>
                 </li>
               ))}
             </ul>
@@ -253,10 +264,10 @@ export default function Home() {
 
           <section className={`${card} p-4 sm:p-5`}>
             <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-semibold text-fl-cream">Новости</h2>
-              <a href="/news" className="text-sm text-fl-gold hover:underline">все</a>
+              <h2 className="font-display text-lg font-semibold text-fl-cream">{t("Новости")}</h2>
+              <a href="/news" className="text-sm text-fl-gold hover:underline">{t("все")}</a>
             </div>
-            {news.length === 0 && <p className="mt-3 text-sm text-fl-cream/60">Лента обновится при первом открытии раздела «Новости и наука».</p>}
+            {news.length === 0 && <p className="mt-3 text-sm text-fl-cream/60">{t("Лента обновится при первом открытии раздела «Новости и наука».")}</p>}
             <ul className="mt-3 space-y-3">
               {news.map((n) => (
                 <li key={n.id}>
@@ -272,7 +283,7 @@ export default function Home() {
       </div>
 
       <p className="mt-8 text-center text-xs text-fl-cream/40">
-        Нажмите <kbd className="rounded border border-fl-line px-1">Ctrl</kbd> + <kbd className="rounded border border-fl-line px-1">K</kbd> или <kbd className="rounded border border-fl-line px-1">/</kbd>, чтобы быстро найти любой раздел.
+        {t("Нажмите")} <kbd className="rounded border border-fl-line px-1">Ctrl</kbd> + <kbd className="rounded border border-fl-line px-1">K</kbd> {t("или")} <kbd className="rounded border border-fl-line px-1">/</kbd>, {t("чтобы быстро найти любой раздел.")}
       </p>
     </main>
   );

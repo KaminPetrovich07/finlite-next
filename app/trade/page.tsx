@@ -13,6 +13,7 @@ import { monthPeriod } from "@/lib/ledger/period";
 import { itemKey } from "@/lib/ledger/stock";
 import { KIND_LABEL, VAT_LABEL, type CatalogItem, type ItemKind, type VatRate } from "@/lib/trade/catalog";
 import { DOC_LABEL, docTotals, PAYMENT_LABEL, rowTotals, validateDoc, type DocRow, type DocType, type Payment, type TradeDoc } from "@/lib/trade/doc";
+import { useT } from "@/components/i18n";
 
 const card = "rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5";
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
@@ -38,6 +39,7 @@ const toDoc = (d: Draft): TradeDoc => ({
 export default function TradePage() {
   const { companies, companyId, setCompanyId, company, loaded } = useCompanies();
   const toast = useToast();
+  const t = useT();
   const [period, setPeriod] = useState(() => { const t = today(); return monthPeriod(Number(t.slice(0, 4)), Number(t.slice(5, 7))); });
   const [docs, setDocs] = useState<Summary[] | null>(null);
   const [ro, setRo] = useState(true);
@@ -57,7 +59,7 @@ export default function TradePage() {
       fetch(`/api/trade/catalog?companyId=${companyId}`).then(async (r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })),
     ]);
     setDocs(d.ok ? d.b.docs : []); setRo(d.ok ? !!d.b.readOnly : true);
-    if (!d.ok) toast.show(d.b.error ?? "Не удалось загрузить документы", "error");
+    if (!d.ok) toast.show(t(d.b.error ?? "Не удалось загрузить документы"), "error");
     setCatalog(c.items ?? []); setVatPayer(!!c.vatPayer);
   }, [companyId, period]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (loaded) load(); }, [loaded, load]);
@@ -87,12 +89,12 @@ export default function TradePage() {
   async function open(s: Summary) {
     const r = await fetch(`/api/trade/docs/${s.entryId}`);
     const b = await r.json().catch(() => ({}));
-    if (!r.ok) { toast.show(b.error ?? "Не удалось открыть", "error"); return; }
+    if (!r.ok) { toast.show(t(b.error ?? "Не удалось открыть"), "error"); return; }
     const d: TradeDoc = b.doc;
     setSaved(null);
     setDraft({ entryId: s.entryId, version: b.version, type: d.type, number: d.number, date: d.date, party: d.party, partyInn: d.partyInn ?? "", payment: d.payment, vatIncluded: d.vatIncluded, basis: d.basis ?? "", comment: d.comment ?? "",
       rows: d.rows.map((x) => ({ ...x, qty: String(x.qty).replace(".", ","), price: String(x.price).replace(".", ",") })) });
-    if (b.editedInJournal) toast.show("Проводку документа меняли в журнале — документ собран из неё: проверьте цены и НДС", "info");
+    if (b.editedInJournal) toast.show(t("Проводку документа меняли в журнале — документ собран из неё: проверьте цены и НДС"), "info");
     setTimeout(() => document.getElementById("fl-doc")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
   function setRow(i: number, patch: Partial<RowDraft>) {
@@ -116,7 +118,7 @@ export default function TradePage() {
     if (!draft) return;
     const doc = toDoc(draft);
     const problems = validateDoc(doc);
-    if (problems.length) { toast.show(problems[0], "error"); return; }
+    if (problems.length) { toast.show(t(problems[0]), "error"); return; }
     setBusy(true);
     const r = await fetch(draft.entryId ? `/api/trade/docs/${draft.entryId}` : "/api/trade/docs", {
       method: draft.entryId ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
@@ -124,26 +126,26 @@ export default function TradePage() {
     });
     const b = await r.json().catch(() => ({}));
     setBusy(false);
-    if (!r.ok) { toast.show(b.error ?? "Документ не сохранён", "error"); return; }
-    toast.show(`${DOC_LABEL[doc.type]} № ${doc.number} ${draft.entryId ? "изменена" : "проведена"}${b.cogs ? ` — себестоимость списана (${b.cogs})` : ""}`);
+    if (!r.ok) { toast.show(t(b.error ?? "Документ не сохранён"), "error"); return; }
+    toast.show(`${t(DOC_LABEL[doc.type])} № ${doc.number} ${draft.entryId ? t("изменена") : t("проведена")}${b.cogs ? t(" — себестоимость списана ({n})", { n: b.cogs }) : ""}`);
     setSaved({ entryId: b.entryId, type: doc.type });
     setDraft(null);
     if (doc.date < period.from || doc.date > period.to) setPeriod(monthPeriod(Number(doc.date.slice(0, 4)), Number(doc.date.slice(5, 7))));
     else load();
   }
   async function remove(s: Summary) {
-    if (!confirm(`Удалить ${DOC_LABEL[s.type].toLowerCase()} № ${s.number}? Проводка уйдёт из журнала (вернуть можно в журнале, раздел «Удалённые»).`)) return;
+    if (!confirm(t("Удалить документ «{d}» № {n}? Проводка уйдёт из журнала (вернуть можно в журнале, раздел «Удалённые»).", { d: t(DOC_LABEL[s.type]), n: s.number }))) return;
     const r = await fetch(`/api/ledger/${s.entryId}`, { method: "DELETE" });
     const b = await r.json().catch(() => ({}));
-    if (!r.ok) { toast.show(b.error ?? "Не удалось удалить", "error"); return; }
-    toast.show("Документ удалён", "info");
+    if (!r.ok) { toast.show(t(b.error ?? "Не удалось удалить"), "error"); return; }
+    toast.show(t("Документ удалён"), "info");
     if (draft?.entryId === s.entryId) setDraft(null);
     load();
   }
   async function print(entryId: string, type: DocType, format: "pdf" | "docx", kinds?: string[]) {
     try {
       await downloadPost(`/api/trade/print?format=${format}`, { companyId, entryId, kinds: kinds ?? (type === "sale" ? ["waybill", "invoice"] : ["m4"]) }, `документ.${format}`);
-    } catch (e) { toast.show(e instanceof Error ? e.message : "Не удалось сформировать", "error"); }
+    } catch (e) { toast.show(t(e instanceof Error ? e.message : "Не удалось сформировать"), "error"); }
   }
 
   const doc = draft ? toDoc(draft) : null;
@@ -155,103 +157,103 @@ export default function TradePage() {
     <main className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6 sm:pt-8">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Продажи и закупки</h1>
-          <p className="mt-1 max-w-3xl text-sm text-fl-cream/60">Реализация и поступление с таблицей товаров и услуг. Проводки, НДС, остатки на складе и себестоимость формируются сами; накладная, счёт и приходный ордер — в один клик.</p>
+          <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">{t("Продажи и закупки")}</h1>
+          <p className="mt-1 max-w-3xl text-sm text-fl-cream/60">{t("Реализация и поступление с таблицей товаров и услуг. Проводки, НДС, остатки на складе и себестоимость формируются сами; накладная, счёт и приходный ордер — в один клик.")}</p>
         </div>
-        <a href="/nomenclature" className="text-sm text-fl-gold underline-offset-4 hover:underline">Номенклатура ({catalog.length})</a>
+        <a href="/nomenclature" className="text-sm text-fl-gold underline-offset-4 hover:underline">{t("Номенклатура")} ({catalog.length})</a>
       </header>
       <OkeiDatalist />
       <datalist id="fl-items">{catalog.filter((x) => !x.archived).slice(0, 3000).map((x) => <option key={x.id} value={x.name} label={[x.article, x.unit, x.group].filter(Boolean).join(" · ")} />)}</datalist>
       <datalist id="fl-parties">{parties.map((p) => <option key={p} value={p} />)}</datalist>
 
       <section className={`${card} mb-4 flex flex-col gap-3 lg:flex-row lg:items-end`}>
-        <label className="text-xs text-fl-cream/50">Компания
+        <label className="text-xs text-fl-cream/50">{t("Компания")}
           <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className={`${field} mt-1 min-w-[220px]`}>
             {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            <option value={NEW_COMPANY}>+ Добавить компанию…</option>
+            <option value={NEW_COMPANY}>+ {t("Добавить компанию…")}</option>
           </select>
         </label>
-        <div className="flex flex-col gap-1 text-xs text-fl-cream/50">Период<PeriodPicker key={`${period.from}${period.to}`} from={period.from} to={period.to} onChange={(p) => setPeriod((c) => (c.from === p.from && c.to === p.to ? c : p))} /></div>
+        <div className="flex flex-col gap-1 text-xs text-fl-cream/50">{t("Период")}<PeriodPicker key={`${period.from}${period.to}`} from={period.from} to={period.to} onChange={(p) => setPeriod((c) => (c.from === p.from && c.to === p.to ? c : p))} /></div>
       </section>
 
       {company?.demo ? (
-        <p className={`${card} mb-4 text-sm text-fl-cream/70`}>В демо-компании документы не вводятся. Создайте свою компанию или копию демо в журнале проводок.</p>
+        <p className={`${card} mb-4 text-sm text-fl-cream/70`}>{t("В демо-компании документы не вводятся. Создайте свою компанию или копию демо в журнале проводок.")}</p>
       ) : !ro && (
         <div className="mb-4 flex flex-wrap gap-2">
-          <button onClick={() => start("sale")} className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Новая реализация</button>
-          <button onClick={() => start("purchase")} className="rounded-md border border-fl-gold/40 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10">Новое поступление</button>
+          <button onClick={() => start("sale")} className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">{t("Новая реализация")}</button>
+          <button onClick={() => start("purchase")} className="rounded-md border border-fl-gold/40 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10">{t("Новое поступление")}</button>
         </div>
       )}
 
       {saved && !draft && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border-l-4 border-fl-green bg-fl-green/10 px-4 py-2.5 text-sm">
-          <span>Документ проведён. Печатные формы:</span>
-          <button onClick={() => print(saved.entryId, saved.type, "pdf")} className="font-semibold text-fl-gold hover:underline">{saved.type === "sale" ? "накладная и счёт" : "приходный ордер М-4"} — PDF</button>
+          <span>{t("Документ проведён. Печатные формы:")}</span>
+          <button onClick={() => print(saved.entryId, saved.type, "pdf")} className="font-semibold text-fl-gold hover:underline">{saved.type === "sale" ? t("накладная и счёт") : t("приходный ордер М-4")} — PDF</button>
           <button onClick={() => print(saved.entryId, saved.type, "docx")} className="text-fl-gold hover:underline">Word</button>
-          <button onClick={() => setSaved(null)} className="ml-auto text-xs text-fl-cream/50 hover:underline">скрыть</button>
+          <button onClick={() => setSaved(null)} className="ml-auto text-xs text-fl-cream/50 hover:underline">{t("скрыть")}</button>
         </div>
       )}
 
       {draft && doc && totals && (
         <section id="fl-doc" className={`${card} mb-5 scroll-mt-20`}>
-          <h2 className="font-display text-xl font-semibold text-fl-cream">{draft.entryId ? `${DOC_LABEL[draft.type]} № ${draft.number}` : `Новая ${draft.type === "sale" ? "реализация" : "поступление"}`.replace("Новая поступление", "Новое поступление")}</h2>
+          <h2 className="font-display text-xl font-semibold text-fl-cream">{draft.entryId ? `${t(DOC_LABEL[draft.type])} № ${draft.number}` : draft.type === "sale" ? t("Новая реализация") : t("Новое поступление")}</h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-            <label className="text-xs text-fl-cream/55">Дата<input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={`${field} mt-1`} /></label>
-            <label className="text-xs text-fl-cream/55">{draft.type === "sale" ? "Номер" : "Номер документа поставщика"}<input value={draft.number} onChange={(e) => setDraft({ ...draft, number: e.target.value })} className={`${field} mt-1`} /></label>
-            <label className="text-xs text-fl-cream/55 sm:col-span-2">{draft.type === "sale" ? "Покупатель" : "Поставщик"}<input list="fl-parties" value={draft.party} onChange={(e) => setDraft({ ...draft, party: e.target.value })} placeholder={draft.type === "sale" ? "ОсОО «…», ИП …" : "ОсОО «…»"} className={`${field} mt-1`} /></label>
-            <label className="text-xs text-fl-cream/55">ИНН<input inputMode="numeric" value={draft.partyInn} onChange={(e) => setDraft({ ...draft, partyInn: e.target.value.replace(/\D/g, "").slice(0, 14) })} className={`${field} mt-1`} /></label>
-            <label className="text-xs text-fl-cream/55">Оплата<select value={draft.payment} onChange={(e) => setDraft({ ...draft, payment: e.target.value as Payment })} className={`${field} mt-1`}>{Object.entries(PAYMENT_LABEL[draft.type]).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+            <label className="text-xs text-fl-cream/55">{t("Дата")}<input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} className={`${field} mt-1`} /></label>
+            <label className="text-xs text-fl-cream/55">{draft.type === "sale" ? t("Номер") : t("Номер документа поставщика")}<input value={draft.number} onChange={(e) => setDraft({ ...draft, number: e.target.value })} className={`${field} mt-1`} /></label>
+            <label className="text-xs text-fl-cream/55 sm:col-span-2">{draft.type === "sale" ? t("Покупатель") : t("Поставщик")}<input list="fl-parties" value={draft.party} onChange={(e) => setDraft({ ...draft, party: e.target.value })} placeholder={draft.type === "sale" ? "ОсОО «…», ИП …" : "ОсОО «…»"} className={`${field} mt-1`} /></label>
+            <label className="text-xs text-fl-cream/55">{t("ИНН")}<input inputMode="numeric" value={draft.partyInn} onChange={(e) => setDraft({ ...draft, partyInn: e.target.value.replace(/\D/g, "").slice(0, 14) })} className={`${field} mt-1`} /></label>
+            <label className="text-xs text-fl-cream/55">{t("Оплата")}<select value={draft.payment} onChange={(e) => setDraft({ ...draft, payment: e.target.value as Payment })} className={`${field} mt-1`}>{Object.entries(PAYMENT_LABEL[draft.type]).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}</select></label>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-            <label className="flex items-center gap-2 text-fl-cream/80"><input type="checkbox" checked={draft.vatIncluded} onChange={(e) => setDraft({ ...draft, vatIncluded: e.target.checked })} className="accent-fl-gold" /> Цены включают НДС</label>
-            {draft.type === "sale" && <label className="flex min-w-[260px] flex-1 items-center gap-2 text-xs text-fl-cream/55">Основание<input value={draft.basis} onChange={(e) => setDraft({ ...draft, basis: e.target.value })} placeholder="договор № … от …" className={cell} /></label>}
+            <label className="flex items-center gap-2 text-fl-cream/80"><input type="checkbox" checked={draft.vatIncluded} onChange={(e) => setDraft({ ...draft, vatIncluded: e.target.checked })} className="accent-fl-gold" /> {t("Цены включают НДС")}</label>
+            {draft.type === "sale" && <label className="flex min-w-[260px] flex-1 items-center gap-2 text-xs text-fl-cream/55">{t("Основание")}<input value={draft.basis} onChange={(e) => setDraft({ ...draft, basis: e.target.value })} placeholder={t("договор № … от …")} className={cell} /></label>}
           </div>
 
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm">
               <thead><tr className="text-left text-xs text-fl-cream/50">
-                <th className="w-6 py-1.5">№</th><th className="py-1.5">Номенклатура</th><th className="w-36">Вид</th><th className="w-20">Ед.</th><th className="w-24 text-right">Кол-во</th><th className="w-28 text-right">Цена</th><th className="w-28">НДС</th><th className="w-28 text-right">Сумма</th><th className="w-6" />
+                <th className="w-6 py-1.5">№</th><th className="py-1.5">{t("Номенклатура")}</th><th className="w-36">{t("Вид")}</th><th className="w-20">{t("Ед.")}</th><th className="w-24 text-right">{t("Кол-во")}</th><th className="w-28 text-right">{t("Цена")}</th><th className="w-28">{t("НДС")}</th><th className="w-28 text-right">{t("Сумма")}</th><th className="w-6" />
               </tr></thead>
               <tbody>{draft.rows.map((r, i) => {
-                const t = rowTotals({ ...r, qty: parseNum(r.qty) || 0, price: parseNum(r.price) || 0 }, draft.vatIncluded);
-                const amount = t.amount;
+                const rt = rowTotals({ ...r, qty: parseNum(r.qty) || 0, price: parseNum(r.price) || 0 }, draft.vatIncluded);
+                const amount = rt.amount;
                 const have = draft.type === "sale" && r.kind !== "service" && r.name.trim() ? stockOf(r.name) : null;
                 const short = have !== null && (parseNum(r.qty) || 0) > have + 1e-9;
                 return (
                   <tr key={i} className="align-top">
                     <td className="py-1 pr-1 text-xs text-fl-cream/45">{i + 1}</td>
                     <td className="py-1 pr-1">
-                      <input list="fl-items" value={r.name} onChange={(e) => setRow(i, { name: e.target.value })} placeholder="начните вводить — подскажем из справочника" className={cell} />
-                      {have !== null && <p className={`mt-0.5 text-[11px] ${short ? "text-fl-amber" : "text-fl-cream/45"}`}>на складе на {dmy(draft.date)}: {String(Math.round(have * 1000) / 1000).replace(".", ",")} {r.unit}{short ? " — продаёте больше, чем есть" : ""}</p>}
-                      {r.name.trim() && !r.itemId && !byName.has(itemKey(r.name)) && <p className="mt-0.5 text-[11px] text-fl-cream/45">новая позиция — добавится в номенклатуру</p>}
+                      <input list="fl-items" value={r.name} onChange={(e) => setRow(i, { name: e.target.value })} placeholder={t("начните вводить — подскажем из справочника")} className={cell} />
+                      {have !== null && <p className={`mt-0.5 text-[11px] ${short ? "text-fl-amber" : "text-fl-cream/45"}`}>{t("на складе на {d}: {q}", { d: dmy(draft.date), q: `${String(Math.round(have * 1000) / 1000).replace(".", ",")} ${r.unit}` })}{short ? t(" — продаёте больше, чем есть") : ""}</p>}
+                      {r.name.trim() && !r.itemId && !byName.has(itemKey(r.name)) && <p className="mt-0.5 text-[11px] text-fl-cream/45">{t("новая позиция — добавится в номенклатуру")}</p>}
                     </td>
-                    <td className="py-1 pr-1"><select value={r.kind} onChange={(e) => setRow(i, { kind: e.target.value as ItemKind })} className={cell}>{Object.entries(KIND_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></td>
+                    <td className="py-1 pr-1"><select value={r.kind} onChange={(e) => setRow(i, { kind: e.target.value as ItemKind })} className={cell}>{Object.entries(KIND_LABEL).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}</select></td>
                     <td className="py-1 pr-1"><input list={OKEI_LIST_ID} value={r.unit} onChange={(e) => setRow(i, { unit: e.target.value })} className={cell} /></td>
                     <td className="py-1 pr-1"><input inputMode="decimal" value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} className={`${cell} text-right`} /></td>
                     <td className="py-1 pr-1"><input inputMode="decimal" value={r.price} onChange={(e) => setRow(i, { price: e.target.value })} className={`${cell} text-right`} /></td>
-                    <td className="py-1 pr-1"><select value={r.vat} onChange={(e) => setRow(i, { vat: e.target.value as VatRate })} className={cell}>{Object.entries(VAT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></td>
-                    <td className="num py-2 pr-1 text-right">{amount ? m2(amount) : ""}{t && t.vat > 0 ? <span className="block text-[11px] text-fl-cream/45">НДС {m2(t.vat)}</span> : null}</td>
-                    <td className="py-1">{draft.rows.length > 1 && <button aria-label={`Удалить строку ${i + 1}`} onClick={() => setDraft({ ...draft, rows: draft.rows.filter((_, j) => j !== i) })} className="px-1 text-fl-cream/40 hover:text-fl-red">×</button>}</td>
+                    <td className="py-1 pr-1"><select value={r.vat} onChange={(e) => setRow(i, { vat: e.target.value as VatRate })} className={cell}>{Object.entries(VAT_LABEL).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}</select></td>
+                    <td className="num py-2 pr-1 text-right">{amount ? m2(amount) : ""}{rt.vat > 0 ? <span className="block text-[11px] text-fl-cream/45">{t("НДС")} {m2(rt.vat)}</span> : null}</td>
+                    <td className="py-1">{draft.rows.length > 1 && <button aria-label={t("Удалить строку {n}", { n: i + 1 })} onClick={() => setDraft({ ...draft, rows: draft.rows.filter((_, j) => j !== i) })} className="px-1 text-fl-cream/40 hover:text-fl-red">×</button>}</td>
                   </tr>
                 );
               })}</tbody>
             </table>
           </div>
-          <button onClick={() => setDraft({ ...draft, rows: [...draft.rows, emptyRow(vatPayer ? "12" : "none")] })} className="mt-1 text-sm text-fl-gold hover:underline">+ строка</button>
+          <button onClick={() => setDraft({ ...draft, rows: [...draft.rows, emptyRow(vatPayer ? "12" : "none")] })} className="mt-1 text-sm text-fl-gold hover:underline">+ {t("строка")}</button>
 
           <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t border-fl-line pt-4">
             <div className="text-sm text-fl-cream/75">
-              <p>Без НДС: <span className="num">{m2(totals.net)}</span> · НДС: <span className="num">{m2(totals.vat)}</span></p>
-              <p className="mt-0.5 font-display text-xl font-bold text-fl-cream">Всего: <span className="num">{m2(totals.gross)}</span> сом</p>
+              <p>{t("Без НДС")}: <span className="num">{m2(totals.net)}</span> · {t("НДС")}: <span className="num">{m2(totals.vat)}</span></p>
+              <p className="mt-0.5 font-display text-xl font-bold text-fl-cream">{t("Всего")}: <span className="num">{m2(totals.gross)}</span> {t("сом")}</p>
               <p className="mt-1 text-xs text-fl-cream/50">
-                Проводка: {draft.type === "sale"
-                  ? `Дт ${{ credit: "1410", cash: "1110", bank: "1210" }[draft.payment]} — Кт 6110${totals.vat ? ", Кт 3430 (НДС)" : ""}; себестоимость спишется по ${"учётной политике"}, если включено автосписание на «Складе».`
-                  : `Дт ${[...new Set(doc.rows.map((x) => ({ goods: "1610", material: "1620", product: "1640", service: "8040" })[x.kind]))].join(", ")}${totals.vat ? ", Дт 1540 (НДС)" : ""} — Кт ${{ credit: "3110", cash: "1110", bank: "1210" }[draft.payment]}.`}
+                {t("Проводка")}: {draft.type === "sale"
+                  ? `Дт ${{ credit: "1410", cash: "1110", bank: "1210" }[draft.payment]} — Кт 6110${totals.vat ? `, Кт 3430 (${t("НДС")})` : ""}; ${t("себестоимость спишется по учётной политике, если включено автосписание на «Складе».")}`
+                  : `Дт ${[...new Set(doc.rows.map((x) => ({ goods: "1610", material: "1620", product: "1640", service: "8040" })[x.kind]))].join(", ")}${totals.vat ? `, Дт 1540 (${t("НДС")})` : ""} — Кт ${{ credit: "3110", cash: "1110", bank: "1210" }[draft.payment]}.`}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button onClick={save} disabled={busy} className="rounded-md bg-fl-accent px-5 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50">{busy ? "Провожу…" : draft.entryId ? "Сохранить изменения" : "Провести"}</button>
-              <button onClick={() => setDraft(null)} className={btn}>Отмена</button>
+              <button onClick={save} disabled={busy} className="rounded-md bg-fl-accent px-5 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50">{busy ? t("Провожу…") : draft.entryId ? t("Сохранить изменения") : t("Провести")}</button>
+              <button onClick={() => setDraft(null)} className={btn}>{t("Отмена")}</button>
             </div>
           </div>
         </section>
@@ -260,30 +262,30 @@ export default function TradePage() {
       <section className={card}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-1 rounded-xl bg-fl-surface-2 p-1 text-sm">
-            {([["", "Все"], ["sale", "Реализация"], ["purchase", "Поступление"]] as Array<[DocType | "", string]>).map(([k, v]) => (
+            {([["", t("Все")], ["sale", t("Реализация")], ["purchase", t("Поступление")]] as Array<[DocType | "", string]>).map(([k, v]) => (
               <button key={k} onClick={() => setFilter(k)} className={`rounded-lg px-3 py-1.5 ${filter === k ? "bg-fl-charcoal-2 font-semibold text-fl-cream shadow-card" : "text-fl-cream/60 hover:text-fl-cream"}`}>{v}</button>
             ))}
           </div>
-          {docs && docs.length > 0 && <p className="text-sm text-fl-cream/60">Продано: <span className="num text-fl-cream">{m2(sum("sale"))}</span> · закуплено: <span className="num text-fl-cream">{m2(sum("purchase"))}</span></p>}
+          {docs && docs.length > 0 && <p className="text-sm text-fl-cream/60">{t("Продано")}: <span className="num text-fl-cream">{m2(sum("sale"))}</span> · {t("закуплено")}: <span className="num text-fl-cream">{m2(sum("purchase"))}</span></p>}
         </div>
-        {docs === null ? <p className="text-sm text-fl-cream/50">Загружаю…</p> : shown.length === 0 ? (
-          <p className="text-sm text-fl-cream/60">За период документов нет.{!ro && !company?.demo ? " Нажмите «Новая реализация» или «Новое поступление»." : ""}</p>
+        {docs === null ? <p className="text-sm text-fl-cream/50">{t("Загружаю…")}</p> : shown.length === 0 ? (
+          <p className="text-sm text-fl-cream/60">{t("За период документов нет.")}{!ro && !company?.demo ? ` ${t("Нажмите «Новая реализация» или «Новое поступление».")}` : ""}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
-              <thead><tr className="text-left text-xs text-fl-cream/50"><th className="py-2">Дата</th><th>Документ</th><th>Контрагент</th><th>Оплата</th><th className="text-right">Сумма</th><th className="text-right">НДС</th><th /></tr></thead>
+              <thead><tr className="text-left text-xs text-fl-cream/50"><th className="py-2">{t("Дата")}</th><th>{t("Документ")}</th><th>{t("Контрагент")}</th><th>{t("Оплата")}</th><th className="text-right">{t("Сумма")}</th><th className="text-right">{t("НДС")}</th><th /></tr></thead>
               <tbody>{shown.map((s) => (
                 <tr key={s.entryId} className="border-t border-fl-line align-top">
                   <td className="whitespace-nowrap py-2 pr-3 text-fl-cream/70">{dmy(s.date)}</td>
-                  <td className="py-2 pr-3"><span className={`mr-1.5 inline-block rounded border px-1.5 py-px text-[11px] ${s.type === "sale" ? "border-fl-green/40 text-fl-green" : "border-fl-info/40 text-fl-info"}`}>{DOC_LABEL[s.type]}</span>№ {s.number}<span className="ml-1 text-xs text-fl-cream/45">· {s.rows} стр.</span>{s.locked && <span className="ml-1 text-xs text-fl-cream/45">🔒</span>}</td>
+                  <td className="py-2 pr-3"><span className={`mr-1.5 inline-block rounded border px-1.5 py-px text-[11px] ${s.type === "sale" ? "border-fl-green/40 text-fl-green" : "border-fl-info/40 text-fl-info"}`}>{t(DOC_LABEL[s.type])}</span>№ {s.number}<span className="ml-1 text-xs text-fl-cream/45">· {t("{n} стр.", { n: s.rows })}</span>{s.locked && <span className="ml-1 text-xs text-fl-cream/45">🔒</span>}</td>
                   <td className="py-2 pr-3 text-fl-cream/85">{s.party || "—"}</td>
-                  <td className="py-2 pr-3 text-xs text-fl-cream/60">{PAYMENT_LABEL[s.type][s.payment]}</td>
+                  <td className="py-2 pr-3 text-xs text-fl-cream/60">{t(PAYMENT_LABEL[s.type][s.payment])}</td>
                   <td className="num py-2 pr-3 text-right">{m2(s.gross)}</td>
                   <td className="num py-2 pr-3 text-right text-fl-cream/60">{s.vat ? m2(s.vat) : "—"}</td>
                   <td className="whitespace-nowrap py-2 text-right text-xs">
-                    <button onClick={() => open(s)} className="text-fl-info hover:underline">{ro || s.locked ? "Открыть" : "Изменить"}</button>
-                    <button onClick={() => print(s.entryId, s.type, "pdf")} className="ml-2 text-fl-cream/60 hover:text-fl-gold hover:underline">{s.type === "sale" ? "Накладная" : "М-4"}</button>
-                    {!ro && !s.locked && <button onClick={() => remove(s)} className="ml-2 text-fl-cream/40 hover:text-fl-red hover:underline">Удалить</button>}
+                    <button onClick={() => open(s)} className="text-fl-info hover:underline">{ro || s.locked ? t("Открыть") : t("Изменить")}</button>
+                    <button onClick={() => print(s.entryId, s.type, "pdf")} className="ml-2 text-fl-cream/60 hover:text-fl-gold hover:underline">{s.type === "sale" ? t("Накладная") : "М-4"}</button>
+                    {!ro && !s.locked && <button onClick={() => remove(s)} className="ml-2 text-fl-cream/40 hover:text-fl-red hover:underline">{t("Удалить")}</button>}
                   </td>
                 </tr>
               ))}</tbody>

@@ -20,6 +20,7 @@ import { useToast } from "@/components/Toast";
 import { demoEntries, DEMO_PERIOD } from "@/lib/ledger/demo";
 import { monthPeriod, periodLabel } from "@/lib/ledger/period";
 import type { LedgerEntry } from "@/lib/ledger/types";
+import { useT } from "@/components/i18n";
 
 function currentMonth() {
   const d = new Date();
@@ -30,6 +31,7 @@ const todayIso = () => new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 
 
 export default function LedgerPage() {
   const { companies, companyId, setCompanyId, company, loaded, reload, readOnly } = useCompanies();
+  const t = useT();
   const [period, setPeriodState] = useState<{ from: string; to: string } | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
@@ -103,7 +105,7 @@ export default function LedgerPage() {
       if (!res.ok) throw new Error(body.error);
       setEntries(body);
     } catch (e: any) {
-      setError(e.message ?? "Не удалось загрузить журнал");
+      setError(t(e.message ?? "Не удалось загрузить журнал"));
       setEntries([]);
     }
   }, [companyId, period, isDemo]);
@@ -120,7 +122,7 @@ export default function LedgerPage() {
       body: JSON.stringify({ ...data, companyId, source: form === "opening" ? "opening" : "manual" }),
     });
     const body = await res.json();
-    if (!res.ok) { toast.show(body.error ?? "Проводка не сохранена", "error"); return false; }
+    if (!res.ok) { toast.show(t(body.error ?? "Проводка не сохранена"), "error"); return false; }
     if (repeat) {
       // эта проводка — первый месяц; дальше шаблон проводится сам
       const r = await fetch("/api/ledger/recurring", {
@@ -128,11 +130,11 @@ export default function LedgerPage() {
         body: JSON.stringify({ companyId, description: data.description, lines: data.lines, day: repeat.day, from: nextMonth(data.date.slice(0, 7)) }),
       });
       const b = await r.json().catch(() => ({}));
-      if (!r.ok) toast.show(`Проводка сохранена, но регулярную операцию создать не удалось: ${b.error ?? "ошибка"}`, "error");
-      else { toast.show("Проводка сохранена; со следующего месяца она будет проводиться сама"); setRecKey((k) => k + 1); }
-    } else toast.show("Проводка сохранена — отчётность обновлена");
+      if (!r.ok) toast.show(t("Проводка сохранена, но регулярную операцию создать не удалось: {e}", { e: t(b.error ?? "ошибка") }), "error");
+      else { toast.show(t("Проводка сохранена; со следующего месяца она будет проводиться сама")); setRecKey((k) => k + 1); }
+    } else toast.show(t("Проводка сохранена — отчётность обновлена"));
     if (photo && body.id) {
-      try { await uploadAttachment(body.id, photo); } catch (e: any) { toast.show(`Проводка сохранена, но фото не прикрепилось: ${e.message}`, "error"); }
+      try { await uploadAttachment(body.id, photo); } catch (e: any) { toast.show(t("Проводка сохранена, но фото не прикрепилось: {e}", { e: e.message }), "error"); }
     }
     setForm(null);
     load();
@@ -145,8 +147,8 @@ export default function LedgerPage() {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(entry),
     });
     const body = await res.json();
-    if (!res.ok) { toast.show(body.error ?? "Изменения не сохранены", "error"); return false; }
-    toast.show(body.note ? "Проводка изменена — прежняя версия в истории. Помните: повторный расчёт в разделе может заменить правки" : "Проводка изменена — прежняя версия в истории");
+    if (!res.ok) { toast.show(t(body.error ?? "Изменения не сохранены"), "error"); return false; }
+    toast.show(body.note ? t("Проводка изменена — прежняя версия в истории. Помните: повторный расчёт в разделе может заменить правки") : t("Проводка изменена — прежняя версия в истории"));
     setEditing(null);
     load();
     return true;
@@ -160,12 +162,12 @@ export default function LedgerPage() {
 
   async function remove(id: string) {
     const e = entries.find((x) => x.id === id);
-    const extra = e?.source === "bank" ? " Строка банковской выписки удалится вместе с ней." : "";
-    if (!confirm(`Удалить проводку? Все отчёты пересчитаются без неё.${extra} Вернуть можно в разделе «Удалённые».`)) return;
+    const extra = e?.source === "bank" ? ` ${t("Строка банковской выписки удалится вместе с ней.")}` : "";
+    if (!confirm(`${t("Удалить проводку? Все отчёты пересчитаются без неё.")}${extra} ${t("Вернуть можно в разделе «Удалённые».")}`)) return;
     const res = await fetch(`/api/ledger/${id}`, { method: "DELETE" });
     const body = await res.json();
     if (!res.ok) { toast.show(body.error ?? "Не удалось удалить", "error"); return; }
-    toast.show(body.cogs ? "Проводка и списание себестоимости по ней удалены" : "Проводка удалена — вернуть можно в «Удалённых»", "info");
+    toast.show(body.cogs ? t("Проводка и списание себестоимости по ней удалены") : t("Проводка удалена — вернуть можно в «Удалённых»"), "info");
     setPicked((p) => { const n = new Set(p); n.delete(id); return n; });
     load();
   }
@@ -174,13 +176,13 @@ export default function LedgerPage() {
     const ids = [...picked];
     if (!ids.length) return;
     const bank = entries.filter((e) => picked.has(e.id) && e.source === "bank").length;
-    if (!confirm(`Удалить отмеченные проводки (${ids.length})? Отчёты пересчитаются без них.${bank ? ` Строки выписки (${bank}) удалятся вместе с ними.` : ""} Вернуть можно в разделе «Удалённые».`)) return;
+    if (!confirm(`${t("Удалить отмеченные проводки ({n})? Отчёты пересчитаются без них.", { n: ids.length })}${bank ? ` ${t("Строки выписки ({n}) удалятся вместе с ними.", { n: bank })}` : ""} ${t("Вернуть можно в разделе «Удалённые».")}`)) return;
     setBusy(true);
     const res = await fetch("/api/ledger/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, action: "delete", ids }) });
     const body = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) { toast.show(body.error ?? "Не удалось удалить", "error"); return; }
-    toast.show(`Удалено: ${body.deleted}${body.cogs ? `, и списаний себестоимости: ${body.cogs}` : ""}${body.locked ? `. В закрытом периоде пропущено: ${body.locked}` : ""}`, body.locked ? "error" : "info");
+    toast.show(`${t("Удалено: {n}", { n: body.deleted })}${body.cogs ? t(", и списаний себестоимости: {n}", { n: body.cogs }) : ""}${body.locked ? t(". В закрытом периоде пропущено: {n}", { n: body.locked }) : ""}`, body.locked ? "error" : "info");
     setPicked(new Set());
     load();
   }
@@ -192,8 +194,8 @@ export default function LedgerPage() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...p, companyId }),
     });
     const body = await res.json();
-    if (!res.ok) { toast.show(body.error ?? "Не удалось начислить", "error"); return false; }
-    toast.show("Зарплата начислена — отчётность обновлена");
+    if (!res.ok) { toast.show(t(body.error ?? "Не удалось начислить"), "error"); return false; }
+    toast.show(t("Зарплата начислена — отчётность обновлена"));
     setForm(null);
     load();
     return true;
@@ -201,7 +203,7 @@ export default function LedgerPage() {
 
   async function closePeriod() {
     if (!period) return;
-    if (!confirm(`Закрыть счета доходов и расходов за ${periodLabel(period.from, period.to).toLowerCase()}? Прибыль перейдёт на счёт 5300 через 5999. Повторное закрытие заменит проводку.`)) return;
+    if (!confirm(t("Закрыть счета доходов и расходов за {p}? Прибыль перейдёт на счёт 5300 через 5999. Повторное закрытие заменит проводку.", { p: periodLabel(period.from, period.to).toLowerCase() }))) return;
     setBusy(true);
     const res = await fetch("/api/ledger/close", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, ...period }),
@@ -209,7 +211,7 @@ export default function LedgerPage() {
     const body = await res.json();
     setBusy(false);
     if (!res.ok) { toast.show(body.error ?? "Ошибка", "error"); return; }
-    toast.show(body.entry ? "Период закрыт: прибыль перенесена на 5300" : "Закрывать нечего — нет доходов и расходов", "info");
+    toast.show(body.entry ? t("Период закрыт: прибыль перенесена на 5300") : t("Закрывать нечего — нет доходов и расходов"), "info");
     load();
   }
 
@@ -221,7 +223,7 @@ export default function LedgerPage() {
     const body = await res.json();
     setBusy(false);
     if (!res.ok) { toast.show(body.error ?? "Ошибка", "error"); return; }
-    toast.show(body.posted ? `Проведено операций из выписок: ${body.posted}` : "Все операции выписок уже в журнале", "info");
+    toast.show(body.posted ? t("Проведено операций из выписок: {n}", { n: body.posted }) : t("Все операции выписок уже в журнале"), "info");
     load();
   }
 
@@ -230,8 +232,8 @@ export default function LedgerPage() {
     const res = await fetch("/api/demo", { method: "POST" });
     const body = await res.json();
     setBusy(false);
-    if (!res.ok) { toast.show(body.error ?? "Не удалось создать компанию", "error"); return; }
-    toast.show("Создана редактируемая копия демо-компании");
+    if (!res.ok) { toast.show(t(body.error ?? "Не удалось создать компанию"), "error"); return; }
+    toast.show(t("Создана редактируемая копия демо-компании"));
     await reload(body.id);
   }
 
@@ -244,64 +246,63 @@ export default function LedgerPage() {
     <main className="mx-auto max-w-5xl px-4 pb-24 pt-5 sm:px-6 sm:pt-10">
       <header className="mb-4 flex flex-wrap items-end justify-between gap-2 sm:mb-6 sm:gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-fl-cream sm:text-4xl">Журнал проводок</h1>
+          <h1 className="font-display text-2xl font-bold text-fl-cream sm:text-4xl">{t("Журнал проводок")}</h1>
           <p className="mt-1 hidden max-w-2xl text-sm text-fl-cream/60 sm:block">
-            Единственный источник данных для баланса, ОПиУ, ОДДС, отчёта о капитале и налогов. Операции из банковских
-            выписок попадают сюда автоматически.
+            {t("Единственный источник данных для баланса, ОПиУ, ОДДС, отчёта о капитале и налогов. Операции из банковских выписок попадают сюда автоматически.")}
           </p>
         </div>
-        <a href="/reports" className="text-sm text-fl-gold underline-offset-4 hover:underline">Открыть отчётность</a>
+        <a href="/reports" className="text-sm text-fl-gold underline-offset-4 hover:underline">{t("Открыть отчётность")}</a>
       </header>
 
       <section className="mb-4 flex flex-col gap-3 rounded-xl border border-fl-line bg-fl-charcoal-2 p-3 sm:mb-5 sm:p-5 lg:flex-row lg:items-center">
         <label className="flex flex-col gap-1 text-xs text-fl-cream/50 lg:min-w-[220px]">
-          Компания
+          {t("Компания")}
           <select value={companyId} onChange={(e) => { setCompanyId(e.target.value); setForm(null); }}
             className="rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream">
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.access === "view" && !c.demo ? " · просмотр" : ""}</option>)}
-            <option value={NEW_COMPANY}>+ Добавить компанию…</option>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.access === "view" && !c.demo ? ` · ${t("просмотр")}` : ""}</option>)}
+            <option value={NEW_COMPANY}>+ {t("Добавить компанию…")}</option>
           </select>
         </label>
         <div className="flex flex-col gap-1 text-xs text-fl-cream/50">
-          Период
+          {t("Период")}
           {period && <PeriodPicker key={pickerKey} from={period.from} to={period.to} onChange={setPeriod} />}
         </div>
       </section>
 
       {isDemo ? (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fl-line bg-fl-gold/5 px-4 py-3">
-          <p className="text-sm text-fl-cream/70">Демо-компания только для просмотра. Копию можно менять, удалять и дополнять.</p>
+          <p className="text-sm text-fl-cream/70">{t("Демо-компания только для просмотра. Копию можно менять, удалять и дополнять.")}</p>
           <button onClick={createDemoCopy} disabled={busy}
             className="rounded-md bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50">
-            Создать редактируемую копию
+            {t("Создать редактируемую копию")}
           </button>
         </div>
       ) : readOnly ? (
         <div className="mb-5 rounded-xl border border-fl-line bg-fl-info/5 px-4 py-3 text-sm text-fl-cream/70">
-          У вас доступ к этой компании только для просмотра: журнал и отчёты открыты, изменения недоступны.
+          {t("У вас доступ к этой компании только для просмотра: журнал и отчёты открыты, изменения недоступны.")}
         </div>
       ) : (
         <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
           <button onClick={() => { setEditing(null); setForm("manual"); }} className="shrink-0 rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">
-            Новая проводка
+            {t("Новая проводка")}
           </button>
           <button onClick={() => setForm("receipt")} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream">
-            Чек по фото
+            {t("Чек по фото")}
           </button>
           <button onClick={() => setForm("opening")} className="shrink-0 rounded-md border border-fl-gold/40 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10">
-            Ввести начальные остатки
+            {t("Ввести начальные остатки")}
           </button>
           <button onClick={() => setForm("payroll")} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream">
-            Начислить зарплату
+            {t("Начислить зарплату")}
           </button>
           <button onClick={closePeriod} disabled={busy} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80 hover:text-fl-cream disabled:opacity-50">
-            Закрыть период
+            {t("Закрыть период")}
           </button>
           <button onClick={postBank} disabled={busy} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/70 hover:text-fl-cream disabled:opacity-50">
-            Провести операции из выписок
+            {t("Провести операции из выписок")}
           </button>
           <button onClick={() => setTrashOpen(true)} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/70 hover:text-fl-cream">
-            Удалённые
+            {t("Удалённые")}
           </button>
         </div>
       )}
@@ -310,7 +311,7 @@ export default function LedgerPage() {
         <div id="fl-entry-form" className="mb-6 scroll-mt-20">
           {SOURCE_NOTE[editing.source] && (
             <p className="mb-2 rounded-lg border-l-4 border-fl-amber bg-fl-amber/10 px-3 py-2 text-xs text-fl-cream/75">
-              <span className="font-semibold text-fl-amber">{SOURCE_LABEL[editing.source] ?? editing.source}.</span> {SOURCE_NOTE[editing.source]}
+              <span className="font-semibold text-fl-amber">{t(SOURCE_LABEL[editing.source] ?? editing.source)}.</span> {t(SOURCE_NOTE[editing.source])}
             </p>
           )}
           <EntryForm key={`edit-${editing.id}`} mode={editing.source === "opening" ? "opening" : "manual"} defaultDate={editing.date} initial={editing}
@@ -335,7 +336,7 @@ export default function LedgerPage() {
         <section className="space-y-6">
           {opening.length > 0 && (
             <div>
-              <h2 className="mb-2 font-display text-lg font-semibold text-fl-cream">Начальные остатки</h2>
+              <h2 className="mb-2 font-display text-lg font-semibold text-fl-cream">{t("Начальные остатки")}</h2>
               <div className="space-y-2.5">
                 {opening.map((e) => <EntryCard key={e.id} entry={e} locked={isLocked(e)} onDelete={readOnly ? undefined : remove} onEdit={readOnly ? undefined : startEdit} onHistory={isDemo ? undefined : setHistoryOf} onAttachments={isDemo ? undefined : setDocsOf} selected={picked.has(e.id)} onSelect={readOnly || isDemo ? undefined : toggle} />)}
               </div>
@@ -343,19 +344,18 @@ export default function LedgerPage() {
           )}
           <div>
             <h2 className="mb-2 font-display text-lg font-semibold text-fl-cream">
-              Операции за {periodLabel(period.from, period.to).toLowerCase()}
+              {t("Операции за {p}", { p: periodLabel(period.from, period.to).toLowerCase() })}
               <span className="ml-2 font-body text-sm font-normal text-fl-cream/45">{inPeriod.length}</span>
               {!readOnly && !isDemo && inPeriod.some((e) => !isLocked(e)) && (
                 <button onClick={() => { const open = inPeriod.filter((e) => !isLocked(e)).map((e) => e.id); setPicked(open.every((id) => picked.has(id)) ? new Set() : new Set(open)); }}
                   className="ml-3 font-body text-xs font-normal text-fl-info hover:underline">
-                  {inPeriod.filter((e) => !isLocked(e)).every((e) => picked.has(e.id)) ? "снять отметки" : "отметить все за период"}
+                  {inPeriod.filter((e) => !isLocked(e)).every((e) => picked.has(e.id)) ? t("снять отметки") : t("отметить все за период")}
                 </button>
               )}
             </h2>
             {inPeriod.length === 0 ? (
               <Notice>
-                За период проводок нет. Начните с начальных остатков, затем добавьте операции вручную или загрузите
-                выписку на странице «Выписки» — она проведётся сюда сама.
+                {t("За период проводок нет. Начните с начальных остатков, затем добавьте операции вручную или загрузите выписку на странице «Выписки» — она проведётся сюда сама.")}
               </Notice>
             ) : (
               <div className="space-y-2.5">
@@ -367,14 +367,14 @@ export default function LedgerPage() {
       )}
 
       {lockedThrough && !isDemo && (
-        <p className="mt-6 text-xs text-fl-cream/45">🔒 Изменения по {lockedThrough.split("-").reverse().join(".")} запрещены — снять запрет может владелец компании на странице «Закрытие месяца».</p>
+        <p className="mt-6 text-xs text-fl-cream/45">🔒 {t("Изменения по {d} запрещены — снять запрет может владелец компании на странице «Закрытие месяца».", { d: lockedThrough.split("-").reverse().join(".") })}</p>
       )}
       <Attachments entry={docsOf} readOnly={readOnly} locked={!!docsOf && isLocked(docsOf)} onClose={() => setDocsOf(null)} onChanged={load} />
       {picked.size > 0 && (
         <div className="fixed inset-x-0 bottom-20 z-40 mx-auto flex w-fit max-w-[95vw] flex-wrap items-center gap-3 rounded-xl border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm shadow-card sm:bottom-6">
-          <span className="text-fl-cream/80">Отмечено: {picked.size}</span>
-          <button onClick={removePicked} disabled={busy} className="rounded-md border border-fl-red/50 px-3 py-1.5 text-xs font-semibold text-fl-red hover:bg-fl-red/10 disabled:opacity-50">Удалить отмеченные</button>
-          <button onClick={() => setPicked(new Set())} className="text-xs text-fl-cream/60 hover:underline">снять отметки</button>
+          <span className="text-fl-cream/80">{t("Отмечено: {n}", { n: picked.size })}</span>
+          <button onClick={removePicked} disabled={busy} className="rounded-md border border-fl-red/50 px-3 py-1.5 text-xs font-semibold text-fl-red hover:bg-fl-red/10 disabled:opacity-50">{t("Удалить отмеченные")}</button>
+          <button onClick={() => setPicked(new Set())} className="text-xs text-fl-cream/60 hover:underline">{t("снять отметки")}</button>
         </div>
       )}
       {!isDemo && companyId && <Trash companyId={companyId} open={trashOpen} readOnly={readOnly} onClose={() => setTrashOpen(false)} onRestored={(m) => { toast.show(m); load(); }} />}
