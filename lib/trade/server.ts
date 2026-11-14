@@ -206,9 +206,36 @@ export async function importDocs(companyId: string, docs: TradeDoc[]): Promise<{
       const r = await createDoc(companyId, d);
       created++; cogs += r.cogs;
     } catch (e) {
-      if ((e as { status?: number })?.status === 409) { duplicates++; continue; }
+      if ((e as { status?: number })?.status === 409) {
+        // тот же документ (контрагент и сумма совпадают) — повтор; иначе номер занят другим документом
+        const same = await sameAsExisting(companyId, d);
+        if (same === true) { duplicates++; continue; }
+        problems.push(`${label}: номер уже занят другим документом${same ? ` (${same})` : ""} — не загружен, проверьте нумерацию`);
+        continue;
+      }
       problems.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return { created, duplicates, cogs, problems: problems.slice(0, 100) };
+}
+
+/** true — the document with this number is the same (counterparty and total match); otherwise a short description of the one in the way. */
+async function sameAsExisting(companyId: string, d: TradeDoc): Promise<true | string> {
+  const y = d.date.slice(0, 4);
+  const rows = await prisma.journalEntry.findMany({
+    where: { companyId, source: "trade", sourceRef: docRef(d), ...(d.type === "sale" ? { date: { gte: fromIsoDate(`${y}-01-01`), lte: fromIsoDate(`${y}-12-31`) } } : {}) },
+    include: { lines: true },
+  });
+  const gross = docTotals(d).gross;
+  const party = d.party.trim().toLowerCase();
+  let other = "";
+  for (const row of rows) {
+    const e = toLedgerEntry(row);
+    const was = docFromEntry(e);
+    if (!was) continue;
+    const settle = e.lines.filter((l) => ["1410", "3110", "1110", "1210"].includes(l.account)).reduce((a, l) => a + (d.type === "sale" ? l.debit : l.credit), 0);
+    if (was.party.trim().toLowerCase() === party && Math.abs(settle - gross) < 0.01) return true;
+    other = `${e.date.split("-").reverse().join(".")}, ${was.party || "без контрагента"}, ${settle.toFixed(2)} сом`;
+  }
+  return other;
 }
