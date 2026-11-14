@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/http-error";
 import { CLIENT_HEADER, decodeVersions, noteVersion, VERSIONS_HEADER } from "@/lib/request-context";
 
-export type RecordKind = "group" | "recurring" | "policy" | "counterparty" | "costing" | "product" | "import1c" | "taxreports" | "asset" | "assetTax" | "stock" | "budget" | "calendar" | "industry" | "esf" | "employee" | "payrun" | "hr";
+export type RecordKind = "group" | "recurring" | "policy" | "counterparty" | "costing" | "product" | "import1c" | "taxreports" | "asset" | "assetTax" | "stock" | "budget" | "calendar" | "industry" | "esf" | "employee" | "payrun" | "hr" | "nomenclature" | "tradeDoc";
 
 /** The table is new: tell the user how to create it instead of a bare 500. */
 function rethrow(e: unknown): never {

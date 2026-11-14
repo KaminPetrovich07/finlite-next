@@ -13,6 +13,7 @@ const SOURCE_TONE: Record<string, string> = {
   opening: "border-fl-cream/20 text-fl-cream/60",
   manual: "border-fl-gold/30 text-fl-gold",
   bank: "border-sky-400/30 text-sky-300",
+  trade: "border-fl-info/40 text-fl-info",
   tax: "border-fl-amber/40 text-fl-amber",
   demo: "border-fl-gold/30 text-fl-gold",
 };

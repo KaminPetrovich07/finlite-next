@@ -221,6 +221,8 @@ export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: 
     case "invoice": {
       const title = kind === "waybill" ? `Накладная на отпуск товаров (продукции) № ${no}` : kind === "act" ? `Акт выполненных работ (оказанных услуг) № ${no}` : `Счёт на оплату № ${no}`;
       const sold = e.lines.filter((l) => l.credit > 0 && /^61\d\d$/.test(l.account) && (l.item || l.qty));
+      // НДС, начисленный той же проводкой (Кт 3430), — отдельной строкой и в итоге
+      const vat = Math.round(e.lines.filter((l) => l.account === "3430").reduce((a, l) => a + l.credit - l.debit, 0) * 100) / 100;
       const goods = sold.length
         ? sold.map((l, i) => { const r = itemRow(l, o, sold.length === 1); return [String(i + 1), r.name, r.unit, r.qty, r.price, sum(l.credit)]; })
         : [["1", o.item || basis, unitWithCode(o.unit), o.qty ?? "", "", sum(amount)]];
@@ -229,9 +231,13 @@ export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: 
         { t: "title", text: title },
         { t: "p", text: `от ${dateLong(e.date)}`, align: "c" },
         { t: "fields", items: [[kind === "act" ? "Исполнитель" : "Поставщик", `${c.companyName}${c.inn ? `, ИНН ${c.inn}` : ""}`], [kind === "act" ? "Заказчик" : "Покупатель", party], ["Основание", o.attachment || "договор №____ от «___» ____ 20__ г."]] },
-        { t: "table", head: ["№", "Наименование", "Ед. изм. (код ОКЕИ)", "Количество", "Цена", "Сумма, сом"], widths: [0.6, 6, 1.2, 1.5, 1.8, 2.2], align: ["c", "l", "c", "r", "r", "r"], total: true,
-          rows: [...goods, ["", "Итого", "", "", "", sum(amount)]] },
-        { t: "p", text: `Всего на сумму: ${sumInWords(amount)}.${c.policy?.vatPayer ? " В том числе НДС — по счёту-фактуре (ЭСФ)." : " Без НДС."}` },
+        { t: "table", head: ["№", "Наименование", "Ед. изм. (код ОКЕИ)", "Количество", vat ? "Цена без НДС" : "Цена", vat ? "Сумма без НДС, сом" : "Сумма, сом"], widths: [0.6, 6, 1.2, 1.5, 1.8, 2.2], align: ["c", "l", "c", "r", "r", "r"], total: true,
+          rows: [...goods, ...(vat
+            ? [["", "Итого без НДС", "", "", "", sum(amount)], ["", "НДС 12 %", "", "", "", sum(vat)], ["", "Всего с НДС", "", "", "", sum(amount + vat)]]
+            : [["", "Итого", "", "", "", sum(amount)]])] },
+        { t: "p", text: vat
+          ? `Всего на сумму: ${sumInWords(amount + vat)}, в том числе НДС ${sum(vat)} сом.`
+          : `Всего на сумму: ${sumInWords(amount)}.${c.policy?.vatPayer ? " В том числе НДС — по счёту-фактуре (ЭСФ)." : " Без НДС."}` },
         ...(kind === "invoice"
           ? [{ t: "p", text: "Оплата по счёту в течение 5 банковских дней. Реквизиты для оплаты: ____________________________.", small: true } as DocBlock,
              { t: "sign", items: [{ role: ppl.directorTitle, name: ppl.director }, { role: "Главный бухгалтер", name: ppl.chief }] } as DocBlock]
