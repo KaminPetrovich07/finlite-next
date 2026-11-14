@@ -14,6 +14,8 @@ import { itemKey } from "@/lib/ledger/stock";
 import { KIND_LABEL, VAT_LABEL, type CatalogItem, type ItemKind, type VatRate } from "@/lib/trade/catalog";
 import { DOC_LABEL, docTotals, PAYMENT_LABEL, rowTotals, validateDoc, type DocRow, type DocType, type Payment, type TradeDoc } from "@/lib/trade/doc";
 import { useT } from "@/components/i18n";
+import { DOC_TEMPLATE, parseDocSheet, type ParsedDoc } from "@/lib/trade/import1c";
+import type { Cell } from "@/lib/import1c/parse";
 
 const card = "rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5";
 const field = "w-full rounded-md border border-fl-line bg-fl-charcoal-2 px-2.5 py-2 text-sm text-fl-cream focus:border-fl-gold focus:outline-none";
@@ -23,6 +25,20 @@ const m2 = (n: number) => formatNumber(n, 2);
 const dmy = (iso: string) => iso.split("-").reverse().join(".");
 const today = () => new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 10);
 const parseNum = (s: string) => Number(s.replace(/\s/g, "").replace(",", "."));
+
+/** Excel / CSV из 1С читается в браузере; на сервер уходят уже собранные документы. */
+async function readSheets(file: File): Promise<Array<{ name: string; rows: Cell[][] }>> {
+  const XLSX = await import("xlsx");
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let wb;
+  if (/\.(csv|txt)$/i.test(file.name)) {
+    let text = new TextDecoder("utf-8").decode(buf);
+    if (text.includes("\ufffd")) text = new TextDecoder("windows-1251").decode(buf); // 1С часто сохраняет CSV в 1251
+    wb = XLSX.read(text, { type: "string", cellDates: true, raw: false });
+  } else wb = XLSX.read(buf, { type: "array", cellDates: true });
+  return wb.SheetNames.map((name) => ({ name, rows: XLSX.utils.sheet_to_json<Cell[]>(wb.Sheets[name], { header: 1, raw: true, defval: "" }) }));
+}
+const IMPORT_CHUNK = 100;
 
 interface Summary { entryId: string; type: DocType; number: string; date: string; party: string; payment: Payment; gross: number; vat: number; rows: number; locked: boolean; editedInJournal: boolean }
 interface Stock { item: string; unit: string; qty: number; account: string }
@@ -50,6 +66,11 @@ export default function TradePage() {
   const [stock, setStock] = useState<Stock[]>([]);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<{ entryId: string; type: DocType } | null>(null);
+  const [imp, setImp] = useState<{ file: string; sheets: Array<{ name: string; rows: Cell[][] }>; docs: ParsedDoc[]; problems: string[] } | null>(null);
+  const [impType, setImpType] = useState<DocType>("sale");
+  const [impPayment, setImpPayment] = useState<Payment>("credit");
+  const [impProgress, setImpProgress] = useState<string | null>(null);
+  const [impReport, setImpReport] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!companyId) return;
@@ -63,7 +84,7 @@ export default function TradePage() {
     setCatalog(c.items ?? []); setVatPayer(!!c.vatPayer);
   }, [companyId, period]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (loaded) load(); }, [loaded, load]);
-  useEffect(() => { setDraft(null); setSaved(null); }, [companyId]);
+  useEffect(() => { setDraft(null); setSaved(null); setImp(null); setImpReport([]); }, [companyId]);
 
   // остатки на дату документа — подсказка при продаже
   useEffect(() => {
@@ -148,6 +169,58 @@ export default function TradePage() {
     } catch (e) { toast.show(t(e instanceof Error ? e.message : "Не удалось сформировать"), "error"); }
   }
 
+  // ── загрузка документов из 1С ──────────────────────────────────────────
+  function parseSheets(sheets: Array<{ name: string; rows: Cell[][] }>, type: DocType) {
+    let best: { docs: ParsedDoc[]; problems: string[] } | null = null;
+    for (const sh of sheets) {
+      const p = parseDocSheet(sh.rows, type, catalog);
+      if (!best || p.docs.length > best.docs.length) best = p;
+    }
+    return best ?? { docs: [], problems: [] };
+  }
+  async function onFile(f: File | undefined) {
+    if (!f) return;
+    try {
+      const sheets = await readSheets(f);
+      const p = parseSheets(sheets, impType);
+      if (!p.docs.length) { toast.show(p.problems[0] ? t(p.problems[0]) : t("Не нашёл строк с номенклатурой и количеством"), "error"); return; }
+      setDraft(null); setSaved(null); setImpReport([]);
+      setImp({ file: f.name, sheets, ...p });
+    } catch { toast.show(t("Не удалось прочитать файл — сохраните его в 1С как Excel (.xlsx)"), "error"); }
+  }
+  async function runImport() {
+    if (!imp) return;
+    const docs = imp.docs.map(({ fileTotal, fileRows, ...d }) => ({ ...d, payment: impPayment }));
+    let created = 0, duplicates = 0, cogs = 0;
+    const problems: string[] = [];
+    try {
+      for (let i = 0; i < docs.length; i += IMPORT_CHUNK) {
+        setImpProgress(`${Math.min(i + IMPORT_CHUNK, docs.length)} / ${docs.length}`);
+        const r = await fetch("/api/trade/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, docs: docs.slice(i, i + IMPORT_CHUNK) }) });
+        const b = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(b.error ?? "Документы не загружены");
+        created += b.created; duplicates += b.duplicates; cogs += b.cogs; problems.push(...(b.problems ?? []));
+      }
+      toast.show(`${t("Загружено документов: {n}", { n: created })}${duplicates ? t(", уже были: {n}", { n: duplicates }) : ""}${cogs ? t(", себестоимость списана: {n}", { n: cogs }) : ""}`);
+      setImpReport(problems.slice(0, 30)); setImp(null);
+      const dates = docs.map((d) => d.date).sort();
+      const last = dates[dates.length - 1];
+      if (last && (last < period.from || last > period.to)) setPeriod(monthPeriod(Number(last.slice(0, 4)), Number(last.slice(5, 7))));
+      else load();
+    } catch (e) {
+      toast.show(t(e instanceof Error ? e.message : "Документы не загружены"), "error");
+      if (created) { setImpReport(problems.slice(0, 30)); load(); }
+    } finally { setImpProgress(null); }
+  }
+  async function template() {
+    const XLSX = await import("xlsx");
+    const ws = XLSX.utils.aoa_to_sheet(DOC_TEMPLATE);
+    ws["!cols"] = [13, 11, 8, 22, 16, 32, 9, 11, 10, 11, 11].map((wch) => ({ wch }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Документы");
+    XLSX.writeFile(wb, "Шаблон документов FinLite.xlsx");
+  }
+
   const doc = draft ? toDoc(draft) : null;
   const totals = doc ? docTotals(doc) : null;
   const shown = (docs ?? []).filter((d) => !filter || d.type === filter);
@@ -182,6 +255,67 @@ export default function TradePage() {
         <div className="mb-4 flex flex-wrap gap-2">
           <button onClick={() => start("sale")} className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">{t("Новая реализация")}</button>
           <button onClick={() => start("purchase")} className="rounded-md border border-fl-gold/40 px-4 py-2.5 text-sm text-fl-gold-bright hover:bg-fl-gold/10">{t("Новое поступление")}</button>
+          <label className={`${btn} cursor-pointer`}>
+            {t("Загрузить из 1С / Excel")}
+            <input type="file" accept=".xlsx,.xls,.csv,.txt" className="hidden" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+          <button onClick={template} className={btn}>{t("Шаблон Excel")}</button>
+          <details className="w-full text-xs text-fl-cream/55">
+            <summary className="cursor-pointer select-none hover:text-fl-cream">{t("Где взять документы в 1С")}</summary>
+            <p className="mt-1.5 max-w-4xl leading-relaxed">{t("Многие документы сразу: «Отчёты» → «Универсальный отчёт» → тип «Документ», объект «Реализация (акты, накладные)» или «Поступление (акты, накладные)», таблица «Товары» → «Сформировать» → «Сохранить» → «Лист Excel 2007 (.xlsx)». Один документ: откройте его, вкладка «Товары» → «Ещё» → «Вывести список» → «Сохранить». Подойдёт любая таблица с колонками «Документ» (или «Дата» и «Номер»), «Контрагент», «Номенклатура», «Количество», «Цена», «Сумма», «Сумма НДС» — см. «Шаблон Excel».")}</p>
+          </details>
+        </div>
+      )}
+
+      {imp && (
+        <section className={`${card} mb-5`}>
+          <h2 className="font-display text-lg font-semibold text-fl-cream">{t("Загрузка документов из файла «{f}»", { f: imp.file })}</h2>
+          <p className="mt-1 text-sm text-fl-cream/65">
+            {t("Документов: {n} — реализаций {s}, поступлений {p}; строк: {r}; на сумму {sum} сом.", {
+              n: imp.docs.length, s: imp.docs.filter((d) => d.type === "sale").length, p: imp.docs.filter((d) => d.type === "purchase").length,
+              r: imp.docs.reduce((a, d) => a + d.rows.length, 0), sum: m2(imp.docs.reduce((a, d) => a + d.fileTotal, 0)),
+            })}
+          </p>
+          {imp.problems.length > 0 && <p className="mt-1 text-xs text-fl-amber">{imp.problems.slice(0, 5).join(" · ")}</p>}
+          <div className="mt-3 max-h-72 overflow-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead><tr className="text-left text-xs text-fl-cream/50"><th className="py-1.5">{t("Дата")}</th><th>{t("Документ")}</th><th>{t("Контрагент")}</th><th className="text-right">{t("Строк")}</th><th className="text-right">{t("Сумма")}</th></tr></thead>
+              <tbody>{imp.docs.slice(0, 100).map((d, i) => (
+                <tr key={i} className="border-t border-fl-line">
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-fl-cream/70">{dmy(d.date)}</td>
+                  <td className="py-1.5 pr-3">{t(DOC_LABEL[d.type])} № {d.number}</td>
+                  <td className="py-1.5 pr-3 text-fl-cream/85">{d.party || "—"}</td>
+                  <td className="num py-1.5 pr-3 text-right">{d.rows.length}</td>
+                  <td className="num py-1.5 text-right">{m2(d.fileTotal)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-xs text-fl-cream/55">{t("Если вид документа не указан в файле")}
+              <select value={impType} onChange={(e) => { const ty = e.target.value as DocType; setImpType(ty); setImp((c) => (c ? { ...c, ...parseSheets(c.sheets, ty) } : c)); }} className={`${field} mt-1`}>
+                <option value="sale">{t("Реализация")}</option>
+                <option value="purchase">{t("Поступление")}</option>
+              </select>
+            </label>
+            <label className="text-xs text-fl-cream/55">{t("Оплата")}
+              <select value={impPayment} onChange={(e) => setImpPayment(e.target.value as Payment)} className={`${field} mt-1`}>
+                {Object.entries(PAYMENT_LABEL.sale).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
+              </select>
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-fl-cream/50">{t("Каждый документ проводится в журнале; новые товары добавятся в номенклатуру. Документы с уже занятым номером пропускаются.")}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button onClick={runImport} disabled={!!impProgress} className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50">{impProgress ? `${t("Загружаю…")} ${impProgress}` : t("Загрузить {n}", { n: imp.docs.length })}</button>
+            <button onClick={() => setImp(null)} disabled={!!impProgress} className={btn}>{t("Отмена")}</button>
+          </div>
+        </section>
+      )}
+
+      {impReport.length > 0 && !imp && (
+        <div className="mb-4 rounded-lg border-l-4 border-fl-amber bg-fl-amber/10 px-4 py-2.5 text-sm text-fl-cream/85">
+          {impReport.map((x, i) => <p key={i}>{x}</p>)}
+          <button onClick={() => setImpReport([])} className="mt-1 text-xs text-fl-cream/50 hover:underline">{t("скрыть")}</button>
         </div>
       )}
 

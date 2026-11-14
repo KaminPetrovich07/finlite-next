@@ -191,3 +191,24 @@ export async function updateDoc(companyId: string, entryId: string, input: Trade
   const cogs = doc.type === "sale" ? await autoCogsFor(companyId, entryId, doc.date) : 0;
   return { entryId, cogs };
 }
+
+/**
+ * Documents from 1С (see lib/trade/import1c.ts), oldest first, purchases before sales of the same day.
+ * A document whose number is already taken (same sale number in the year, same supplier document) is skipped.
+ */
+export async function importDocs(companyId: string, docs: TradeDoc[]): Promise<{ created: number; duplicates: number; cogs: number; problems: string[] }> {
+  let created = 0, duplicates = 0, cogs = 0;
+  const problems: string[] = [];
+  const ordered = [...docs].sort((a, b) => (a.date === b.date ? (a.type === b.type ? 0 : a.type === "purchase" ? -1 : 1) : a.date < b.date ? -1 : 1));
+  for (const d of ordered) {
+    const label = `${d.type === "sale" ? "Реализация" : "Поступление"} № ${d.number} от ${d.date.split("-").reverse().join(".")}`;
+    try {
+      const r = await createDoc(companyId, d);
+      created++; cogs += r.cogs;
+    } catch (e) {
+      if ((e as { status?: number })?.status === 409) { duplicates++; continue; }
+      problems.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { created, duplicates, cogs, problems: problems.slice(0, 100) };
+}
