@@ -13,7 +13,9 @@ export const GET = route(async (req: NextRequest) => {
   const companyId = sp.get("companyId") ?? "";
   const level = await requireCompany(companyId, "view");
   const next = sp.get("next");
-  if (next && ISO.test(next)) return NextResponse.json({ number: companyId === DEMO_COMPANY.id ? "1" : await suggestNumber(companyId, next) });
+  const type = sp.get("type");
+  const t = type === "saleReturn" || type === "purchaseReturn" || type === "purchase" ? type : "sale";
+  if (next && ISO.test(next)) return NextResponse.json({ number: companyId === DEMO_COMPANY.id ? "1" : await suggestNumber(companyId, next, t) });
   const from = sp.get("from") ?? "", to = sp.get("to") ?? "";
   if (!ISO.test(from) || !ISO.test(to) || from > to) throw new HttpError(400, "Период задан неверно");
   if (companyId === DEMO_COMPANY.id) return NextResponse.json({ docs: [], readOnly: true });

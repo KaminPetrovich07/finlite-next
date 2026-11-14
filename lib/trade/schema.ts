@@ -13,7 +13,7 @@ export const Row = z.object({
   vat: z.enum(["12", "0", "none"]),
 });
 export const Doc = z.object({
-  type: z.enum(["sale", "purchase"]),
+  type: z.enum(["sale", "purchase", "saleReturn", "purchaseReturn"]),
   number: z.string().trim().min(1, "Укажите номер").max(40),
   date: z.string().regex(ISO, "Дата в формате ГГГГ-ММ-ДД"),
   party: z.string().trim().max(200),
@@ -22,5 +22,6 @@ export const Doc = z.object({
   vatIncluded: z.boolean(),
   basis: z.string().max(300).optional(),
   comment: z.string().max(1000).optional(),
+  baseEntryId: z.string().max(40).optional(),
   rows: z.array(Row).min(1, "Добавьте хотя бы одну строку").max(500),
 });

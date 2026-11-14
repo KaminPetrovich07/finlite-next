@@ -7,13 +7,15 @@ import { DOC_INFO, numberDocs, type DocKind } from "@/lib/primary/detect";
 import { docFormat, sendDoc } from "@/lib/server/send-file";
 import type { DocBlock } from "@/lib/docs/model";
 import { getDoc } from "@/lib/trade/server";
+import { isReturn } from "@/lib/trade/doc";
+import { returnBlocks } from "@/lib/trade/print-return";
 import { requestLang } from "@/lib/i18n/server";
 import { docToKyrgyz } from "@/lib/i18n/docs-ky";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const Body = z.object({ companyId: z.string().min(1), entryId: z.string().min(1), kinds: z.array(z.enum(["waybill", "invoice", "act", "m4"])).min(1).max(4) });
+const Body = z.object({ companyId: z.string().min(1), entryId: z.string().min(1), kinds: z.array(z.enum(["waybill", "invoice", "act", "m4", "return"])).min(1).max(4) });
 
 /**
  * POST /api/trade/print?format=pdf|docx { companyId, entryId, kinds } — печатные формы документа:
@@ -33,16 +35,25 @@ export const POST = route(async (req: NextRequest) => {
   const doc = await getDoc(companyId, entryId).then((d) => d.doc).catch(() => null);
   const party = doc?.party ? `${doc.party}${doc.partyInn ? `, ИНН ${doc.partyInn}` : ""}` : undefined;
   const overrides = { ...(doc?.basis ? { attachment: doc.basis } : {}), ...(party ? { party } : {}) };
+  // возврат — своя форма: накладная на возврат от покупателя / поставщику
+  if (doc && isReturn(doc.type)) {
+    const base = doc.baseEntryId ? await getDoc(companyId, doc.baseEntryId).then((d) => ({ number: d.doc.number, date: d.doc.date })).catch(() => null) : null;
+    const blocks = returnBlocks(doc, c, base);
+    await logActivity("trade_print", companyId, { kinds: ["return"], format });
+    const title = `Накладная на возврат № ${doc.number} — ${e.description}`;
+    const out = { title, fileName: title.slice(0, 120), org: c.companyName, blocks };
+    return sendDoc((await requestLang()) === "ky" ? docToKyrgyz(out) : out, format);
+  }
   const seq = numberDocs(c.entries, c.services).get(entryId) ?? [];
   const blocks: DocBlock[] = [];
-  for (const k of kinds as DocKind[]) {
+  for (const k of kinds.filter((x) => x !== "return") as DocKind[]) {
     // номер реализации печатается как есть; у поступления — внутренний номер приходного ордера
     const no = e.sourceRef?.startsWith("sale:") && Number.isInteger(own) && own > 0 ? own : seq.find((d) => d.kind === k)?.number ?? seq[0]?.number ?? 1;
     if (blocks.length) blocks.push({ t: "pagebreak" });
     blocks.push(...buildEntryDoc(k, e, no, c, overrides));
   }
   await logActivity("trade_print", companyId, { kinds, format });
-  const title = `${kinds.map((k) => DOC_INFO[k].title).join(", ")} — ${e.description}`;
+  const title = `${(kinds.filter((x) => x !== "return") as DocKind[]).map((k) => DOC_INFO[k].title).join(", ")} — ${e.description}`;
   const out = { title, fileName: title.slice(0, 120), org: c.companyName, blocks };
   // на кыргызском, если интерфейс переключён на «КЫ»
   return sendDoc((await requestLang()) === "ky" ? docToKyrgyz(out) : out, format);
