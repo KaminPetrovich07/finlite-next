@@ -7,6 +7,7 @@ import { normalizeEmail } from "@/lib/auth/tokens";
 import { clientIp, startSession } from "@/lib/auth/session";
 import { LOCK_MINUTES, MAX_FAILED, tooMany } from "@/lib/auth/limits";
 import { matchBackup, verifyTotp } from "@/lib/auth/totp";
+import { claimPending } from "@/lib/auth/transition";
 
 const Schema = z.object({ email: z.string().trim().max(200), password: z.string().max(200), code: z.string().trim().max(20).optional() });
 const WRONG = "Неверный e-mail или пароль";
@@ -60,5 +61,6 @@ export const POST = route(async (req: NextRequest) => {
   if (totp?.backup) await prisma.activityLog.create({ data: { userId: user.id, action: "login_backup_code", details: { left: totp.backup.length } } });
   await startSession(user.id);
   await prisma.activityLog.create({ data: { userId: user.id, action: "login" } });
-  return NextResponse.json({ id: user.id, email: user.email, name: user.name, role: user.role });
+  const claimed = await claimPending(user);
+  return NextResponse.json({ id: user.id, email: user.email, name: user.name, role: user.role, claimed });
 });

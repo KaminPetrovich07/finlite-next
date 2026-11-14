@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { HttpError, logActivity, requireAdmin, route } from "@/lib/auth/server";
 import { normalizeEmail } from "@/lib/auth/tokens";
+import { clearPending } from "@/lib/auth/transition";
 
 const Schema = z.object({ ownerEmail: z.string().trim().email("Укажите e-mail владельца") });
 
@@ -16,6 +17,7 @@ export const PATCH = route(async (req: NextRequest, { params }: { params: Promis
   if (!user) throw new HttpError(404, "Пользователь с таким e-mail не найден");
   await prisma.company.update({ where: { id }, data: { ownerId: user.id } });
   await prisma.companyAccess.deleteMany({ where: { companyId: id, userId: user.id } });
+  await clearPending([id]);
   await logActivity("admin_company_owner", id, { ownerEmail: parsed.data.ownerEmail });
   return NextResponse.json({ ok: true });
 });

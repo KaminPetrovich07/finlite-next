@@ -98,8 +98,8 @@ export const PLANS: Record<PlanKey, Plan> = {
   pilot: {
     key: "pilot", name: "Пилот", priceKgs: 0, priceYearKgs: 0, paid: false, public: false,
     tagline: "Участник пилота",
-    companies: 5, entriesPerMonth: null, features: MAX,
-    bullets: ["Все возможности тарифа «Макс» на время пилота", "Обратная связь напрямую с разработчиком"],
+    companies: 30, entriesPerMonth: null, features: MAX,
+    bullets: ["Все возможности тарифа «Макс» на время пилота", "До 30 компаний — хватит бухгалтеру на всех клиентов", "Обратная связь напрямую с разработчиком"],
   },
 };
 
@@ -165,6 +165,8 @@ export function planOf(key: string | null | undefined): Plan {
 export function effectivePlan(key: string | null | undefined, paidUntil: Date | string | null | undefined, now = new Date()): Plan {
   const p = planOf(key);
   if (p.paid && (!paidUntil || new Date(paidUntil).getTime() < now.getTime())) return PLANS.free;
+  // пилот с датой окончания заканчивается сам; пилот без даты — бессрочный, пока администратор не сменит тариф
+  if (p.key === "pilot" && paidUntil && new Date(paidUntil).getTime() < now.getTime()) return PLANS.free;
   return p;
 }
 

@@ -86,6 +86,35 @@ test("сборка области: все разделы снимка за ~13 �
   assert.deepEqual(s.centralAsia.byCountry.slice(0, 2).map((x) => [x.code, x.count]), [["KZ", 120], ["KG", 25]]);
 });
 
+test("сбой отдельных разделов: остальное собирается, раздел берётся из прошлой сводки, ошибка видна", async () => {
+  const now = new Date("2026-11-14T00:00:00Z");
+  const prev = await fetchScope(SCOPES[0], fakeOpenAlex([]), now);
+  const base = fakeOpenAlex([]);
+  const broken = async (u: string) => {
+    const x = new URL(u);
+    if (x.pathname === "/sources") throw new Error("OpenAlex ответил 500 на /sources");
+    if (x.searchParams.get("group_by") === "keywords.id") throw new Error("OpenAlex не ответил за 15 с на /works");
+    return base(u);
+  };
+  const s = await fetchScope(SCOPES[0], broken, now, undefined, prev);
+  assert.equal(s.topCited.length, 2, "остальные разделы собраны");
+  assert.equal(s.topics[0].growth, 200);
+  assert.deepEqual(s.keywords, prev.keywords, "ключевые слова — из прошлой сводки");
+  assert.deepEqual(s.journals.map((j) => [j.name, j.works, j.hIndex]), [["The Accounting Review", 800, null], ["Sustainability", 500, null]], "журналы без h-индекса");
+  assert.deepEqual(s.errors, ["тренды ключевых слов: OpenAlex не ответил за 15 с на /works", "h-индекс журналов: OpenAlex ответил 500 на /sources"]);
+  const fresh = await fetchScope(SCOPES[0], broken, now);
+  assert.deepEqual(fresh.keywords, [], "без прошлой сводки — пусто");
+  await assert.rejects(fetchScope(SCOPES[0], async () => { throw new Error("нет связи"); }, now), /нет связи/);
+});
+
+test("пул запросов: не больше n одновременно, порядок результатов сохраняется", async () => {
+  const { pool } = await import("./openalex");
+  let live = 0, peak = 0;
+  const out = await pool(Array.from({ length: 9 }, (_, i) => async () => { live++; peak = Math.max(peak, live); await new Promise((r) => setTimeout(r, 5 + (i % 3))); live--; return i; }), 4);
+  assert.deepEqual(out, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(peak, 4);
+});
+
 test("перевод: только непереведённые строки латиницей; переводы ложатся на элементы снимка", async () => {
   const scope = await fetchScope(SCOPES[0], fakeOpenAlex([]), new Date("2026-11-14T00:00:00Z"));
   const snap: ScienceSnapshot = { source: "OpenAlex", updatedAt: "", scopes: [scope], errors: [], translations: { ESG: "ESG" } };
@@ -105,11 +134,28 @@ test("database: снимок сохраняется и читается; при 
     const first = await refreshSnapshot(fakeOpenAlex([]));
     assert.equal(first.scopes.length, SCOPES.length);
     let n = 0;
-    const flaky = async (u: string) => { if (n++ > 14) throw new Error("сбой сети"); return fakeOpenAlex([])(u); };
+    const flaky = async (u: string) => { if (n++ >= 14) throw new Error("сбой сети"); return fakeOpenAlex([])(u); };
     const second = await refreshSnapshot(flaky);
     assert.equal(second.scopes.length, SCOPES.length, "вторая область взята из прошлого снимка");
     assert.equal(second.errors.length, 1);
+    assert.match(second.errors[0], /^Финансы: .*сбой сети/);
+    assert.equal(second.scopes[1].updatedAt, first.scopes[1].updatedAt, "прежние данные второй области");
     assert.equal((await loadSnapshot())?.updatedAt, second.updatedAt);
+
+    // одна область за запрос (так делает кнопка на странице); другая остаётся как была
+    const calls: string[] = [];
+    const third = await refreshSnapshot(fakeOpenAlex(calls), { scope: SCOPES[1].key, translate: false });
+    assert.ok(calls.every((c) => decodeURIComponent(c).includes(`subfield.id:${SCOPES[1].subfield}`) || c.includes("/sources")));
+    assert.notEqual(third.scopes[1].updatedAt, first.scopes[1].updatedAt);
+    assert.equal(third.scopes[0].updatedAt, second.scopes[0].updatedAt);
+    await assert.rejects(refreshSnapshot(fakeOpenAlex([]), { scope: "nope" }), /Неизвестная область/);
+
+    // OpenAlex недоступен целиком: снимок не портится, ошибка понятна
+    await assert.rejects(refreshSnapshot(async () => { throw new Error("OpenAlex ответил 429 на /works"); }), /429/);
+    assert.equal((await loadSnapshot())?.updatedAt, third.updatedAt);
+
+    // бюджет времени исчерпан: области не начинаются, остаются прежние
+    await assert.rejects(refreshSnapshot(fakeOpenAlex([]), { budgetMs: 1000 }), /не успели/);
   } finally {
     await prisma.appSetting.deleteMany({ where: { key: "science:snapshot" } });
     await prisma.$disconnect();

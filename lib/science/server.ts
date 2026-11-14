@@ -3,7 +3,7 @@
 // is set) and the translations are reused on the next update.
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
-import { applyTranslations, fetchScope, SCOPES, untranslated, type Fetcher, type ScienceSnapshot } from "./openalex";
+import { applyTranslations, fetchScope, SCOPES, untranslated, type Fetcher, type ScienceSnapshot, type ScopeSnapshot } from "./openalex";
 
 const KEY = "science:snapshot";
 export const REFRESH_DAYS = 7;
@@ -19,15 +19,24 @@ async function saveSnapshot(s: ScienceSnapshot) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** fetch with a polite pause, a timeout and one retry on 429/5xx. */
+/** fetch with a polite pause, a timeout and one retry on 429/5xx or a network error. */
 export const openAlexFetch: Fetcher = async (u) => {
+  const path = new URL(u).pathname;
+  let last = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     await sleep(attempt ? 2000 : 150);
-    const res = await fetch(u, { headers: { "User-Agent": "FinLite KG (finlite.kg; science digest)", Accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+    let res: Response;
+    try {
+      res = await fetch(u, { headers: { "User-Agent": "FinLite KG (finlite.kg; science digest)", Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+    } catch (e) {
+      last = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError") ? `OpenAlex не ответил за 15 с на ${path}` : `нет связи с OpenAlex (${e instanceof Error ? e.message : String(e)})`;
+      continue;
+    }
     if (res.ok) return res.json();
-    if (res.status !== 429 && res.status < 500) throw new Error(`OpenAlex ответил ${res.status} на ${new URL(u).pathname}`);
+    last = `OpenAlex ответил ${res.status} на ${path}${res.status === 429 ? " — превышен дневной лимит запросов" : ""}`;
+    if (res.status !== 429 && res.status < 500) break;
   }
-  throw new Error("OpenAlex не ответил — попробуем при следующем обновлении");
+  throw new Error(last || "OpenAlex не ответил");
 };
 
 /** Strings per run: one batch keeps the daily job well inside its time limit; the rest follow on the next days. */
@@ -57,23 +66,47 @@ async function translate(all: string[]): Promise<Record<string, string>> {
   return out;
 }
 
-/** Builds a new snapshot. A scope that fails keeps its previous data; errors are reported. */
-export async function refreshSnapshot(get: Fetcher = openAlexFetch): Promise<ScienceSnapshot> {
+export type RefreshOptions = {
+  /** only this scope (the page refreshes scopes one request at a time to stay inside Vercel's time limit) */
+  scope?: string;
+  /** stop starting new scopes after this many ms; the rest keep their previous data */
+  budgetMs?: number;
+  /** translate new titles in this run (skipped when the budget is nearly spent) */
+  translate?: boolean;
+};
+
+/**
+ * Builds a new snapshot. Every scope is collected section by section: a failed section keeps the previous
+ * data and is listed in the scope's `errors`; a scope that fails entirely keeps its previous data too.
+ * Whatever was collected is saved, even if other scopes failed.
+ */
+export async function refreshSnapshot(get: Fetcher = openAlexFetch, opts: RefreshOptions = {}): Promise<ScienceSnapshot> {
+  const started = Date.now();
+  const left = () => (opts.budgetMs ?? Infinity) - (Date.now() - started);
   const prev = await loadSnapshot();
   const apiKey = process.env.OPENALEX_API_KEY || undefined;
-  const scopes = [];
+  const wanted = opts.scope ? SCOPES.filter((s) => s.key === opts.scope) : SCOPES;
+  if (!wanted.length) throw new Error(`Неизвестная область: ${opts.scope}`);
   const errors: string[] = [];
-  for (const sc of SCOPES) {
-    try { scopes.push(await fetchScope(sc, get, new Date(), apiKey)); }
-    catch (e) {
+  const fresh = new Map<string, ScopeSnapshot>();
+  for (const sc of wanted) {
+    const old = prev?.scopes.find((s) => s.key === sc.key) ?? null;
+    if (left() < 15_000) { errors.push(`${sc.title}: не успели — обновится в следующий раз`); continue; }
+    try {
+      const got = await fetchScope(sc, get, new Date(), apiKey, old);
+      fresh.set(sc.key, got);
+      for (const e of got.errors ?? []) errors.push(`${sc.title} — ${e}`);
+    } catch (e) {
       errors.push(`${sc.title}: ${e instanceof Error ? e.message : String(e)}`);
-      const old = prev?.scopes.find((s) => s.key === sc.key);
-      if (old) scopes.push(old);
     }
   }
-  if (!scopes.length) throw new Error(errors.join("; ") || "Нет данных");
+  // keep scopes in their usual order: fresh where collected, previous otherwise
+  const scopes = SCOPES.map((sc) => fresh.get(sc.key) ?? prev?.scopes.find((s) => s.key === sc.key)).filter((x): x is ScopeSnapshot => !!x);
+  if (!fresh.size) throw new Error(errors.join("; ") || "Нет данных");
   let snap: ScienceSnapshot = { source: "OpenAlex", updatedAt: new Date().toISOString(), scopes, errors, translations: prev?.translations ?? {} };
-  snap.translations = { ...snap.translations, ...(await translate(untranslated(snap))) };
+  if (opts.translate !== false && left() > 20_000) {
+    try { snap.translations = { ...snap.translations, ...(await translate(untranslated(snap))) }; } catch { /* переведём позже */ }
+  }
   snap = applyTranslations(snap);
   await saveSnapshot(snap);
   return snap;
@@ -90,6 +123,7 @@ export async function refreshIfStale(): Promise<{ refreshed: boolean; updatedAt:
     await saveSnapshot(next);
     return { refreshed: false, updatedAt: s.updatedAt, translated: Object.keys(add).length };
   }
-  const n = await refreshSnapshot();
+  // cron has up to 60 s: leave room for the other daily jobs
+  const n = await refreshSnapshot(openAlexFetch, { budgetMs: 40_000 });
   return { refreshed: true, updatedAt: n.updatedAt, ...(n.errors.length ? { errors: n.errors } : {}) };
 }

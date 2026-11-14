@@ -7,6 +7,7 @@ import { normalizeEmail } from "@/lib/auth/tokens";
 import { clientIp, startSession } from "@/lib/auth/session";
 import { tooMany } from "@/lib/auth/limits";
 import { CONSENT_VERSION } from "@/lib/auth/consent";
+import { claimPending, pilotSettings, planForNewUser } from "@/lib/auth/transition";
 
 const Schema = z.object({
   email: z.string().trim().email("Укажите корректный e-mail").max(200),
@@ -36,16 +37,18 @@ export const POST = route(async (req: NextRequest) => {
   // in production a stranger registering first must not get the admin role.
   const first = process.env.NODE_ENV !== "production" && adminEmails().length === 0 && (await prisma.user.count({ where: { role: "admin" } })) === 0;
   const admin = adminEmails().includes(email) || first;
+  const plan = admin ? { plan: "free", paidUntil: null, planNote: null } : planForNewUser(await pilotSettings());
   const user = await prisma.user.create({
     data: {
       email, name: d.name, organization: d.organization || null, phone: d.phone || null,
       passwordHash: hashPassword(d.password), role: admin ? "admin" : "user",
-      consentAt: new Date(), consentVersion: CONSENT_VERSION, lastLoginAt: new Date(),
+      consentAt: new Date(), consentVersion: CONSENT_VERSION, lastLoginAt: new Date(), ...plan,
     },
     select: { id: true, email: true, name: true, role: true },
   });
   await startSession(user.id);
   await prisma.activityLog.create({ data: { userId: user.id, action: "register" } });
   await logActivity("consent", null, { version: CONSENT_VERSION });
-  return NextResponse.json(user, { status: 201 });
+  const claimed = await claimPending(user);
+  return NextResponse.json({ ...user, plan: plan.plan, claimed }, { status: 201 });
 });

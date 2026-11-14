@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CHART } from "@/lib/chart-theme";
-import { workLinks, type ScienceSnapshot, type ScopeSnapshot, type Trend, type Work } from "@/lib/science/openalex";
+import { SCOPES, workLinks, type ScienceSnapshot, type ScopeSnapshot, type Trend, type Work } from "@/lib/science/openalex";
 import { externalSearches, type SearchResult } from "@/lib/science/search";
 
 const card = "rounded-2xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5";
@@ -26,15 +26,27 @@ export default function SciencePage() {
     fetch("/api/auth/me").then((r) => r.json()).then((b) => setAdmin(b?.user?.role === "admin")).catch(() => {});
   }, []);
 
+  // области обновляются по одной: каждая — отдельный запрос, чтобы уложиться в лимит времени сервера
   async function refresh() {
     setBusy(true); setMsg(null);
-    try {
-      const r = await fetch("/api/science/refresh", { method: "POST" });
-      const b = await r.json();
-      if (!r.ok) throw new Error(b.error ?? "Не удалось обновить");
-      setMsg(b.errors?.length ? `Обновлено частично: ${b.errors.join("; ")}` : "Сводка обновлена");
+    const problems: string[] = [];
+    let done = 0;
+    for (const sc of SCOPES) {
+      setMsg(`${sc.title}: загружаю из OpenAlex… (${done + 1} из ${SCOPES.length})`);
+      try {
+        const r = await fetch(`/api/science/refresh?scope=${sc.key}`, { method: "POST" });
+        const text = await r.text();
+        let b: any = null;
+        try { b = JSON.parse(text); } catch { /* не JSON — например, сервер прервал запрос */ }
+        if (!r.ok) throw new Error(b?.error ?? (r.status === 504 ? "сервер не уложился в лимит времени" : `ошибка сервера ${r.status}`));
+        if (b?.errors?.length) problems.push(...b.errors);
+        done++;
+      } catch (e: any) { problems.push(`${sc.title}: ${e?.message ?? "не удалось обновить"}`); }
       await load();
-    } catch (e: any) { setMsg(e.message); } finally { setBusy(false); }
+    }
+    setMsg(!done ? `Не удалось обновить: ${problems.join("; ")}`
+      : problems.length ? `Обновлено частично (${done} из ${SCOPES.length}): ${problems.join("; ")}` : "Сводка обновлена");
+    setBusy(false);
   }
 
   const scope = snap?.scopes.find((s) => s.key === scopeKey) ?? snap?.scopes[0];
@@ -47,10 +59,10 @@ export default function SciencePage() {
           Данные — <a href="https://openalex.org" target="_blank" rel="noreferrer" className="text-fl-gold underline-offset-2 hover:underline">OpenAlex</a>,
           открытый индекс научных публикаций мира (более 300 млн работ); сводка обновляется раз в неделю.
         </p>
-        {snap && <p className="mt-1 text-xs text-fl-cream/45">Обновлено {new Date(snap.updatedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}{snap.errors.length ? ` · часть данных из прошлой сводки: ${snap.errors.join("; ")}` : ""}</p>}
+        {snap && <p className="mt-1 text-xs text-fl-cream/45">Обновлено {new Date(snap.updatedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</p>}
         {admin && (
           <div className="mt-2 flex items-center gap-3">
-            <button onClick={refresh} disabled={busy} className="rounded-lg border border-fl-line px-3 py-1.5 text-sm text-fl-cream/80 hover:border-fl-gold disabled:opacity-50">{busy ? "Загружаю из OpenAlex… (до минуты)" : "Обновить сейчас"}</button>
+            <button onClick={refresh} disabled={busy} className="rounded-lg border border-fl-line px-3 py-1.5 text-sm text-fl-cream/80 hover:border-fl-gold disabled:opacity-50">{busy ? "Обновляю…" : "Обновить сейчас"}</button>
             {msg && <span className="text-xs text-fl-cream/60">{msg}</span>}
           </div>
         )}
@@ -66,7 +78,16 @@ export default function SciencePage() {
                 <button key={s.key} onClick={() => setScopeKey(s.key)} className={`shrink-0 rounded-lg px-3 py-1.5 ${scope.key === s.key ? "bg-fl-charcoal-2 font-semibold text-fl-cream shadow-card" : "text-fl-cream/60 hover:text-fl-cream"}`}>{s.title}</button>
               ))}
             </div>
-            <p className="-mt-2 text-xs text-fl-cream/50">{scope.note}</p>
+            <p className="-mt-2 text-xs text-fl-cream/50">{scope.note}{scope.updatedAt ? ` · область обновлена ${new Date(scope.updatedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}` : ""}</p>
+            {(() => {
+              const errs = [...(scope.errors ?? []), ...snap.errors.filter((e) => e.startsWith(`${scope.title}:`)).map((e) => e.slice(scope.title.length + 1).trim())];
+              return errs.length ? (
+                <div className="rounded-lg border-l-4 border-fl-amber bg-fl-amber/10 px-3 py-2 text-xs text-fl-cream/70">
+                  <span className="font-semibold text-fl-amber">⚠ Не всё загрузилось при последнем обновлении</span> — в этих разделах показаны данные прошлой сводки (или они пусты):
+                  <ul className="mt-1 list-disc pl-5">{errs.map((e) => <li key={e}>{e}</li>)}</ul>
+                </div>
+              ) : null;
+            })()}
 
             <Search />
 

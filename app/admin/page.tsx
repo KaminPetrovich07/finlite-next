@@ -7,8 +7,8 @@ import { PLANS, PLAN_ORDER, planKey } from "@/lib/plans";
 import { reviewOverdue, TAX_RULES } from "@/lib/tax-rules";
 import { card, field, ghostBtn } from "@/components/auth/ui";
 
-type Tab = "metrics" | "users" | "companies" | "feedback" | "errors";
-const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["users", "Пользователи"], ["companies", "Компании"], ["feedback", "Обратная связь"], ["errors", "Ошибки"]];
+type Tab = "metrics" | "auth" | "users" | "companies" | "feedback" | "errors";
+const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["auth", "Вход и пилот"], ["users", "Пользователи"], ["companies", "Компании"], ["feedback", "Обратная связь"], ["errors", "Ошибки"]];
 const pct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)} %`);
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString("ru-RU") : "—");
 
@@ -39,6 +39,7 @@ export default function AdminPage() {
       </div>
       <div className="mt-5">
         {tab === "metrics" && <Metrics />}
+        {tab === "auth" && <AuthReadiness go={setTab} />}
         {tab === "users" && <Users />}
         {tab === "companies" && <Companies />}
         {tab === "feedback" && <Feedback />}
@@ -223,51 +224,150 @@ function Users() {
   );
 }
 
-interface C { id: string; name: string; inn: string | null; createdAt: string; owner: { email: string; name: string | null } | null; entries: number; shared: number }
+interface C { id: string; name: string; inn: string | null; createdAt: string; owner: { email: string; name: string | null } | null; pendingOwner: string | null; entries: number; shared: number }
 
 function Companies() {
   const [rows, setRows] = useState<C[] | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [msg, setMsg] = useState<string | null>(null);
   const load = useCallback(async () => { const r = await fetch("/api/admin/companies"); setRows(r.ok ? await r.json() : []); }, []);
   useEffect(() => { load(); }, [load]);
-  async function assign(id: string) {
-    const email = prompt("E-mail нового владельца (пользователь должен быть зарегистрирован):");
+  async function transfer(ids: string[]) {
+    const email = prompt(`E-mail владельца для ${ids.length === 1 ? "этой компании" : `${ids.length} компаний`}.\nЕсли человек ещё не зарегистрирован — компании перейдут к нему, как только он зарегистрируется с этим e-mail.`);
     if (!email) return;
-    const r = await fetch(`/api/admin/companies/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ownerEmail: email }) });
-    if (!r.ok) { const b = await r.json().catch(() => ({})); alert(b.error ?? "Ошибка"); }
+    const r = await fetch("/api/admin/companies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assign: { ids, email } }) });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) { alert(b.error ?? "Ошибка"); return; }
+    setMsg(b.now ? `Передано ${b.email}: ${b.now}` : `${b.email} ещё не зарегистрирован — ${b.pending} ${b.pending % 10 === 1 && b.pending % 100 !== 11 ? "компания перейдёт" : [2, 3, 4].includes(b.pending % 10) && ![12, 13, 14].includes(b.pending % 100) ? "компании перейдут" : "компаний перейдут"} к нему при регистрации`);
+    setPicked(new Set());
     load();
   }
   async function claim() {
+    if (!confirm("Сделать вас владельцем всех компаний без владельца? Потом их можно передать другим.")) return;
     const r = await fetch("/api/admin/companies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ claimOrphans: true }) });
     const b = await r.json().catch(() => ({}));
-    if (!r.ok) alert(b.error ?? "Ошибка"); else alert(`Компаний передано вам: ${b.count}`);
+    if (!r.ok) alert(b.error ?? "Ошибка"); else setMsg(`Компаний передано вам: ${b.count}`);
     load();
   }
   if (!rows) return <p className="text-sm text-fl-cream/50">Загружаю…</p>;
-  const orphans = rows.filter((c) => !c.owner).length;
+  const orphans = rows.filter((c) => !c.owner);
+  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
     <div>
-      {orphans > 0 && (
+      {orphans.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border-l-4 border-fl-amber bg-fl-amber/10 px-4 py-2.5 text-sm">
-          <p>Без владельца: {orphans}. Это компании, созданные до включения входа, — их видит только администратор.</p>
-          <button onClick={claim} className="rounded-md bg-fl-accent px-3 py-1.5 text-xs font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Сделать меня владельцем всех</button>
+          <p>Без владельца: {orphans.length}{orphans.some((c) => c.pendingOwner) ? ` (из них ждут регистрации владельца: ${orphans.filter((c) => c.pendingOwner).length})` : ""}. После включения входа их видит только администратор — отметьте компании и передайте владельцам.</p>
+          <div className="flex gap-2">
+            <button onClick={() => setPicked(new Set(orphans.map((c) => c.id)))} className="rounded-md border border-fl-line px-3 py-1.5 text-xs text-fl-cream/85 hover:border-fl-gold/40">Отметить все без владельца</button>
+            <button onClick={claim} className="rounded-md bg-fl-accent px-3 py-1.5 text-xs font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Сделать меня владельцем всех</button>
+          </div>
+        </div>
+      )}
+      {(picked.size > 0 || msg) && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+          {picked.size > 0 && <>
+            <span className="text-fl-cream/75">Отмечено: {picked.size}</span>
+            <button onClick={() => transfer([...picked])} className="rounded-md bg-fl-accent px-3 py-1.5 text-xs font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Передать владельцу…</button>
+            <button onClick={() => setPicked(new Set())} className="text-xs text-fl-cream/60 hover:underline">снять отметки</button>
+          </>}
+          {msg && <span className="text-xs text-fl-cream/65">{msg}</span>}
         </div>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead><tr className="text-left text-xs text-fl-cream/55"><th className="py-2 font-medium">Компания</th><th className="font-medium">Владелец</th><th className="text-right font-medium">Проводок</th><th className="text-right font-medium">Доступов</th><th className="font-medium" /></tr></thead>
+        <table className="w-full min-w-[760px] text-sm">
+          <thead><tr className="text-left text-xs text-fl-cream/55"><th className="w-8 py-2" /><th className="py-2 font-medium">Компания</th><th className="font-medium">Владелец</th><th className="text-right font-medium">Проводок</th><th className="text-right font-medium">Доступов</th><th className="font-medium" /></tr></thead>
           <tbody>
             {rows.map((c) => (
               <tr key={c.id} className="border-t border-fl-line">
+                <td className="py-2"><input type="checkbox" aria-label={`Отметить ${c.name}`} checked={picked.has(c.id)} onChange={() => toggle(c.id)} className="accent-fl-gold" /></td>
                 <td className="py-2 pr-3"><p className="text-fl-cream">{c.name}</p><p className="text-xs text-fl-cream/50">{c.inn ? `ИНН ${c.inn} · ` : ""}с {date(c.createdAt)}</p></td>
-                <td className="pr-3 text-fl-cream/80">{c.owner ? c.owner.email : <span className="text-fl-amber">нет</span>}</td>
+                <td className="pr-3 text-fl-cream/80">
+                  {c.owner ? c.owner.email : <span className="text-fl-amber">нет</span>}
+                  {c.pendingOwner && <p className="text-xs text-fl-cream/50">перейдёт к {c.pendingOwner} при регистрации</p>}
+                </td>
                 <td className="num pr-3 text-right">{c.entries}</td>
                 <td className="num pr-3 text-right">{c.shared}</td>
-                <td className="text-right"><button onClick={() => assign(c.id)} className="text-xs text-fl-info hover:underline">{c.owner ? "сменить владельца" : "назначить владельца"}</button></td>
+                <td className="text-right"><button onClick={() => transfer([c.id])} className="text-xs text-fl-info hover:underline">{c.owner ? "сменить владельца" : "назначить владельца"}</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+interface AuthState {
+  authOn: boolean; users: number; admins: number; adminsWith2fa: number; orphans: number; pending: number;
+  pilot: { until: string | null }; onPilot: number; onFree: number; mail: boolean; telegram: boolean;
+}
+
+/** Готовность ко входу по паролю: что сделать перед включением и что уже сделано. */
+function AuthReadiness({ go }: { go: (t: Tab) => void }) {
+  const [s, setS] = useState<AuthState | null>(null);
+  const [until, setUntil] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    const r = await fetch("/api/admin/auth");
+    if (!r.ok) return;
+    const b: AuthState = await r.json();
+    setS(b); setUntil(b.pilot.until ?? "");
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  async function post(body: object, ok: (b: any) => string) {
+    setMsg(null);
+    const r = await fetch("/api/admin/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const b = await r.json().catch(() => ({}));
+    setMsg(r.ok ? ok(b) : b.error ?? "Ошибка");
+    load();
+  }
+  if (!s) return <p className="text-sm text-fl-cream/50">Загружаю…</p>;
+  const pilotActive = !!s.pilot.until && new Date(`${s.pilot.until}T23:59:59+06:00`).getTime() > Date.now();
+  const Step = ({ done, title, children }: { done: boolean | null; title: string; children?: React.ReactNode }) => (
+    <li className="flex gap-3 border-t border-fl-line py-3 first:border-t-0">
+      <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${done ? "bg-fl-green/20 text-fl-green" : done === false ? "bg-fl-amber/20 text-fl-amber" : "bg-fl-surface-2 text-fl-cream/50"}`}>{done ? "✓" : done === false ? "!" : "·"}</span>
+      <div className="min-w-0 flex-1"><p className="font-semibold text-fl-cream">{title}</p><div className="mt-0.5 text-sm text-fl-cream/65">{children}</div></div>
+    </li>
+  );
+  return (
+    <div className="space-y-4">
+      <div className={`${card} p-4 sm:p-5`}>
+        <p className="text-sm text-fl-cream/60">Сейчас</p>
+        <p className="mt-1 font-display text-xl font-bold text-fl-cream">{s.authOn ? "Вход по паролю включён" : "Открытый режим — вход выключен"}</p>
+        <p className="mt-1 text-sm text-fl-cream/65">
+          {s.authOn
+            ? "Каждый видит только свои компании и те, к которым ему дали доступ. Тарифы действуют."
+            : "Любой, у кого есть ссылка, видит и может менять все компании. Перед тем как пускать реальных клиентов, включите вход."}
+        </p>
+      </div>
+      <ol className={`${card} px-4 py-1 sm:px-5`}>
+        <Step done={s.users > s.admins} title={`Пользователи зарегистрировались — ${s.users - s.admins}`}>
+          Попросите всех, кто работает в программе, зарегистрироваться на странице <code>/register</code> — регистрация работает и в открытом режиме.
+        </Step>
+        <Step done={pilotActive} title="Пилот для новых пользователей">
+          <p>Пока пилот идёт, каждый новый пользователь получает тариф «Пилот» (всё из «Макса», до 30 компаний) до этой даты, затем — «Бесплатно», если вы не продлите.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} className="rounded-md border border-fl-line bg-fl-charcoal px-2 py-1.5 text-sm text-fl-cream" />
+            <button onClick={() => post({ pilotUntil: until || null }, () => (until ? "Дата пилота сохранена" : "Пилот выключен"))} className={ghostBtn}>Сохранить</button>
+            {pilotActive && s.onFree > 0 && <button onClick={() => post({ grantPilot: true }, (b) => `«Пилот» выдан: ${b.count}`)} className={ghostBtn}>Выдать «Пилот» всем на бесплатном ({s.onFree})</button>}
+          </div>
+          <p className="mt-1 text-xs text-fl-cream/50">На пилоте: {s.onPilot} · на бесплатном: {s.onFree}. Тариф отдельного человека меняется во вкладке «Пользователи».</p>
+        </Step>
+        <Step done={s.orphans === 0 ? true : s.orphans === s.pending ? null : false} title={s.orphans ? `Компании без владельца — ${s.orphans}` : "У всех компаний есть владелец"}>
+          {s.orphans > 0 && <>Компании, созданные в открытом режиме, после включения входа увидит только администратор. Передайте их владельцам — можно по e-mail ещё не зарегистрированного человека{s.pending ? ` (ждут регистрации: ${s.pending})` : ""}. <button onClick={() => go("companies")} className="text-fl-info hover:underline">Открыть «Компании»</button></>}
+        </Step>
+        <Step done={s.adminsWith2fa >= s.admins} title="Двухфакторная защита администратора">
+          {s.adminsWith2fa >= s.admins ? "Включена." : <>Включите на странице <a href="/account" className="text-fl-info hover:underline">«Аккаунт»</a>.</>}
+        </Step>
+        <Step done={s.mail || s.telegram ? true : null} title="Восстановление пароля">
+          {s.mail ? "Письмо со ссылкой уходит на почту автоматически." : "Почта не настроена: запрос «Забыли пароль» приходит вам во «Обратную связь»"}
+          {!s.mail && (s.telegram ? " и в Telegram — выдайте ссылку во вкладке «Пользователи»." : " — выдайте ссылку во вкладке «Пользователи». Чтобы письма уходили сами, добавьте в Vercel RESEND_API_KEY и FL_MAIL_FROM.")}
+        </Step>
+        <Step done={s.authOn} title="Включить вход">
+          {s.authOn ? "Готово." : <>В Vercel → Settings → Environment Variables добавьте <code>NEXT_PUBLIC_FL_AUTH</code> = <code>on</code> и сделайте Redeploy. Отключить — удалить переменную и снова Redeploy; данные не меняются.</>}
+        </Step>
+      </ol>
+      {msg && <p className="text-sm text-fl-cream/70">{msg}</p>}
     </div>
   );
 }

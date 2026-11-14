@@ -75,6 +75,10 @@ export interface ScopeSnapshot {
   topics: Trend[];
   keywords: Trend[];
   centralAsia: { byCountry: Array<{ code: string; name: string; count: number }>; works: Work[] };
+  /** разделы, которые не загрузились в последний раз (показаны данные прошлой сводки) */
+  errors?: string[];
+  /** когда область обновлялась в последний раз */
+  updatedAt?: string;
 }
 
 export interface ScienceSnapshot {
@@ -204,8 +208,25 @@ export function url(path: string, params: Record<string, string | number>, apiKe
   return `${API}${path}?${q.toString()}`;
 }
 
-/** One scope: ~13 requests, sequential (OpenAlex allows 10 per second without a key). */
-export async function fetchScope(scope: Scope, get: Fetcher, now = new Date(), apiKey?: string): Promise<ScopeSnapshot> {
+/** Runs async jobs with at most `n` in flight (OpenAlex allows 10 requests a second without a key). */
+export async function pool<T>(jobs: Array<() => Promise<T>>, n: number): Promise<T[]> {
+  const out: T[] = new Array(jobs.length);
+  let next = 0;
+  const worker = async () => { while (next < jobs.length) { const i = next++; out[i] = await jobs[i](); } };
+  await Promise.all(Array.from({ length: Math.min(n, jobs.length) }, worker));
+  return out;
+}
+
+const SECTION: Record<string, string> = {
+  topCited: "самые цитируемые", topRecent: "цитируемые за 5 лет", topBooks: "книги", byYear: "публикации по годам",
+  total: "число работ", oa: "открытый доступ", journals: "журналы", topics: "тренды тем", keywords: "тренды ключевых слов", ca: "Центральная Азия",
+};
+
+/**
+ * One scope: ~14 requests, 4 at a time. Every section is independent: a request that fails leaves that
+ * section from the previous snapshot (or empty) and is listed in `errors`, the rest is still collected.
+ */
+export async function fetchScope(scope: Scope, get: Fetcher, now = new Date(), apiKey?: string, previous?: ScopeSnapshot | null): Promise<ScopeSnapshot> {
   const w = windowsFor(now);
   const sf = `primary_topic.subfield.id:${scope.subfield}`;
   const yr = (a: [number, number]) => `publication_year:${a[0]}-${a[1]}`;
@@ -214,46 +235,74 @@ export async function fetchScope(scope: Scope, get: Fetcher, now = new Date(), a
     return (Array.isArray(b?.results) ? b.results : []).map(parseWork);
   };
   const groups = async (filter: string, by: string) => parseGroups(await get(url("/works", { filter, group_by: by }, apiKey)));
-
-  const topCited = await works(`${sf},${PAPERS}`, 15);
-  const topRecent = await works(`${sf},${PAPERS},${yr(w.recent)}`, 15);
-  const topBooks = await works(`${sf},type:book`, 10);
-
+  const ca = Object.keys(CENTRAL_ASIA).join("|");
   const firstYear = w.after[1] - 24;
-  const byYear = (await groups(`${sf},publication_year:${firstYear}-${w.after[1]}`, "publication_year"))
-    .map((x) => ({ year: Number(x.key), count: x.count })).filter((x) => Number.isFinite(x.year)).sort((a, b) => a.year - b.year);
-  const totalWorks = (await get(url("/works", { filter: sf, per_page: 1, select: "id" }, apiKey)))?.meta?.count ?? 0;
-  const oaGroups = await groups(`${sf},${yr(w.recent)}`, "open_access.is_oa");
-  const oaTrue = oaGroups.find((g) => g.key === "true")?.count ?? 0, oaAll = oaGroups.reduce((x, g) => x + g.count, 0);
-  const oaShare = oaAll ? Math.round((oaTrue / oaAll) * 1000) / 10 : null;
 
-  const srcGroups = (await groups(`${sf},${yr(w.recent)}`, "primary_location.source.id")).slice(0, 12);
-  let journals: Journal[] = [];
-  if (srcGroups.length) {
-    const b = await get(url("/sources", { filter: `openalex:${srcGroups.map((s) => s.key).join("|")}`, per_page: srcGroups.length, select: "id,display_name,summary_stats,is_oa,type,homepage_url" }, apiKey));
-    const info = new Map<string, J>((Array.isArray(b?.results) ? b.results : []).map((s: J) => [shortId(s.id), s]));
-    journals = srcGroups.map((g) => (info.has(g.key) ? parseJournal(info.get(g.key), g.count) : { id: g.key, name: g.name, works: g.count, hIndex: null, meanCited: null, oa: false, type: null, url: null }));
+  const errors: string[] = [];
+  type Res = { ok: true; v: unknown } | { ok: false };
+  const job = (key: string, fn: () => Promise<unknown>) => async (): Promise<Res> => {
+    try { return { ok: true, v: await fn() }; }
+    catch (e) { errors.push(`${SECTION[key] ?? key}: ${e instanceof Error ? e.message : String(e)}`); return { ok: false }; }
+  };
+  const keys = ["topCited", "topRecent", "topBooks", "byYear", "total", "oa", "sources", "topicsBefore", "topicsAfter", "kwBefore", "kwAfter", "caGroups", "caWorks"] as const;
+  const res = await pool([
+    job("topCited", () => works(`${sf},${PAPERS}`, 15)),
+    job("topRecent", () => works(`${sf},${PAPERS},${yr(w.recent)}`, 15)),
+    job("topBooks", () => works(`${sf},type:book`, 10)),
+    job("byYear", () => groups(`${sf},publication_year:${firstYear}-${w.after[1]}`, "publication_year")),
+    job("total", async () => (await get(url("/works", { filter: sf, per_page: 1, select: "id" }, apiKey)))?.meta?.count ?? 0),
+    job("oa", () => groups(`${sf},${yr(w.recent)}`, "open_access.is_oa")),
+    job("journals", () => groups(`${sf},${yr(w.recent)}`, "primary_location.source.id")),
+    job("topics", () => groups(`${sf},${yr(w.before)}`, "primary_topic.id")),
+    job("topics", () => groups(`${sf},${yr(w.after)}`, "primary_topic.id")),
+    job("keywords", () => groups(`${sf},${yr(w.before)}`, "keywords.id")),
+    job("keywords", () => groups(`${sf},${yr(w.after)}`, "keywords.id")),
+    job("ca", () => groups(`${sf},${yr(w.recent)},authorships.institutions.country_code:${ca}`, "authorships.institutions.country_code")),
+    job("ca", () => works(`${sf},authorships.institutions.country_code:${ca}`, 10)),
+  ], 4);
+  if (res.every((x) => !x.ok)) throw new Error(errors[0] ?? "OpenAlex не ответил");
+  const r = Object.fromEntries(keys.map((k, i) => [k, res[i]])) as Record<(typeof keys)[number], Res>;
+  const val = <T,>(x: Res): T | undefined => (x.ok ? (x.v as T) : undefined);
+  type G = Array<{ key: string; name: string; count: number }>;
+
+  // journals: names and counts from the grouping; h-index and citedness from /sources — optional
+  let journals: Journal[] | undefined;
+  const src = val<G>(r.sources)?.slice(0, 12);
+  if (src) {
+    journals = src.map((g) => ({ id: g.key, name: g.name, works: g.count, hIndex: null, meanCited: null, oa: false, type: null, url: null }));
+    if (src.length) {
+      try {
+        const b = await get(url("/sources", { filter: `openalex:${src.map((x) => x.key).join("|")}`, per_page: src.length, select: "id,display_name,summary_stats,is_oa,type,homepage_url" }, apiKey));
+        const info = new Map<string, J>((Array.isArray(b?.results) ? b.results : []).map((x: J) => [shortId(x.id), x]));
+        journals = src.map((g) => (info.has(g.key) ? parseJournal(info.get(g.key), g.count) : journals!.find((j) => j.id === g.key)!));
+      } catch (e) { errors.push(`h-индекс журналов: ${e instanceof Error ? e.message : String(e)}`); }
+    }
   }
 
-  const topicsBefore = await groups(`${sf},${yr(w.before)}`, "primary_topic.id");
-  const topicsAfter = await groups(`${sf},${yr(w.after)}`, "primary_topic.id");
-  const kwBefore = await groups(`${sf},${yr(w.before)}`, "keywords.id");
-  const kwAfter = await groups(`${sf},${yr(w.after)}`, "keywords.id");
-  const scale = Math.max(1, Math.round(topicsAfter.reduce((s, x) => s + x.count, 0) / 2000));
-
-  const ca = Object.keys(CENTRAL_ASIA).join("|");
-  const caGroups = await groups(`${sf},${yr(w.recent)},authorships.institutions.country_code:${ca}`, "authorships.institutions.country_code");
-  const caWorks = await works(`${sf},authorships.institutions.country_code:${ca}`, 10);
+  const oaG = val<G>(r.oa);
+  const oaTrue = oaG?.find((g) => g.key === "true")?.count ?? 0, oaAll = oaG?.reduce((x, g) => x + g.count, 0) ?? 0;
+  const tB = val<G>(r.topicsBefore), tA = val<G>(r.topicsAfter), kB = val<G>(r.kwBefore), kA = val<G>(r.kwAfter);
+  const scale = Math.max(1, Math.round((tA ?? []).reduce((x, g) => x + g.count, 0) / 2000));
+  const caG = val<G>(r.caGroups);
+  const p = previous ?? null;
 
   return {
     key: scope.key, title: scope.title, note: scope.note, subfield: scope.subfield, windows: w,
-    totalWorks, oaShare, byYear, topCited, topRecent, topBooks, journals,
-    topics: trends(topicsBefore, topicsAfter, 20 * scale, 12),
-    keywords: trends(kwBefore, kwAfter, 30 * scale, 20),
+    totalWorks: val<number>(r.total) ?? p?.totalWorks ?? 0,
+    oaShare: oaG ? (oaAll ? Math.round((oaTrue / oaAll) * 1000) / 10 : null) : p?.oaShare ?? null,
+    byYear: val<G>(r.byYear)?.map((x) => ({ year: Number(x.key), count: x.count })).filter((x) => Number.isFinite(x.year)).sort((a2, b2) => a2.year - b2.year) ?? p?.byYear ?? [],
+    topCited: val<Work[]>(r.topCited) ?? p?.topCited ?? [],
+    topRecent: val<Work[]>(r.topRecent) ?? p?.topRecent ?? [],
+    topBooks: val<Work[]>(r.topBooks) ?? p?.topBooks ?? [],
+    journals: journals ?? p?.journals ?? [],
+    topics: tB && tA ? trends(tB, tA, 20 * scale, 12) : p?.topics ?? [],
+    keywords: kB && kA ? trends(kB, kA, 30 * scale, 20) : p?.keywords ?? [],
     centralAsia: {
-      byCountry: Object.entries(CENTRAL_ASIA).map(([code, name]) => ({ code, name, count: caGroups.find((g) => g.key.toUpperCase() === code)?.count ?? 0 })).sort((a, b) => b.count - a.count),
-      works: caWorks,
+      byCountry: caG ? Object.entries(CENTRAL_ASIA).map(([code, name]) => ({ code, name, count: caG.find((g) => g.key.toUpperCase() === code)?.count ?? 0 })).sort((a2, b2) => b2.count - a2.count) : p?.centralAsia.byCountry ?? [],
+      works: val<Work[]>(r.caWorks) ?? p?.centralAsia.works ?? [],
     },
+    errors: [...new Set(errors)],
+    updatedAt: now.toISOString(),
   };
 }
 

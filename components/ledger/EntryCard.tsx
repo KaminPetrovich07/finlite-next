@@ -28,19 +28,27 @@ interface Props {
   onAttachments?: (entry: LedgerEntry) => void;
   /** the entry's date is in a period closed for changes */
   locked?: boolean;
+  /** checkbox for bulk actions */
+  selected?: boolean;
+  onSelect?: (id: string) => void;
 }
 
-const EDITABLE = new Set(["manual", "opening"]);
 const dt = (iso: string) => new Date(iso).toLocaleString("ru-RU", { timeZone: "Asia/Bishkek", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export function EntryCard({ entry, highlight = [], onDelete, onEdit, onHistory, onAttachments, locked = false }: Props) {
+export function EntryCard({ entry, highlight = [], onDelete, onEdit, onHistory, onAttachments, locked = false, selected = false, onSelect }: Props) {
   const total = entry.lines.reduce((s, l) => s + l.debit, 0);
   const [view] = useAccountView();
   const ifrs = view === "ifrs";
   return (
-    <article id={`e-${entry.id}`} className="scroll-mt-24 rounded-lg border border-fl-line bg-fl-charcoal/60 p-3.5 transition-shadow">
+    <article id={`e-${entry.id}`} className={`scroll-mt-24 rounded-lg border bg-fl-charcoal/60 p-3.5 transition-shadow ${selected ? "border-fl-gold/60 bg-fl-gold/5" : "border-fl-line"}`}>
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-start gap-2.5">
+          {onSelect && (
+            <input type="checkbox" checked={selected} disabled={locked} onChange={() => onSelect(entry.id)}
+              aria-label={`Отметить проводку «${entry.description}»`} title={locked ? "Период закрыт для изменений" : "Отметить"}
+              className="mt-1 h-4 w-4 shrink-0 accent-fl-gold disabled:opacity-30" />
+          )}
+          <div className="min-w-0">
           <p className="text-sm text-fl-cream">{entry.description}</p>
           <p className="mt-0.5 text-xs text-fl-cream/45">
             {formatDate(entry.date)}
@@ -55,6 +63,7 @@ export function EntryCard({ entry, highlight = [], onDelete, onEdit, onHistory, 
               </span>
             )}
           </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
           <span className="num text-sm text-fl-cream/80">{formatNumber(total, 2)}</span>
@@ -67,10 +76,10 @@ export function EntryCard({ entry, highlight = [], onDelete, onEdit, onHistory, 
           {onHistory && (
             <button onClick={() => onHistory(entry)} className="text-xs text-fl-cream/45 underline-offset-2 hover:text-fl-cream hover:underline">История</button>
           )}
-          {onEdit && !locked && EDITABLE.has(entry.source) && (
+          {onEdit && !locked && (
             <button onClick={() => onEdit(entry)} className="text-xs text-fl-cream/45 underline-offset-2 hover:text-fl-gold hover:underline">Изменить</button>
           )}
-          {onDelete && !locked && entry.source !== "bank" && (
+          {onDelete && !locked && (
             <button
               onClick={() => onDelete(entry.id)}
               className="text-xs text-fl-cream/40 underline-offset-2 hover:text-fl-red hover:underline"

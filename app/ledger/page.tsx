@@ -8,6 +8,9 @@ import { EntryForm } from "@/components/ledger/EntryForm";
 import { EntryHistory } from "@/components/ledger/EntryHistory";
 import { RecurringPanel } from "@/components/ledger/RecurringPanel";
 import { Attachments } from "@/components/ledger/Attachments";
+import { Trash } from "@/components/ledger/Trash";
+import { SOURCE_NOTE } from "@/lib/ledger/source-note";
+import { SOURCE_LABEL } from "@/lib/ledger/types";
 import { uploadAttachment } from "@/components/ledger/attach-upload";
 import { nextMonth } from "@/lib/ledger/recurring";
 import { ReceiptScan } from "@/components/ledger/ReceiptScan";
@@ -36,6 +39,8 @@ export default function LedgerPage() {
   const [editing, setEditing] = useState<LedgerEntry | null>(null);
   const [historyOf, setHistoryOf] = useState<LedgerEntry | null>(null);
   const [docsOf, setDocsOf] = useState<LedgerEntry | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [trashOpen, setTrashOpen] = useState(false);
   const toast = useToast();
   const lockedThrough = company?.lockedThrough ? company.lockedThrough.slice(0, 10) : null;
   const isLocked = (e: LedgerEntry) => !!lockedThrough && e.date <= lockedThrough;
@@ -104,6 +109,7 @@ export default function LedgerPage() {
   }, [companyId, period, isDemo]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPicked(new Set()); }, [companyId, period]);
 
   const [recKey, setRecKey] = useState(0);
 
@@ -140,7 +146,7 @@ export default function LedgerPage() {
     });
     const body = await res.json();
     if (!res.ok) { toast.show(body.error ?? "Изменения не сохранены", "error"); return false; }
-    toast.show("Проводка изменена — прежняя версия в истории");
+    toast.show(body.note ? "Проводка изменена — прежняя версия в истории. Помните: повторный расчёт в разделе может заменить правки" : "Проводка изменена — прежняя версия в истории");
     setEditing(null);
     load();
     return true;
@@ -153,13 +159,33 @@ export default function LedgerPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Удалить проводку? Все отчёты пересчитаются без неё.")) return;
+    const e = entries.find((x) => x.id === id);
+    const extra = e?.source === "bank" ? " Строка банковской выписки удалится вместе с ней." : "";
+    if (!confirm(`Удалить проводку? Все отчёты пересчитаются без неё.${extra} Вернуть можно в разделе «Удалённые».`)) return;
     const res = await fetch(`/api/ledger/${id}`, { method: "DELETE" });
     const body = await res.json();
     if (!res.ok) { toast.show(body.error ?? "Не удалось удалить", "error"); return; }
-    toast.show("Проводка удалена", "info");
+    toast.show(body.cogs ? "Проводка и списание себестоимости по ней удалены" : "Проводка удалена — вернуть можно в «Удалённых»", "info");
+    setPicked((p) => { const n = new Set(p); n.delete(id); return n; });
     load();
   }
+
+  async function removePicked() {
+    const ids = [...picked];
+    if (!ids.length) return;
+    const bank = entries.filter((e) => picked.has(e.id) && e.source === "bank").length;
+    if (!confirm(`Удалить отмеченные проводки (${ids.length})? Отчёты пересчитаются без них.${bank ? ` Строки выписки (${bank}) удалятся вместе с ними.` : ""} Вернуть можно в разделе «Удалённые».`)) return;
+    setBusy(true);
+    const res = await fetch("/api/ledger/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, action: "delete", ids }) });
+    const body = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) { toast.show(body.error ?? "Не удалось удалить", "error"); return; }
+    toast.show(`Удалено: ${body.deleted}${body.cogs ? `, и списаний себестоимости: ${body.cogs}` : ""}${body.locked ? `. В закрытом периоде пропущено: ${body.locked}` : ""}`, body.locked ? "error" : "info");
+    setPicked(new Set());
+    load();
+  }
+
+  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   async function savePayroll(p: { date: string; production: number; sales: number; admin: number }) {
     const res = await fetch("/api/ledger/payroll", {
@@ -274,11 +300,19 @@ export default function LedgerPage() {
           <button onClick={postBank} disabled={busy} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/70 hover:text-fl-cream disabled:opacity-50">
             Провести операции из выписок
           </button>
+          <button onClick={() => setTrashOpen(true)} className="shrink-0 rounded-md border border-fl-line px-4 py-2.5 text-sm text-fl-cream/70 hover:text-fl-cream">
+            Удалённые
+          </button>
         </div>
       )}
 
       {editing && period && (
         <div id="fl-entry-form" className="mb-6 scroll-mt-20">
+          {SOURCE_NOTE[editing.source] && (
+            <p className="mb-2 rounded-lg border-l-4 border-fl-amber bg-fl-amber/10 px-3 py-2 text-xs text-fl-cream/75">
+              <span className="font-semibold text-fl-amber">{SOURCE_LABEL[editing.source] ?? editing.source}.</span> {SOURCE_NOTE[editing.source]}
+            </p>
+          )}
           <EntryForm key={`edit-${editing.id}`} mode={editing.source === "opening" ? "opening" : "manual"} defaultDate={editing.date} initial={editing}
             onSubmit={update} onCancel={() => setEditing(null)} parties={parties} items={items} lockedThrough={lockedThrough} />
         </div>
@@ -303,7 +337,7 @@ export default function LedgerPage() {
             <div>
               <h2 className="mb-2 font-display text-lg font-semibold text-fl-cream">Начальные остатки</h2>
               <div className="space-y-2.5">
-                {opening.map((e) => <EntryCard key={e.id} entry={e} locked={isLocked(e)} onDelete={readOnly ? undefined : remove} onEdit={readOnly ? undefined : startEdit} onHistory={isDemo ? undefined : setHistoryOf} onAttachments={isDemo ? undefined : setDocsOf} />)}
+                {opening.map((e) => <EntryCard key={e.id} entry={e} locked={isLocked(e)} onDelete={readOnly ? undefined : remove} onEdit={readOnly ? undefined : startEdit} onHistory={isDemo ? undefined : setHistoryOf} onAttachments={isDemo ? undefined : setDocsOf} selected={picked.has(e.id)} onSelect={readOnly || isDemo ? undefined : toggle} />)}
               </div>
             </div>
           )}
@@ -311,6 +345,12 @@ export default function LedgerPage() {
             <h2 className="mb-2 font-display text-lg font-semibold text-fl-cream">
               Операции за {periodLabel(period.from, period.to).toLowerCase()}
               <span className="ml-2 font-body text-sm font-normal text-fl-cream/45">{inPeriod.length}</span>
+              {!readOnly && !isDemo && inPeriod.some((e) => !isLocked(e)) && (
+                <button onClick={() => { const open = inPeriod.filter((e) => !isLocked(e)).map((e) => e.id); setPicked(open.every((id) => picked.has(id)) ? new Set() : new Set(open)); }}
+                  className="ml-3 font-body text-xs font-normal text-fl-info hover:underline">
+                  {inPeriod.filter((e) => !isLocked(e)).every((e) => picked.has(e.id)) ? "снять отметки" : "отметить все за период"}
+                </button>
+              )}
             </h2>
             {inPeriod.length === 0 ? (
               <Notice>
@@ -319,7 +359,7 @@ export default function LedgerPage() {
               </Notice>
             ) : (
               <div className="space-y-2.5">
-                {inPeriod.map((e) => <EntryCard key={e.id} entry={e} locked={isLocked(e)} onDelete={readOnly ? undefined : remove} onEdit={readOnly ? undefined : startEdit} onHistory={isDemo ? undefined : setHistoryOf} onAttachments={isDemo ? undefined : setDocsOf} />)}
+                {inPeriod.map((e) => <EntryCard key={e.id} entry={e} locked={isLocked(e)} onDelete={readOnly ? undefined : remove} onEdit={readOnly ? undefined : startEdit} onHistory={isDemo ? undefined : setHistoryOf} onAttachments={isDemo ? undefined : setDocsOf} selected={picked.has(e.id)} onSelect={readOnly || isDemo ? undefined : toggle} />)}
               </div>
             )}
           </div>
@@ -330,6 +370,14 @@ export default function LedgerPage() {
         <p className="mt-6 text-xs text-fl-cream/45">🔒 Изменения по {lockedThrough.split("-").reverse().join(".")} запрещены — снять запрет может владелец компании на странице «Закрытие месяца».</p>
       )}
       <Attachments entry={docsOf} readOnly={readOnly} locked={!!docsOf && isLocked(docsOf)} onClose={() => setDocsOf(null)} onChanged={load} />
+      {picked.size > 0 && (
+        <div className="fixed inset-x-0 bottom-20 z-40 mx-auto flex w-fit max-w-[95vw] flex-wrap items-center gap-3 rounded-xl border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm shadow-card sm:bottom-6">
+          <span className="text-fl-cream/80">Отмечено: {picked.size}</span>
+          <button onClick={removePicked} disabled={busy} className="rounded-md border border-fl-red/50 px-3 py-1.5 text-xs font-semibold text-fl-red hover:bg-fl-red/10 disabled:opacity-50">Удалить отмеченные</button>
+          <button onClick={() => setPicked(new Set())} className="text-xs text-fl-cream/60 hover:underline">снять отметки</button>
+        </div>
+      )}
+      {!isDemo && companyId && <Trash companyId={companyId} open={trashOpen} readOnly={readOnly} onClose={() => setTrashOpen(false)} onRestored={(m) => { toast.show(m); load(); }} />}
       <EntryHistory companyId={companyId} entryId={historyOf?.id ?? null} title={historyOf?.description} onClose={() => setHistoryOf(null)} />
       <toast.ToastContainer />
     </main>

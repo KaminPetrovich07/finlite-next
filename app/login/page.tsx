@@ -11,6 +11,20 @@ export default function LoginPage() {
   // второй шаг входа: код из приложения-аутентификатора или резервный код
   const [need2fa, setNeed2fa] = useState(false);
   const [code, setCode] = useState("");
+  // «Забыли пароль»: null — форма скрыта, "" — показана, иначе текст ответа
+  const [forgot, setForgot] = useState<string | null>(null);
+
+  async function requestReset() {
+    if (!email.trim()) { setError("Введите e-mail, на который зарегистрирован аккаунт"); return; }
+    setBusy(true); setError(null);
+    const res = await fetch("/api/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    const body = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) { setError(body.error ?? "Не удалось отправить запрос"); return; }
+    setForgot(body.mail
+      ? "Если такой e-mail зарегистрирован, на него ушло письмо со ссылкой для смены пароля (действует 1 час). Проверьте и папку «Спам»."
+      : "Запрос передан администратору — он пришлёт вам одноразовую ссылку для смены пароля в Telegram или WhatsApp.");
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,9 +69,13 @@ export default function LoginPage() {
         <ErrorNote text={error} />
         <button type="submit" disabled={busy} className={primaryBtn}>{busy ? "Вхожу…" : need2fa ? "Подтвердить" : "Войти"}</button>
       </form>
-      <p className="mt-3 text-xs text-fl-cream/55">
-        Забыли пароль? Напишите администратору через кнопку «Отзыв» или по контактам на странице <a href="/privacy" className="underline">политики</a> — он пришлёт одноразовую ссылку для смены пароля.
-      </p>
+      {!need2fa && (forgot ? (
+        <p className="mt-3 rounded-lg bg-fl-surface-2 px-3 py-2 text-xs text-fl-cream/75">{forgot}</p>
+      ) : (
+        <p className="mt-3 text-xs text-fl-cream/55">
+          Забыли пароль? Введите e-mail выше и <button type="button" onClick={requestReset} disabled={busy} className="font-semibold text-fl-gold hover:underline disabled:opacity-50">запросите ссылку для смены</button>.
+        </p>
+      ))}
       <div className="mt-6 border-t border-fl-line pt-5">
         <button onClick={demo} className="w-full rounded-lg border border-fl-line px-5 py-2.5 text-sm text-fl-cream/85 hover:border-fl-gold/40">
           Посмотреть демо без регистрации

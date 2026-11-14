@@ -12,11 +12,11 @@ export interface EntryEventRow {
 }
 
 export const ACTION_LABEL: Record<string, string> = {
-  create: "Введена", update: "Изменена", delete: "Удалена", import: "Загрузка", lock: "Запрет изменений", unlock: "Запрет снят",
+  create: "Введена", update: "Изменена", delete: "Удалена", restore: "Восстановлена", import: "Загрузка", lock: "Запрет изменений", unlock: "Запрет снят",
   attach: "Документ прикреплён", detach: "Документ удалён",
 };
 export const ACTION_TONE: Record<string, string> = {
-  create: "bg-fl-green/15 text-fl-green", update: "bg-fl-amber/20 text-fl-amber", delete: "bg-fl-red/15 text-fl-red",
+  create: "bg-fl-green/15 text-fl-green", restore: "bg-fl-green/15 text-fl-green", update: "bg-fl-amber/20 text-fl-amber", delete: "bg-fl-red/15 text-fl-red",
   import: "bg-sky-400/15 text-sky-300", lock: "bg-fl-gold/20 text-fl-gold", unlock: "bg-fl-red/15 text-fl-red",
   attach: "bg-fl-info/15 text-fl-info", detach: "bg-fl-red/15 text-fl-red",
 };

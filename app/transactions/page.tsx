@@ -7,7 +7,14 @@ import { formatNumber } from "@/lib/format";
 interface Company { id: string; name: string }
 interface Txn {
   id: string; txDate: string; amount: number; description: string;
-  category: string; categorySource: string;
+  category: string; categorySource: string; importBatch: string; bank: string;
+}
+const BANKS: Record<string, string> = { mbank: "МБанк", bakai: "Бакай Банк", eldik: "Элдик Банк", other: "Другой банк" };
+/** «mbank-1731567890123» → «МБанк, загружена 14.11.2026 13:11» */
+function batchLabel(b: string, rows: Txn[]) {
+  const ms = Number(b.split("-").pop());
+  const when = Number.isFinite(ms) && ms > 1e12 ? new Date(ms).toLocaleString("ru-RU", { timeZone: "Asia/Bishkek", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  return `${BANKS[rows[0]?.bank] ?? rows[0]?.bank ?? "Выписка"}${when ? `, загружена ${when}` : ""} — ${rows.length} стр.`;
 }
 
 export default function TransactionsPage() {
@@ -19,6 +26,11 @@ export default function TransactionsPage() {
   const [uploadResult, setUploadResult] = useState<any>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Txn[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [batch, setBatch] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [edit, setEdit] = useState<{ id: string; txDate: string; amount: string; description: string } | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/companies").then((r) => r.json()).then((data) => {
@@ -34,7 +46,8 @@ export default function TransactionsPage() {
     if (!companyId) return;
     fetch(`/api/transactions?companyId=${companyId}`).then((r) => r.json())
       .then((d) => setTransactions(Array.isArray(d) ? d : [])).catch(() => setTransactions([]));
-  }, [companyId, uploadResult]);
+  }, [companyId, uploadResult, reloadKey]);
+  useEffect(() => { setPicked(new Set()); setEdit(null); setBatch(""); }, [companyId]);
 
   async function handleUpload() {
     if (!file || !companyId) return;
@@ -66,6 +79,33 @@ export default function TransactionsPage() {
       body: JSON.stringify({ id, category }),
     });
   }
+
+  async function removeRows(body: { ids: string[] } | { importBatch: string }, what: string) {
+    if (!confirm(`Удалить ${what}? Проводки по этим операциям тоже удалятся — их можно будет восстановить в журнале, в разделе «Удалённые».`)) return;
+    const res = await fetch("/api/transactions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, ...body }) });
+    const b = await res.json().catch(() => ({}));
+    if (!res.ok) { setNote(b.error ?? "Не удалось удалить"); return; }
+    setNote(`Удалено строк выписки: ${b.deleted}`);
+    setPicked(new Set()); setBatch(""); if ("importBatch" in body) setUploadResult(null);
+    setReloadKey((k) => k + 1);
+  }
+
+  async function saveEdit() {
+    if (!edit) return;
+    const amount = Number(edit.amount.replace(/\s/g, "").replace(",", "."));
+    if (!Number.isFinite(amount) || amount === 0) { setNote("Сумма: число, приход со знаком «+», расход — «−»"); return; }
+    const res = await fetch("/api/transactions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: edit.id, txDate: edit.txDate, amount, description: edit.description }) });
+    const b = await res.json().catch(() => ({}));
+    if (!res.ok) { setNote(b.error ?? "Изменения не сохранены"); return; }
+    setNote("Операция изменена — проводка в журнале пересчитана");
+    setEdit(null);
+    setReloadKey((k) => k + 1);
+  }
+
+  const batches = [...new Set(transactions.map((t) => t.importBatch))];
+  const shown = batch ? transactions.filter((t) => t.importBatch === batch) : transactions;
+  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allPicked = shown.length > 0 && shown.every((t) => picked.has(t.id));
 
   const income = transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const expense = transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -131,6 +171,11 @@ export default function TransactionsPage() {
               Проведено в журнал: {uploadResult.posted ?? 0}.{" "}
               <a href="/reports" className="text-fl-gold underline-offset-4 hover:underline">Посмотреть в отчётности</a>
             </p>
+            {uploadResult.importBatch && (
+              <button onClick={() => removeRows({ importBatch: uploadResult.importBatch }, `всю эту загрузку (${uploadResult.count} стр.)`)} className="mt-2 text-xs text-fl-red underline-offset-2 hover:underline">
+                Отменить эту загрузку — удалить её строки и проводки
+              </button>
+            )}
             {uploadResult.warnings?.length > 0 && (
               <ul className="mt-2 list-inside list-disc text-fl-gold-bright/90">
                 {uploadResult.warnings.map((w: string) => <li key={w}>{w}</li>)}
@@ -154,19 +199,55 @@ export default function TransactionsPage() {
           </section>
 
           <section className="overflow-x-auto rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 sm:p-5">
-            <h2 className="mb-3 font-display text-lg font-semibold text-fl-cream">Операции</h2>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-display text-lg font-semibold text-fl-cream">Операции</h2>
+              {batches.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <select value={batch} onChange={(e) => { setBatch(e.target.value); setPicked(new Set()); }} className="rounded border border-fl-line bg-fl-charcoal px-2 py-1.5 text-fl-cream/85">
+                    <option value="">Все загрузки ({transactions.length})</option>
+                    {batches.map((b) => <option key={b} value={b}>{batchLabel(b, transactions.filter((t) => t.importBatch === b))}</option>)}
+                  </select>
+                  {batch && <button onClick={() => removeRows({ importBatch: batch }, "всю эту загрузку")} className="text-fl-red underline-offset-2 hover:underline">Удалить загрузку</button>}
+                </div>
+              )}
+            </div>
+            {(picked.size > 0 || note) && (
+              <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+                {picked.size > 0 && <>
+                  <span className="text-fl-cream/75">Отмечено: {picked.size}</span>
+                  <button onClick={() => removeRows({ ids: [...picked] }, `отмеченные операции (${picked.size})`)} className="rounded-md border border-fl-red/50 px-3 py-1 text-xs text-fl-red hover:bg-fl-red/10">Удалить отмеченные</button>
+                  <button onClick={() => setPicked(new Set())} className="text-xs text-fl-cream/60 hover:underline">снять отметки</button>
+                </>}
+                {note && <span className="text-xs text-fl-cream/65">{note}</span>}
+              </div>
+            )}
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="text-fl-cream/50">
+                  <th className="w-7 py-2"><input type="checkbox" aria-label="Отметить все" checked={allPicked} onChange={() => setPicked(allPicked ? new Set() : new Set(shown.map((t) => t.id)))} className="accent-fl-gold" /></th>
                   <th className="py-2 pr-3">Дата</th>
                   <th className="py-2 pr-3">Описание</th>
                   <th className="py-2 pr-3 text-right">Сумма</th>
                   <th className="py-2 pr-3">Категория</th>
+                  <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((t) => (
+                {shown.map((t) => edit?.id === t.id ? (
+                  <tr key={t.id} className="border-t border-fl-line align-top bg-fl-gold/5">
+                    <td />
+                    <td className="py-2 pr-2"><input type="date" value={edit.txDate} onChange={(e) => setEdit({ ...edit, txDate: e.target.value })} className="w-36 rounded border border-fl-line bg-fl-charcoal px-2 py-1 text-xs text-fl-cream" /></td>
+                    <td className="py-2 pr-2"><input value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} className="w-full rounded border border-fl-line bg-fl-charcoal px-2 py-1 text-xs text-fl-cream" /></td>
+                    <td className="py-2 pr-2"><input inputMode="decimal" value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} className="w-32 rounded border border-fl-line bg-fl-charcoal px-2 py-1 text-right font-mono text-xs text-fl-cream" title="Приход — плюс, расход — минус" /></td>
+                    <td className="py-2 pr-2 text-xs text-fl-cream/55">{t.category}</td>
+                    <td className="whitespace-nowrap py-2 text-right text-xs">
+                      <button onClick={saveEdit} className="font-semibold text-fl-gold hover:underline">Сохранить</button>
+                      <button onClick={() => setEdit(null)} className="ml-2 text-fl-cream/55 hover:underline">Отмена</button>
+                    </td>
+                  </tr>
+                ) : (
                   <tr key={t.id} className="border-t border-fl-line align-top">
+                    <td className="py-2"><input type="checkbox" aria-label="Отметить операцию" checked={picked.has(t.id)} onChange={() => toggle(t.id)} className="accent-fl-gold" /></td>
                     <td className="py-2 pr-3 whitespace-nowrap text-fl-cream/70">
                       {new Date(t.txDate).toLocaleDateString("ru-RU")}
                     </td>
@@ -184,6 +265,10 @@ export default function TransactionsPage() {
                       >
                         {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
+                    </td>
+                    <td className="whitespace-nowrap py-2 text-right text-xs">
+                      <button onClick={() => setEdit({ id: t.id, txDate: t.txDate.slice(0, 10), amount: String(t.amount).replace(".", ","), description: t.description })} className="text-fl-cream/50 hover:text-fl-gold hover:underline">Изменить</button>
+                      <button onClick={() => removeRows({ ids: [t.id] }, "эту операцию")} className="ml-2 text-fl-cream/40 hover:text-fl-red hover:underline">Удалить</button>
                     </td>
                   </tr>
                 ))}
