@@ -30,7 +30,7 @@ const STATEMENT_FILES = ["lib/balance-sheet.ts", "lib/cash-flow.ts", "lib/equity
 /** Lists of labels that are passed to t() as variables. */
 export function listKeys(): string[] {
   const out: string[] = [];
-  for (const g of NAV_GROUPS) { out.push(g.title); for (const l of g.links) out.push(l.label, l.desc); }
+  for (const g of NAV_GROUPS) { out.push(g.title); for (const l of g.links) out.push(l.label, l.desc, ...(l.section ? [l.section] : [])); }
   for (const l of [...NAV_ACTIONS, HOME_LINK]) out.push(l.label, l.desc);
   out.push(...Object.values(KIND_LABEL), ...Object.values(VAT_LABEL), ...Object.values(DOC_LABEL));
   for (const m of Object.values(PAYMENT_LABEL)) out.push(...Object.values(m));

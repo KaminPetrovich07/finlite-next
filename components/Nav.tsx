@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FeedbackDialog } from "@/components/auth/FeedbackDialog";
 import { UserMenu } from "@/components/auth/UserMenu";
-import { ALL_LINKS, HOME_LINK, isActive, NAV_GROUPS, type NavLink } from "@/lib/nav";
+import { ALL_LINKS, HOME_LINK, isActive, NAV_GROUPS, navSections, type NavLink } from "@/lib/nav";
 import { openSearch } from "@/components/CommandPalette";
 import { LangSwitch, useT } from "@/components/i18n";
 
@@ -59,11 +59,7 @@ export function Nav() {
                     <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
-                {open === g.title && (
-                  <div role="menu" className="absolute left-0 top-10 z-40 w-80 overflow-hidden rounded-xl border border-fl-line bg-fl-charcoal-2 p-1.5 shadow-lift">
-                    {g.links.map((l) => <MenuLink key={l.href} l={l} active={isActive(l.href, path)} />)}
-                  </div>
-                )}
+                {open === g.title && <MenuPanel links={g.links} path={path} />}
               </div>
             );
           })}
@@ -120,12 +116,17 @@ export function Nav() {
           {NAV_GROUPS.map((g) => (
             <div key={g.title} className="pt-3">
               <p className="label-caps px-2 pb-1.5">{t(g.title)}</p>
-              <div className="grid grid-cols-2 gap-1">
-                {g.links.map((l) => (
-                  <a key={l.href} href={l.href} aria-current={isActive(l.href, path) ? "page" : undefined}
-                    className={`rounded-lg px-3 py-2.5 text-sm leading-tight ${isActive(l.href, path) ? "bg-fl-gold/15 font-semibold text-fl-cream" : "bg-fl-surface-2/60 text-fl-cream/85 hover:bg-fl-surface-2"}`}>{t(l.label)}</a>
-                ))}
-              </div>
+              {navSections(g.links).map((sec) => (
+                <div key={sec.title ?? "_"} className="pb-1">
+                  {sec.title && <p className="px-2 pb-1 pt-1 text-[11px] text-fl-cream/45">{t(sec.title)}</p>}
+                  <div className="grid grid-cols-2 gap-1">
+                    {sec.links.map((l) => (
+                      <a key={l.href} href={l.href} aria-current={isActive(l.href, path) ? "page" : undefined}
+                        className={`rounded-lg px-3 py-2.5 text-sm leading-tight ${isActive(l.href, path) ? "bg-fl-gold/15 font-semibold text-fl-cream" : "bg-fl-surface-2/60 text-fl-cream/85 hover:bg-fl-surface-2"}`}>{t(l.label)}</a>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
           <button onClick={() => { setMobile(false); setFeedback(true); }} className="mt-4 w-full rounded-lg border border-fl-line px-3 py-2.5 text-left text-sm text-fl-cream/80">
@@ -135,6 +136,39 @@ export function Nav() {
       )}
       <FeedbackDialog open={feedback} onClose={() => setFeedback(false)} />
     </nav>
+  );
+}
+
+/**
+ * Выпадающее меню группы. Короткая группа — колонка под кнопкой; длинная — широкая панель по центру
+ * в 2–3 колонки (по разделам, если они заданы). Панель не выше экрана и прокручивается сама.
+ */
+function MenuPanel({ links, path }: { links: NavLink[]; path: string | null }) {
+  const t = useT();
+  const sections = navSections(links);
+  const titled = sections.some((s) => s.title);
+  const wide = titled || links.length > 6;
+  const box = "z-40 overflow-y-auto overscroll-contain rounded-xl border border-fl-line bg-fl-charcoal-2 p-1.5 shadow-lift";
+  if (!wide) {
+    return (
+      <div role="menu" className={`absolute left-0 top-10 w-80 max-h-[calc(100vh-5rem)] ${box}`}>
+        {links.map((l) => <MenuLink key={l.href} l={l} active={isActive(l.href, path)} />)}
+      </div>
+    );
+  }
+  // без разделов — делим поровну на две колонки
+  const cols = titled ? sections : [{ title: null, links: links.slice(0, Math.ceil(links.length / 2)) }, { title: null, links: links.slice(Math.ceil(links.length / 2)) }];
+  return (
+    <div role="menu" className={`fixed left-1/2 top-[3.6rem] -translate-x-1/2 max-h-[calc(100vh-4.5rem)] ${cols.length > 2 ? "w-[min(96vw,60rem)]" : "w-[min(94vw,42rem)]"} ${box}`}>
+      <div className={`grid gap-x-1 gap-y-2 ${cols.length > 2 ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2"}`}>
+        {cols.map((c, i) => (
+          <div key={c.title ?? i}>
+            {c.title && <p className="label-caps px-3 pb-1 pt-2">{t(c.title)}</p>}
+            {c.links.map((l) => <MenuLink key={l.href} l={l} active={isActive(l.href, path)} />)}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
