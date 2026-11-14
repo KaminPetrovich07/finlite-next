@@ -16,8 +16,14 @@ export const LANG_COOKIE = "fl_lang";
 
 export const isLang = (v: unknown): v is Lang => v === "ru" || v === "ky";
 
+/** Строки с числами, которых нет в словаре целиком: периоды отчётов. */
+const KY_PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
+  [/^(\d) квартал (\d{4})$/i, (m) => `${m[2]}-ж. ${m[1]}-чейрек`],
+  [/^(\d{4}) год$/i, (m) => `${m[1]}-жыл`],
+];
+
 export function translate(lang: Lang, ru: string, vars?: Record<string, string | number>): string {
-  let s = lang === "ky" ? KY[ru] ?? ru : ru;
+  let s = lang === "ky" ? KY[ru] ?? KY_PATTERNS.reduce<string | null>((acc, [re, f]) => acc ?? (ru.match(re) ? f(ru.match(re)!) : null), null) ?? ru : ru;
   if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
   return s;
 }

@@ -344,7 +344,7 @@ export default function LedgerPage() {
           )}
           <div>
             <h2 className="mb-2 font-display text-lg font-semibold text-fl-cream">
-              {t("Операции за {p}", { p: periodLabel(period.from, period.to).toLowerCase() })}
+              {t("Операции за {p}", { p: t(periodLabel(period.from, period.to)).toLowerCase() })}
               <span className="ml-2 font-body text-sm font-normal text-fl-cream/45">{inPeriod.length}</span>
               {!readOnly && !isDemo && inPeriod.some((e) => !isLocked(e)) && (
                 <button onClick={() => { const open = inPeriod.filter((e) => !isLocked(e)).map((e) => e.id); setPicked(open.every((id) => picked.has(id)) ? new Set() : new Set(open)); }}

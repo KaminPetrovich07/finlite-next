@@ -70,6 +70,8 @@ export interface OfficialDoc {
   org?: string;
   landscape?: boolean;
   blocks: DocBlock[];
+  /** язык подписей под строками подписи и нумерации страниц (по умолчанию русский) */
+  lang?: "ru" | "ky";
 }
 
 /** «12 345,67» — money in documents (always two decimals). */

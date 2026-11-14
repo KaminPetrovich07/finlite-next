@@ -6,6 +6,8 @@ import { loadPrimaryCtx } from "@/lib/primary/context";
 import { buildEntryDoc, buildRegister } from "@/lib/primary/build";
 import { DOC_INFO, numberDocs, REGISTER_INFO, type DocKind, type RegisterKind } from "@/lib/primary/detect";
 import type { DocBlock } from "@/lib/docs/model";
+import { requestLang } from "@/lib/i18n/server";
+import { docToKyrgyz } from "@/lib/i18n/docs-ky";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -55,5 +57,8 @@ export const POST = route(async (req: NextRequest) => {
   }
   await logActivity("primary_export", c.demo ? null : companyId, { format, count: items.length });
   const fileName = items.length === 1 ? `${names[0]} — ${c.companyName}` : `Первичные документы — ${c.companyName} — ${from}…${to}`;
-  return sendDoc({ title: fileName, fileName, org: c.companyName, blocks }, format);
+  const doc = { title: fileName, fileName, org: c.companyName, blocks };
+  // товарные документы печатаются на кыргызском, если интерфейс переключён на «КЫ»; остальные формы — пока по-русски
+  const kyReady = items.every((it) => ["waybill", "invoice", "act", "m4"].includes(it.kind));
+  return sendDoc(kyReady && (await requestLang()) === "ky" ? docToKyrgyz(doc) : doc, format);
 });

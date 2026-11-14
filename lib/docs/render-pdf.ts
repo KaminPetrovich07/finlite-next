@@ -4,6 +4,13 @@ import PdfPrinter from "pdfmake";
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import { placeHeads, type Align, type DocBlock, type OfficialDoc } from "./model";
 
+// подписи под строками и номера страниц на языке документа (задаются в начале отрисовки)
+const LABELS = {
+  ru: { sign: "(подпись)", name: "(Ф.И.О.)", page: "стр. ", pageOf: (p: number, n: number) => `стр. ${p} из ${n}` },
+  ky: { sign: "(колу)", name: "(аты-жөнү)", page: "бет ", pageOf: (p: number, n: number) => `${n} беттин ${p}-бети` },
+};
+let L = LABELS.ru;
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const vfs: Record<string, string> = require("pdfmake/build/vfs_fonts");
 const font = (name: string) => Buffer.from(vfs[name], "base64");
@@ -88,8 +95,8 @@ function blocks(list: DocBlock[]): Content[] {
           out.push({
             columns: [
               { width: 170, text: s.role },
-              { width: 110, stack: [{ text: "______________" }, { text: "(подпись)", fontSize: 7, italics: true, margin: [16, 0, 0, 0] }] },
-              { width: "*", stack: [{ text: s.name || "________________________" }, { text: "(Ф.И.О.)", fontSize: 7, italics: true, margin: [16, 0, 0, 0] }] },
+              { width: 110, stack: [{ text: "______________" }, { text: L.sign, fontSize: 7, italics: true, margin: [16, 0, 0, 0] }] },
+              { width: "*", stack: [{ text: s.name || "________________________" }, { text: L.name, fontSize: 7, italics: true, margin: [16, 0, 0, 0] }] },
             ],
             margin: [0, 10, 0, 0],
           });
@@ -117,6 +124,8 @@ function blocks(list: DocBlock[]): Content[] {
 }
 
 export async function renderOfficialPdf(doc: OfficialDoc): Promise<Buffer> {
+  L = LABELS[doc.lang ?? "ru"];
+  const lbl = L;
   const def: TDocumentDefinitions = {
     pageSize: "A4",
     pageOrientation: doc.landscape ? "landscape" : "portrait",
@@ -124,7 +133,7 @@ export async function renderOfficialPdf(doc: OfficialDoc): Promise<Buffer> {
     info: { title: doc.title, author: "FinLite KG" },
     defaultStyle: { font: "Roboto", fontSize: BASE, lineHeight: 1.2 },
     header: doc.org ? () => ({ text: doc.org!, fontSize: 7, italics: true, color: "#555555", margin: [56, 20, 40, 0] }) : undefined,
-    footer: (page, count) => ({ text: `стр. ${page} из ${count}`, fontSize: 7, color: "#555555", alignment: "right", margin: [56, 16, 40, 0] }),
+    footer: (page, count) => ({ text: lbl.pageOf(page, count), fontSize: 7, color: "#555555", alignment: "right", margin: [56, 16, 40, 0] }),
     pageBreakBefore: (node, following) => !!(node as { headlineLevel?: number }).headlineLevel && following.length === 0,
     content: blocks(doc.blocks),
   };

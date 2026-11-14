@@ -17,6 +17,7 @@ import { REGIME_INFO, REGIMES, type RegimeKey } from "@/lib/tax-engine";
 import { Dashboard } from "@/components/ledger/Dashboard";
 import { formatNumber } from "@/lib/format";
 import { useToast } from "@/components/Toast";
+import { useT } from "@/components/i18n";
 
 interface Payload {
   company: { id: string; name: string; regime: RegimeKey | null; patentAmount: number };
@@ -45,6 +46,7 @@ function currentMonth() {
 }
 
 export default function ReportsPage() {
+  const t = useT();
   const { companies, companyId, setCompanyId, company, loaded } = useCompanies();
   const [period, setPeriodState] = useState<{ from: string; to: string } | null>(null);
   const setPeriod = useCallback((p: { from: string; to: string }) => {
@@ -82,7 +84,7 @@ export default function ReportsPage() {
     try {
       const res = await fetch(`/api/statements?${qs}`);
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Не удалось построить отчётность");
+      if (!res.ok) throw new Error(t(body.error ?? "Не удалось построить отчётность"));
       setData(body);
     } catch (e: any) {
       setError(e.message);
@@ -100,8 +102,8 @@ export default function ReportsPage() {
     const res = await fetch(`/api/companies/${data.company.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ defaultRegime: regime }),
     });
-    if (!res.ok) { toast.show("Не удалось сохранить режим", "error"); return; }
-    toast.show("Режим сохранён. Пересчитайте налоги за период", "info");
+    if (!res.ok) { toast.show(t("Не удалось сохранить режим"), "error"); return; }
+    toast.show(t("Режим сохранён. Пересчитайте налоги за период"), "info");
     load();
   }
 
@@ -115,10 +117,10 @@ export default function ReportsPage() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error);
-      toast.show(`Налоги начислены: ${formatNumber(body.accrual.total, 0)} сом`);
+      toast.show(t("Налоги начислены: {s} сом", { s: formatNumber(body.accrual.total, 0) }));
       await load();
     } catch (e: any) {
-      toast.show(e.message ?? "Ошибка начисления", "error");
+      toast.show(t(e.message ?? "Ошибка начисления"), "error");
     } finally {
       setPosting(false);
     }
@@ -136,12 +138,12 @@ export default function ReportsPage() {
   function onCheck(c: Check) {
     if (c.id === "bank") { window.location.href = "/transactions"; return; }
     if (c.id === "suspense") {
-      setDrill({ title: "Невыясненные суммы", subtitle: "Счета 1595 и 3615", accounts: ["1595", "3615"] });
+      setDrill({ title: t("Невыясненные суммы"), subtitle: t("Счета 1595 и 3615"), accounts: ["1595", "3615"] });
       return;
     }
-    const t = CHECK_TAB[c.id];
-    if (t) {
-      setTab(t);
+    const tab0 = CHECK_TAB[c.id];
+    if (tab0) {
+      setTab(tab0);
       document.getElementById("statement")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
@@ -157,56 +159,56 @@ export default function ReportsPage() {
   return (
     <main className="mx-auto max-w-6xl px-4 pb-24 pt-6 sm:px-6 sm:pt-8">
       {/* controls */}
-      <section aria-label="Компания и период" className="mb-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+      <section aria-label={t("Компания и период")} className="mb-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
         <label className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55 lg:min-w-[240px]">
-          Компания
+          {t("Компания")}
           <select
             value={companyId}
             onChange={(e) => { setCompanyId(e.target.value); setRegimeOverride(null); }}
             className={field}
           >
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.access === "view" && !c.demo ? " · просмотр" : ""}</option>)}
-            <option value={NEW_COMPANY}>+ Добавить компанию…</option>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.access === "view" && !c.demo ? ` · ${t("просмотр")}` : ""}</option>)}
+            <option value={NEW_COMPANY}>{t("+ Добавить компанию…")}</option>
           </select>
         </label>
         <div className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55">
-          Период
+          {t("Период")}
           {period && <PeriodPicker key={pickerKey} from={period.from} to={period.to} onChange={setPeriod} />}
         </div>
         <label className="flex flex-col gap-1 text-xs font-medium text-fl-cream/55 lg:ml-auto lg:w-[330px]">
-          Налоговый режим
+          {t("Налоговый режим")}
           <select
             value={data?.company.regime ?? ""}
             onChange={(e) => changeRegime(e.target.value)}
             disabled={!data}
             className={field}
           >
-            <option value="" disabled>Не выбран</option>
-            {(Object.keys(REGIMES) as RegimeKey[]).map((k) => <option key={k} value={k}>{REGIMES[k]}</option>)}
+            <option value="" disabled>{t("Не выбран")}</option>
+            {(Object.keys(REGIMES) as RegimeKey[]).map((k) => <option key={k} value={k}>{t(REGIMES[k])}</option>)}
           </select>
         </label>
       </section>
 
       {error && <div className="mb-5"><Notice>{error}</Notice></div>}
-      {!s && loading && <p className="text-sm text-fl-cream/50">Строю отчётность…</p>}
+      {!s && loading && <p className="text-sm text-fl-cream/50">{t("Строю отчётность…")}</p>}
 
       {s && data && period && (
         <div className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
           {/* hero */}
-          <section aria-label="Итоги периода" className="overflow-hidden rounded-2xl border border-fl-line bg-fl-charcoal-2 shadow-card">
+          <section aria-label={t("Итоги периода")} className="overflow-hidden rounded-2xl border border-fl-line bg-fl-charcoal-2 shadow-card">
             <div className="flex flex-col gap-6 p-5 sm:p-7 md:flex-row md:items-center">
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-fl-cream/60">
-                  {data.company.name} · {periodLabel(period.from, period.to)}
+                  {data.company.name} · {t(periodLabel(period.from, period.to))}
                 </p>
-                <p className="mt-3 text-sm font-medium text-fl-cream/70">Чистая прибыль</p>
+                <p className="mt-3 text-sm font-medium text-fl-cream/70">{t("Чистая прибыль")}</p>
                 <p className={`mt-1 text-5xl font-semibold tracking-tight sm:text-6xl ${s.incomeStatement.netProfit < 0 ? "text-fl-red" : "text-fl-cream"}`}>
                   {formatNumber(s.incomeStatement.netProfit, 0)}
-                  <span className="ml-2 text-xl font-normal text-fl-cream/45">сом</span>
+                  <span className="ml-2 text-xl font-normal text-fl-cream/45">{t("сом")}</span>
                 </p>
                 <p className="mt-2 text-sm text-fl-cream/60">
-                  {s.incomeStatement.margin.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% от чистой выручки
-                  {data.company.regime && <> · {REGIME_INFO[data.company.regime].short}</>}
+                  {t("{p}% от чистой выручки", { p: s.incomeStatement.margin.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) })}
+                  {data.company.regime && <> · {t(REGIME_INFO[data.company.regime].short)}</>}
                 </p>
               </div>
               <button
@@ -216,23 +218,22 @@ export default function ReportsPage() {
                 <Seal ok={okChecks} total={s.checks.length} error={anyError} />
                 <span>
                   <span className="block text-sm font-semibold text-fl-cream">
-                    {okChecks === s.checks.length ? "Отчётность сходится" : anyError ? "Есть расхождения" : "Есть замечания"}
+                    {okChecks === s.checks.length ? t("Отчётность сходится") : anyError ? t("Есть расхождения") : t("Есть замечания")}
                   </span>
-                  <span className="block text-xs text-fl-cream/55">{okChecks} из {s.checks.length} сверок · подробнее</span>
+                  <span className="block text-xs text-fl-cream/55">{t("{a} из {b} сверок · подробнее", { a: okChecks, b: s.checks.length })}</span>
                 </span>
               </button>
             </div>
             <div className="grid grid-cols-1 border-t border-fl-line sm:grid-cols-3">
-              <Figure label="Чистая выручка" value={s.incomeStatement.netRevenue} note={s.incomeStatement.byLine.otherOpIncome ? `и прочие доходы ${formatNumber(s.incomeStatement.byLine.otherOpIncome, 0)}` : "за период"} />
-              <Figure label="Деньги на конец периода" value={cashEnd} note="касса и банк" border />
-              <Figure label="Налоги начислены" value={s.taxes.posted} note={s.taxes.computed ? `расчёт по режиму ${formatNumber(s.taxes.computed.total, 0)}` : "режим не выбран"} border />
+              <Figure label={t("Чистая выручка")} value={s.incomeStatement.netRevenue} note={s.incomeStatement.byLine.otherOpIncome ? t("и прочие доходы {s}", { s: formatNumber(s.incomeStatement.byLine.otherOpIncome, 0) }) : t("за период")} />
+              <Figure label={t("Деньги на конец периода")} value={cashEnd} note={t("касса и банк")} border />
+              <Figure label={t("Налоги начислены")} value={s.taxes.posted} note={s.taxes.computed ? t("расчёт по режиму {s}", { s: formatNumber(s.taxes.computed.total, 0) }) : t("режим не выбран")} border />
             </div>
           </section>
 
           {data.demo && (
             <Notice>
-              Демо-компания: мебельное производство на едином налоге, III квартал 2026. Изменить её нельзя — чтобы
-              попробовать на своих данных, создайте копию в «Журнале».
+              {t("Демо-компания: мебельное производство на едином налоге, III квартал 2026. Изменить её нельзя — чтобы попробовать на своих данных, создайте копию в «Журнале».")}
             </Notice>
           )}
 
@@ -245,18 +246,18 @@ export default function ReportsPage() {
           {/* statements */}
           <section id="statement" className="scroll-mt-20">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-fl-line">
-              <div role="tablist" aria-label="Формы отчётности" className="-mb-px flex gap-1 overflow-x-auto">
-                {TABS.map((t) => (
+              <div role="tablist" aria-label={t("Формы отчётности")} className="-mb-px flex gap-1 overflow-x-auto">
+                {TABS.map((tb) => (
                   <button
-                    key={t.key}
+                    key={tb.key}
                     role="tab"
-                    aria-selected={tab === t.key}
-                    onClick={() => setTab(t.key)}
+                    aria-selected={tab === tb.key}
+                    onClick={() => setTab(tb.key)}
                     className={`whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors ${
-                      tab === t.key ? "border-fl-accent text-fl-cream" : "border-transparent text-fl-cream/55 hover:text-fl-cream"
+                      tab === tb.key ? "border-fl-accent text-fl-cream" : "border-transparent text-fl-cream/55 hover:text-fl-cream"
                     }`}
                   >
-                    {t.label}
+                    {t(tb.label)}
                   </button>
                 ))}
               </div>
@@ -264,12 +265,12 @@ export default function ReportsPage() {
                 href={`/packages?companyId=${encodeURIComponent(companyId)}&from=${period.from}&to=${period.to}`}
                 className="mb-2 rounded-lg bg-fl-accent px-3.5 py-2 text-sm font-semibold text-fl-on-accent shadow-card hover:bg-fl-accent-hover"
               >
-                Скачать отчёты
+                {t("Скачать отчёты")}
               </a>
             </div>
             <h2 className="mb-3 font-display text-xl font-semibold text-fl-cream">
-              {tabInfo.full}
-              <span className="ml-2 font-body text-sm font-normal text-fl-cream/45">{periodLabel(period.from, period.to)}</span>
+              {t(tabInfo.full)}
+              <span className="ml-2 font-body text-sm font-normal text-fl-cream/45">{t(periodLabel(period.from, period.to))}</span>
             </h2>
 
             {tab === "tb" && <TrialBalanceTable s={s} onDrill={setDrill} onGoto={setTab} />}
@@ -286,7 +287,7 @@ export default function ReportsPage() {
 
       <Drawer open={!!drill} title={drill?.title ?? ""} subtitle={drill?.subtitle} onClose={closeDrill}>
         {drillEntries.length === 0 ? (
-          <p className="text-sm text-fl-cream/50">За период нет проводок по этой строке — сумма сложилась из начальных остатков.</p>
+          <p className="text-sm text-fl-cream/50">{t("За период нет проводок по этой строке — сумма сложилась из начальных остатков.")}</p>
         ) : (
           drillEntries.map((e) => <EntryCard key={e.id} entry={e} highlight={drill?.accounts} />)
         )}
@@ -318,12 +319,13 @@ function Seal({ ok, total, error }: { ok: number; total: number; error: boolean 
 }
 
 function Figure({ label, value, note, border }: { label: string; value: number; note?: string; border?: boolean }) {
+  const t = useT();
   return (
     <div className={`px-5 py-4 sm:px-7 ${border ? "border-t border-fl-line sm:border-l sm:border-t-0" : ""}`}>
       <p className="text-xs font-medium text-fl-cream/55">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-fl-cream">
         {formatNumber(value, 0)}
-        <span className="ml-1 text-sm font-normal text-fl-cream/45">сом</span>
+        <span className="ml-1 text-sm font-normal text-fl-cream/45">{t("сом")}</span>
       </p>
       {note && <p className="mt-0.5 text-xs text-fl-cream/50">{note}</p>}
     </div>

@@ -12,26 +12,29 @@ import type { Statements } from "@/lib/ledger/engine";
 import { costStructure, ratios, ratioStatus, type Ratio } from "@/lib/ledger/analytics";
 import { CHART, compactSom, monthShort } from "@/lib/chart-theme";
 import { formatNumber } from "@/lib/format";
+import { useT } from "@/components/i18n";
 
 const tick = { fill: CHART.axis, fontSize: 12 };
 
 function Card({ title, sub, children, className = "", info }: { title: string; sub?: string; children: React.ReactNode; className?: string; info?: string }) {
+  const t = useT();
   return (
     <section className={`rounded-xl border border-fl-line bg-fl-charcoal-2 p-4 shadow-card sm:p-5 ${className}`}>
       <h3 className="font-display text-[15px] font-semibold text-fl-cream">{title}{info && <Info k={info} label={title} />}</h3>
-      {sub && <p className="mt-0.5 text-xs text-fl-cream/50">{sub}</p>}
+      {sub && <p className="mt-0.5 text-xs text-fl-cream/50">{t(sub)}</p>}
       <div className="mt-3">{children}</div>
     </section>
   );
 }
 
 function Legend({ items }: { items: Array<{ color: string; label: string; line?: boolean }> }) {
+  const t = useT();
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-fl-cream/65">
       {items.map((i) => (
         <li key={i.label} className="flex items-center gap-1.5">
           <span aria-hidden className={i.line ? "h-0.5 w-4 rounded" : "h-2.5 w-2.5 rounded-sm"} style={{ background: i.color }} />
-          {i.label}
+          {t(i.label)}
         </li>
       ))}
     </ul>
@@ -39,14 +42,15 @@ function Legend({ items }: { items: Array<{ color: string; label: string; line?:
 }
 
 function SomTooltip({ active, payload, label }: any) {
+  const t = useT();
   if (!active || !payload?.length) return null;
   return (
     <div style={CHART.tooltip} className="px-3 py-2">
-      <p className="mb-1 font-medium">{label}</p>
+      <p className="mb-1 font-medium">{typeof label === "string" ? t(label) : label}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-sm" style={{ background: p.color ?? p.stroke }} />
-          <span className="opacity-70">{p.name}</span>
+          <span className="opacity-70">{t(p.name)}</span>
           <span className="num ml-auto pl-3 font-medium">{formatNumber(p.value, 0)}</span>
         </p>
       ))}
@@ -55,6 +59,7 @@ function SomTooltip({ active, payload, label }: any) {
 }
 
 export function Dashboard({ s }: { s: Statements }) {
+  const t = useT();
   const monthly = s.monthly.map((m) => ({ ...m, label: monthShort(m.month) }));
   const costs = costStructure(s).slice(0, 7);
   const r = ratios(s);
@@ -65,7 +70,7 @@ export function Dashboard({ s }: { s: Statements }) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       <Card
-        title="Доходы, расходы и прибыль по месяцам"
+        title={t("Доходы, расходы и прибыль по месяцам")}
         info="kpi:monthly"
         sub={hasTrend ? "Сом, по проводкам периода" : "Выберите квартал или год, чтобы увидеть динамику"}
         className="lg:col-span-7"
@@ -102,7 +107,7 @@ export function Dashboard({ s }: { s: Statements }) {
         )}
       </Card>
 
-      <Card title="Остаток денег" info="kpi:cashSeries" sub="Касса и банк на конец месяца, сом" className="lg:col-span-5">
+      <Card title={t("Остаток денег")} info="kpi:cashSeries" sub="Касса и банк на конец месяца, сом" className="lg:col-span-5">
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={cashSeries} margin={{ top: 16, right: 24, left: 0, bottom: 0 }}>
@@ -119,15 +124,15 @@ export function Dashboard({ s }: { s: Statements }) {
         </div>
       </Card>
 
-      <Card title="Структура расходов" info="kpi:costs" sub="По элементам затрат, сом" className="lg:col-span-7">
+      <Card title={t("Структура расходов")} info="kpi:costs" sub="По элементам затрат, сом" className="lg:col-span-7">
         {costs.length === 0 ? (
-          <p className="py-8 text-sm text-fl-cream/50">Расходов за период нет.</p>
+          <p className="py-8 text-sm text-fl-cream/50">{t("Расходов за период нет.")}</p>
         ) : (
           <div style={{ height: costs.length * 36 + 8 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={costs} layout="vertical" margin={{ top: 0, right: 96, left: 0, bottom: 0 }} barCategoryGap={8}>
                 <XAxis type="number" hide />
-                <YAxis type="category" dataKey="label" width={190} tick={{ ...tick, fill: "rgb(var(--c-ink) / 0.75)" }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="label" width={190} tick={{ ...tick, fill: "rgb(var(--c-ink) / 0.75)" }} tickFormatter={(v: string) => t(v)} axisLine={false} tickLine={false} />
                 <Tooltip content={<SomTooltip />} cursor={{ fill: "rgb(var(--c-ink) / 0.04)" }} />
                 <Bar dataKey="amount" name="Сумма" fill={CHART.s1} radius={[0, 4, 4, 0]} maxBarSize={20}>
                   <LabelList
@@ -146,7 +151,7 @@ export function Dashboard({ s }: { s: Statements }) {
         )}
       </Card>
 
-      <Card title="Ключевые коэффициенты" sub="На конец периода" className="lg:col-span-5">
+      <Card title={t("Ключевые коэффициенты")} sub="На конец периода" className="lg:col-span-5">
         <RatioList items={r.filter((x) => ["current", "autonomy", "ros", "gross", "dso", "coverage"].includes(x.key))} />
       </Card>
     </div>
@@ -166,9 +171,10 @@ function EndLabel(lastIndex: number) {
 }
 
 function Mini({ label, value }: { label: string; value: number }) {
+  const t = useT();
   return (
     <div>
-      <p className="text-xs text-fl-cream/50">{label}</p>
+      <p className="text-xs text-fl-cream/50">{t(label)}</p>
       <p className="mt-1 text-lg font-semibold text-fl-cream">{formatNumber(value, 0)}</p>
     </div>
   );
@@ -188,16 +194,17 @@ export function formatRatio(r: Ratio): string {
 }
 
 export function RatioList({ items }: { items: Ratio[] }) {
+  const t = useT();
   return (
     <ul className="divide-y divide-fl-line">
       {items.map((r) => {
         const st = ratioStatus(r);
         return (
           <li key={r.key} className="flex items-center gap-3 py-2.5">
-            <span className="min-w-0 flex-1 text-sm text-fl-cream/80">{r.label}<Info k={`ratio:${r.key}`} label={r.label} /></span>
+            <span className="min-w-0 flex-1 text-sm text-fl-cream/80">{t(r.label)}<Info k={`ratio:${r.key}`} label={t(r.label)} /></span>
             <span className="num text-sm font-semibold text-fl-cream">{formatRatio(r)}</span>
             <span className={`hidden whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline ${STATUS_STYLE[st]}`}>
-              {STATUS_WORD[st]}
+              {t(STATUS_WORD[st])}
             </span>
           </li>
         );

@@ -6,6 +6,13 @@ import {
 } from "docx";
 import { placeHeads, type Align, type DocBlock, type OfficialDoc } from "./model";
 
+// подписи под строками и номера страниц на языке документа (задаются в начале отрисовки)
+const LABELS = {
+  ru: { sign: "(подпись)", name: "(Ф.И.О.)", page: "стр. ", pageOf: (p: number, n: number) => `стр. ${p} из ${n}` },
+  ky: { sign: "(колу)", name: "(аты-жөнү)", page: "бет ", pageOf: (p: number, n: number) => `${n} беттин ${p}-бети` },
+};
+let L = LABELS.ru;
+
 const FONT = "Times New Roman";
 const BASE = 24; // half-points → 12 pt
 const SMALL = 18;
@@ -114,7 +121,7 @@ function blocks(list: DocBlock[]): Array<Paragraph | Table> {
           }));
           out.push(new Paragraph({
             tabStops: [{ type: TabStopType.LEFT, position: 4100 }, { type: TabStopType.LEFT, position: 6800 }],
-            children: [run("\t(подпись)", { size: 16, italics: true }), run("\t(Ф.И.О.)", { size: 16, italics: true })],
+            children: [run(`\t${L.sign}`, { size: 16, italics: true }), run(`\t${L.name}`, { size: 16, italics: true })],
           }));
         }
         break;
@@ -146,6 +153,7 @@ function blocks(list: DocBlock[]): Array<Paragraph | Table> {
 }
 
 export async function renderOfficialDocx(doc: OfficialDoc): Promise<Buffer> {
+  L = LABELS[doc.lang ?? "ru"];
   const d = new Document({
     creator: "FinLite KG",
     title: doc.title,
@@ -163,7 +171,7 @@ export async function renderOfficialDocx(doc: OfficialDoc): Promise<Buffer> {
           children: [new Paragraph({
             alignment: AlignmentType.RIGHT,
             tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
-            children: [new TextRun({ font: FONT, size: 16, children: ["стр. ", PageNumber.CURRENT] })],
+            children: [new TextRun({ font: FONT, size: 16, children: [L.page, PageNumber.CURRENT] })],
           })],
         }),
       },

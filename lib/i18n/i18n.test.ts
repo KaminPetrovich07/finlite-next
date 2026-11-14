@@ -34,3 +34,9 @@ test("план счетов: у каждого счёта есть кыргыз�
   assert.equal(ACCOUNTS_KY["3430"], "Төлөнүүчү КНС");
   assert.ok(Object.keys(ACCOUNTS_KY).every((c) => ACCOUNTS.some((a) => a.code === c)), "лишних кодов нет");
 });
+
+test("периоды отчётов по-кыргызски", () => {
+  assert.equal(translate("ky", "3 квартал 2026"), "2026-ж. 3-чейрек");
+  assert.equal(translate("ky", "2026 год"), "2026-жыл");
+  assert.equal(translate("ru", "3 квартал 2026"), "3 квартал 2026");
+});

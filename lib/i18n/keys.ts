@@ -10,7 +10,8 @@ import { SOURCE_LABEL } from "@/lib/ledger/types";
 import { SOURCE_NOTE } from "@/lib/ledger/source-note";
 import { PLANS } from "@/lib/plans";
 import { ALL_CATEGORIES } from "@/lib/categories";
-import { REGIME_INFO } from "@/lib/tax-engine";
+import { REGIME_INFO, REGIMES } from "@/lib/tax-engine";
+import { NATURE_LABEL } from "@/lib/ledger/accounts";
 
 /** Files whose t("…") literals are checked. */
 export const TRANSLATED_FILES = [
@@ -20,7 +21,11 @@ export const TRANSLATED_FILES = [
   "app/ledger/page.tsx", "app/trade/page.tsx", "app/nomenclature/page.tsx",
   "app/companies/page.tsx", "app/transactions/page.tsx", "app/inventory/page.tsx",
   "components/ledger/Trash.tsx", "components/ledger/AccountPicker.tsx", "components/AccountView.tsx",
+  "components/ledger/statements.tsx", "app/reports/page.tsx", "components/ledger/Dashboard.tsx",
 ];
+
+/** Строки отчётов: статьи баланса, ОПиУ, ОДДС, отчёта о капитале и названия сверок. */
+const STATEMENT_FILES = ["lib/balance-sheet.ts", "lib/cash-flow.ts", "lib/equity.ts", "lib/ledger/engine.ts", "lib/ledger/analytics.ts"];
 
 /** Lists of labels that are passed to t() as variables. */
 export function listKeys(): string[] {
@@ -32,10 +37,18 @@ export function listKeys(): string[] {
   out.push(...Object.values(SOURCE_LABEL), ...Object.values(SOURCE_NOTE));
   out.push(...Object.values(PLANS).map((p) => p.name));
   out.push("Недавние", "Действия", "Найдено", "Месяц", "Квартал", "Год", "Свой период");
-  out.push(...ALL_CATEGORIES, ...Object.values(REGIME_INFO).map((r) => r.short));
+  out.push(...ALL_CATEGORIES, ...Object.values(REGIME_INFO).map((r) => r.short), ...Object.values(REGIMES), ...Object.values(NATURE_LABEL));
   out.push("МБанк", "Бакай Банк", "Элдик Банк", "Другой банк", "Выписка", "Дт", "Кт");
   out.push("Статьи МСФО", "План счетов", "Названия статей по МСФО, без кодов счетов", "Коды и названия по плану счетов КР (Пост. № 231)");
   // склад: заголовки таблиц
+  out.push("сходится", "внимание", "не сходится", "→ Капитал, стр. 080", "→ Баланс, стр. 530", "→ Налоги", "→ ОДДС, стр. 710", "← Налоги", "← ОПиУ, чистая прибыль",
+    "= Капитал, стр. 120", "= Баланс, стр. 110 + 120", "= ОПиУ", "= Баланс, стр. 541", "→ ОПиУ", "→ Баланс, стр. 340", "Показать пустые строки",
+    "Нажмите на строку, чтобы увидеть проводки за период.",
+    "Прибыль текущего периода показана в стр. 530 без закрывающих проводок — счета 6000–9900 закрываются на неё виртуально, пока период не закрыт проводкой через 5999.",
+    "Прямой метод: каждая денежная проводка разнесена по корреспондирующему счёту. Перемещения между кассой и банком не считаются потоком.",
+    "Уставный капитал — счета 5100; прочий капитал — 5200 и резервный 5400; нераспределённая прибыль — 5300, 5999 и незакрытая прибыль периода.");
+  out.push("Доходы", "Расходы", "Прибыль", "Остаток", "в норме", "обратить внимание", "для справки", "Сом, по проводкам периода",
+    "Выберите квартал или год, чтобы увидеть динамику", "Касса и банк на конец месяца, сом", "По элементам затрат, сом", "На конец периода");
   out.push("Номенклатура", "Продано", "На остатке", "Цена за ед.", "Средняя цена", "Себестоимость", "Счёт / статья", "Количество", "Сумма");
   // «Удалённые»: причины и пометки сервера
   out.push("нет снимка проводки", "уже восстановлена", "раздел уже сформировал её заново", "восстановлена из удалённых",
@@ -55,6 +68,12 @@ export function codeKeys(root = process.cwd()): string[] {
   // рабочий стол: подписи плиток, шагов и источников проводок переводятся при выводе
   const home = readFileSync(join(root, "app/page.tsx"), "utf8");
   for (const m of home.matchAll(/\b(?:label|text|title|cta): "([^"]+)"/g)) out.push(m[1]);
+  for (const f of STATEMENT_FILES) {
+    const code = readFileSync(join(root, f), "utf8");
+    for (const m of code.matchAll(/\b(?:label|title): "([^"]+)"/g)) out.push(m[1].replace(/^\s*—\s*/, "").trim());
+  }
+  const rep = readFileSync(join(root, "app/reports/page.tsx"), "utf8");
+  for (const m of rep.matchAll(/\b(?:label|full): "([^"]+)"/g)) out.push(m[1]);
   const src = home.match(/const SOURCE[^{]*\{([^}]*)\}/)?.[1] ?? "";
   for (const m of src.matchAll(/: "([^"]+)"/g)) out.push(m[1]);
   return out;

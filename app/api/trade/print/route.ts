@@ -7,6 +7,8 @@ import { DOC_INFO, numberDocs, type DocKind } from "@/lib/primary/detect";
 import { docFormat, sendDoc } from "@/lib/server/send-file";
 import type { DocBlock } from "@/lib/docs/model";
 import { getDoc } from "@/lib/trade/server";
+import { requestLang } from "@/lib/i18n/server";
+import { docToKyrgyz } from "@/lib/i18n/docs-ky";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -41,5 +43,7 @@ export const POST = route(async (req: NextRequest) => {
   }
   await logActivity("trade_print", companyId, { kinds, format });
   const title = `${kinds.map((k) => DOC_INFO[k].title).join(", ")} — ${e.description}`;
-  return sendDoc({ title, fileName: title.slice(0, 120), org: c.companyName, blocks }, format);
+  const out = { title, fileName: title.slice(0, 120), org: c.companyName, blocks };
+  // на кыргызском, если интерфейс переключён на «КЫ»
+  return sendDoc((await requestLang()) === "ky" ? docToKyrgyz(out) : out, format);
 });

@@ -14,7 +14,7 @@ import { CF_TABLE } from "@/lib/cash-flow";
 import { EQUITY_COLUMNS, EQUITY_ROWS, equityKey } from "@/lib/equity";
 import type { Check, Statements } from "@/lib/ledger/engine";
 import { formatNumber } from "@/lib/format";
-import { useAccountName } from "@/components/i18n";
+import { useAccountName, useT } from "@/components/i18n";
 
 export type TabKey = "tb" | "is" | "bs" | "cf" | "eq" | "tax";
 
@@ -34,21 +34,23 @@ interface StatementProps {
 const money = (n: number | undefined) => (n === undefined || Math.abs(n) < 0.005 ? "—" : formatNumber(n, 0));
 
 function Link({ to, label, onGoto }: { to: TabKey; label: string; onGoto: (t: TabKey) => void }) {
+  const t = useT();
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onGoto(to); }}
       className="ml-2 rounded border border-fl-gold/25 px-1.5 py-px text-[11px] text-fl-gold/80 hover:border-fl-gold hover:text-fl-gold-bright"
     >
-      {label}
+      {t(label)}
     </button>
   );
 }
 
 function Toggle({ on, set, label }: { on: boolean; set: (v: boolean) => void; label: string }) {
+  const t = useT();
   return (
     <label className="flex cursor-pointer items-center gap-2 text-sm text-fl-cream/55">
       <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} className="accent-fl-gold" />
-      {label}
+      {t(label)}
     </label>
   );
 }
@@ -80,10 +82,11 @@ function clickProps(enabled: boolean, fn: () => void) {
 }
 
 function Frame({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) {
+  const t = useT();
   return (
     <div className="overflow-hidden rounded-xl border border-fl-line bg-fl-charcoal-2">
       <div className="overflow-x-auto">{children}</div>
-      {footer && <div className="border-t border-fl-line px-4 py-3 text-xs text-fl-cream/45">{footer}</div>}
+      {footer && <div className="border-t border-fl-line px-4 py-3 text-xs text-fl-cream/45">{typeof footer === "string" ? t(footer) : footer}</div>}
     </div>
   );
 }
@@ -91,6 +94,7 @@ function Frame({ children, footer }: { children: React.ReactNode; footer?: React
 // ── ОСВ ────────────────────────────────────────────────────────────────────
 
 export function TrialBalanceTable({ s, onDrill }: StatementProps) {
+  const t = useT();
   const { rows, totals } = s.trialBalance;
   const [view] = useAccountView();
   const ifrs = view === "ifrs";
@@ -102,14 +106,14 @@ export function TrialBalanceTable({ s, onDrill }: StatementProps) {
       <table className="w-full min-w-[760px] text-sm">
         <thead>
           <tr>
-            <th className={th} rowSpan={2}>{ifrs ? "Статья" : "Счёт"}</th>
-            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>Сальдо на начало</th>
-            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>Обороты за период</th>
-            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>Сальдо на конец</th>
+            <th className={th} rowSpan={2}>{ifrs ? t("Статья") : t("Счёт")}</th>
+            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>{t("Сальдо на начало")}</th>
+            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>{t("Обороты за период")}</th>
+            <th className={`${thNum} border-l border-fl-line`} colSpan={2}>{t("Сальдо на конец")}</th>
           </tr>
           <tr>
             {["Дт", "Кт", "Дт", "Кт", "Дт", "Кт"].map((h, i) => (
-              <th key={i} className={`${thNum} ${i % 2 === 0 ? "border-l border-fl-line" : ""}`}>{h}</th>
+              <th key={i} className={`${thNum} ${i % 2 === 0 ? "border-l border-fl-line" : ""}`}>{t(h)}</th>
             ))}
           </tr>
         </thead>
@@ -118,7 +122,7 @@ export function TrialBalanceTable({ s, onDrill }: StatementProps) {
             <tr
               key={r.account}
               className={rowClass(true, "line")}
-              {...clickProps(true, () => onDrill({ title: ifrs ? nameOf(r) : `${r.account} ${nameOf(r)}`, subtitle: ifrs ? "Проводки по статье за период" : "Проводки по счёту за период", accounts: [r.account] }))}
+              {...clickProps(true, () => onDrill({ title: ifrs ? nameOf(r) : `${r.account} ${nameOf(r)}`, subtitle: ifrs ? t("Проводки по статье за период") : t("Проводки по счёту за период"), accounts: [r.account] }))}
             >
               <td className={td}>{!ifrs && <span className="num mr-2 text-fl-cream/50">{r.account}</span>}{nameOf(r)}<Info t={accountTerm(r.account)} label={nameOf(r)} /></td>
               <td className={tdNum}>{money(r.openingDr)}</td>
@@ -130,7 +134,7 @@ export function TrialBalanceTable({ s, onDrill }: StatementProps) {
             </tr>
           ))}
           <tr className={rowClass(false, "total")}>
-            <td className={td}>Итого</td>
+            <td className={td}>{t("Итого")}</td>
             <td className={tdNum}>{money(totals.openingDr)}</td>
             <td className={tdNum}>{money(totals.openingCr)}</td>
             <td className={tdNum}>{money(totals.turnoverDr)}</td>
@@ -147,11 +151,12 @@ export function TrialBalanceTable({ s, onDrill }: StatementProps) {
 // ── ОПиУ ───────────────────────────────────────────────────────────────────
 
 export function IncomeStatementTable({ s, onDrill, onGoto }: StatementProps) {
+  const t = useT();
   const is = s.incomeStatement;
   return (
-    <Frame footer={`Рентабельность по чистой прибыли: ${is.margin.toFixed(1)}%`}>
+    <Frame footer={t("Рентабельность по чистой прибыли: {p}%", { p: is.margin.toFixed(1) })}>
       <table className="w-full min-w-[520px] text-sm">
-        <thead><tr><th className={th}>Статья</th><th className={thNum}>За период, сом</th></tr></thead>
+        <thead><tr><th className={th}>{t("Статья")}</th><th className={thNum}>{t("За период, сом")}</th></tr></thead>
         <tbody>
           {is.lines.map((l) => {
             if (l.kind === "sub" && Math.abs(l.amount) < 0.005) return null;
@@ -160,11 +165,11 @@ export function IncomeStatementTable({ s, onDrill, onGoto }: StatementProps) {
               <tr
                 key={l.key}
                 className={rowClass(clickable, l.kind)}
-                {...clickProps(clickable, () => onDrill({ title: l.label, subtitle: `Счета: ${l.accounts.join(", ")}`, accounts: l.accounts }))}
+                {...clickProps(clickable, () => onDrill({ title: t(l.label), subtitle: `${t("Счета")}: ${l.accounts.join(", ")}`, accounts: l.accounts }))}
               >
                 <td className={`${td} ${l.kind === "sub" ? "pl-8" : ""}`}>
-                  {l.label}
-                  <Info k={`is:${l.key}`} label={l.label} />
+                  {t(l.label)}
+                  <Info k={`is:${l.key}`} label={t(l.label)} />
                   {l.key === "net" && (<><Link to="eq" label="→ Капитал, стр. 080" onGoto={onGoto} /><Link to="bs" label="→ Баланс, стр. 530" onGoto={onGoto} /></>)}
                   {l.key === "incomeTax" && <Link to="tax" label="→ Налоги" onGoto={onGoto} />}
                 </td>
@@ -189,6 +194,7 @@ const BS_LINKS: Record<number, { to: TabKey; label: string }> = {
 };
 
 export function BalanceSheetTable({ s, onDrill, onGoto }: StatementProps) {
+  const t = useT();
   const [showEmpty, setShowEmpty] = useState(false);
   const { opening, closing, accountsByRow } = s.balanceSheet;
   return (
@@ -197,14 +203,14 @@ export function BalanceSheetTable({ s, onDrill, onGoto }: StatementProps) {
       <Frame footer="Прибыль текущего периода показана в стр. 530 без закрывающих проводок — счета 6000–9900 закрываются на неё виртуально, пока период не закрыт проводкой через 5999.">
         <table className="w-full min-w-[620px] text-sm">
           <thead>
-            <tr><th className={th}>Код</th><th className={th}>Статья</th><th className={thNum}>На начало</th><th className={thNum}>На конец</th></tr>
+            <tr><th className={th}>{t("Код")}</th><th className={th}>{t("Статья")}</th><th className={thNum}>{t("На начало")}</th><th className={thNum}>{t("На конец")}</th></tr>
           </thead>
           <tbody>
             {BALANCE_ROWS.map((row, i) => {
               if (row.code === null) {
                 return (
                   <tr key={`h${i}`} className={rowClass(false, "section")}>
-                    <td className={`${td} pt-4`} colSpan={4}><span className="font-display text-sm font-semibold">{row.label}</span></td>
+                    <td className={`${td} pt-4`} colSpan={4}><span className="font-display text-sm font-semibold">{t(row.label)}</span></td>
                   </tr>
                 );
               }
@@ -219,15 +225,15 @@ export function BalanceSheetTable({ s, onDrill, onGoto }: StatementProps) {
                   key={code}
                   className={rowClass(clickable, row.isTotal ? (code === 299 || code === 599 ? "total" : "subtotal") : row.isSub ? "sub" : "line")}
                   {...clickProps(clickable, () => onDrill({
-                    title: `[${code}] ${row.label.trim()}`,
-                    subtitle: `Счета: ${accounts.filter((a) => !a.startsWith("6") && !a.startsWith("7")).join(", ")}${code === 530 ? " + прибыль периода" : ""}`,
+                    title: `[${code}] ${t(row.label.trim())}`,
+                    subtitle: `${t("Счета")}: ${accounts.filter((a) => !a.startsWith("6") && !a.startsWith("7")).join(", ")}${code === 530 ? ` + ${t("прибыль периода")}` : ""}`,
                     accounts,
                   }))}
                 >
                   <td className={`${td} num text-fl-cream/45`}>{code}</td>
                   <td className={`${td} ${row.isSub ? "pl-6" : ""}`}>
-                    {row.label.replace(/^\s*—\s*/, "")}
-                    <Info t={balanceTerm(code, row.label)} label={row.label.replace(/^\s*—\s*/, "")} />
+                    {row.label.match(/^\s*—\s*/) ? "— " : ""}{t(row.label.replace(/^\s*—\s*/, "").trim())}
+                    <Info t={balanceTerm(code, row.label)} label={t(row.label.replace(/^\s*—\s*/, "").trim())} />
                     {link && <Link to={link.to} label={link.label} onGoto={onGoto} />}
                   </td>
                   <td className={tdNum}>{money(o)}</td>
@@ -245,6 +251,7 @@ export function BalanceSheetTable({ s, onDrill, onGoto }: StatementProps) {
 // ── ОДДС ───────────────────────────────────────────────────────────────────
 
 export function CashFlowTable({ s, onDrill, onGoto }: StatementProps) {
+  const t = useT();
   const [showEmpty, setShowEmpty] = useState(false);
   const { values, entriesByRow } = s.cashFlow;
   return (
@@ -252,13 +259,13 @@ export function CashFlowTable({ s, onDrill, onGoto }: StatementProps) {
       <div className="flex justify-end"><Toggle on={showEmpty} set={setShowEmpty} label="Показать пустые строки" /></div>
       <Frame footer="Прямой метод: каждая денежная проводка разнесена по корреспондирующему счёту. Перемещения между кассой и банком не считаются потоком.">
         <table className="w-full min-w-[560px] text-sm">
-          <thead><tr><th className={th}>Код</th><th className={th}>Статья</th><th className={thNum}>Сумма, сом</th></tr></thead>
+          <thead><tr><th className={th}>{t("Код")}</th><th className={th}>{t("Статья")}</th><th className={thNum}>{t("Сумма, сом")}</th></tr></thead>
           <tbody>
             {CF_TABLE.map((row, i) => {
               if (row.code === null) {
                 return (
                   <tr key={`h${i}`} className={rowClass(false, "section")}>
-                    <td className={`${td} pt-4`} colSpan={3}><span className="font-display text-sm font-semibold">{row.label}</span></td>
+                    <td className={`${td} pt-4`} colSpan={3}><span className="font-display text-sm font-semibold">{t(row.label)}</span></td>
                   </tr>
                 );
               }
@@ -271,12 +278,12 @@ export function CashFlowTable({ s, onDrill, onGoto }: StatementProps) {
                 <tr
                   key={code}
                   className={rowClass(clickable, code === 700 || code === 710 ? "total" : row.isTotal ? "subtotal" : "line")}
-                  {...clickProps(clickable, () => onDrill({ title: `[${String(code).padStart(3, "0")}] ${row.label}`, subtitle: "Денежные проводки, попавшие в строку", entryIds: ids }))}
+                  {...clickProps(clickable, () => onDrill({ title: `[${String(code).padStart(3, "0")}] ${t(row.label)}`, subtitle: t("Денежные проводки, попавшие в строку"), entryIds: ids }))}
                 >
                   <td className={`${td} num text-fl-cream/45`}>{String(code).padStart(3, "0")}</td>
                   <td className={td}>
-                    {row.label}
-                    <Info k={`cf:${code}`} label={row.label} />
+                    {t(row.label)}
+                    <Info k={`cf:${code}`} label={t(row.label)} />
                     {(code === 710 || code === 720) && <Link to="bs" label="= Баланс, стр. 110 + 120" onGoto={onGoto} />}
                   </td>
                   <td className={tdNum}>{money(v)}</td>
@@ -293,14 +300,15 @@ export function CashFlowTable({ s, onDrill, onGoto }: StatementProps) {
 // ── Капитал ────────────────────────────────────────────────────────────────
 
 export function EquityTable({ s, onDrill, onGoto }: StatementProps) {
+  const t = useT();
   const v = s.equity.values;
   return (
     <Frame footer="Уставный капитал — счета 5100; прочий капитал — 5200 и резервный 5400; нераспределённая прибыль — 5300, 5999 и незакрытая прибыль периода.">
       <table className="w-full min-w-[720px] text-sm">
         <thead>
           <tr>
-            <th className={th}>Стр.</th>
-            <th className={th}>Показатель</th>
+            <th className={th}>{t("Стр.")}</th>
+            <th className={th}>{t("Показатель")}</th>
             {EQUITY_COLUMNS.map((c) => <th key={c} className={thNum}>{c}</th>)}
           </tr>
         </thead>
@@ -312,12 +320,12 @@ export function EquityTable({ s, onDrill, onGoto }: StatementProps) {
               <tr
                 key={row.code}
                 className={rowClass(clickable, row.code === 120 ? "total" : row.isTotal ? "subtotal" : "line")}
-                {...clickProps(clickable, () => onDrill({ title: row.label, subtitle: "Проводки по счетам капитала", entryIds: ids }))}
+                {...clickProps(clickable, () => onDrill({ title: t(row.label), subtitle: t("Проводки по счетам капитала"), entryIds: ids }))}
               >
                 <td className={`${td} num text-fl-cream/45`}>{String(row.code).padStart(3, "0")}</td>
                 <td className={td}>
-                  {row.label}
-                  <Info k={`eq:${row.code}`} label={row.label} />
+                  {t(row.label)}
+                  <Info k={`eq:${row.code}`} label={t(row.label)} />
                   {row.code === 80 && <Link to="is" label="= ОПиУ" onGoto={onGoto} />}
                   {row.code === 120 && <Link to="bs" label="= Баланс, стр. 541" onGoto={onGoto} />}
                 </td>
@@ -334,40 +342,41 @@ export function EquityTable({ s, onDrill, onGoto }: StatementProps) {
 // ── Налоги ─────────────────────────────────────────────────────────────────
 
 export function TaxPanel({ s, onDrill, onGoto, canPost, posting, onPost }: StatementProps & { canPost: boolean; posting: boolean; onPost: () => void }) {
-  const t = s.taxes;
-  if (!t.computed) {
-    return <Notice>Выберите налоговый режим компании вверху страницы — от него зависит расчёт.</Notice>;
+  const t = useT();
+  const tx = s.taxes;
+  if (!tx.computed) {
+    return <Notice>{t("Выберите налоговый режим компании вверху страницы — от него зависит расчёт.")}</Notice>;
   }
-  const c = t.computed;
-  const diff = Math.round((c.total - t.posted) * 100) / 100;
+  const c = tx.computed;
+  const diff = Math.round((c.total - tx.posted) * 100) / 100;
   return (
     <div className="space-y-4">
       <Frame>
         <table className="w-full min-w-[560px] text-sm">
           <thead>
-            <tr><th className={th}>Налог</th><th className={thNum}>База</th><th className={thNum}>Ставка</th><th className={thNum}>Сумма</th><th className={th}>Проводка</th></tr>
+            <tr><th className={th}>{t("Налог")}</th><th className={thNum}>{t("База")}</th><th className={thNum}>{t("Ставка")}</th><th className={thNum}>{t("Сумма")}</th><th className={th}>{t("Проводка")}</th></tr>
           </thead>
           <tbody>
             {c.lines.map((l, i) => (
               <tr key={i} className={rowClass(false, "line")}>
-                <td className={td}>{l.label}<Info k={taxKey(l.label)} label={l.label} /></td>
-                <td className={tdNum}>{l.rate === null ? `${l.base} мес.` : money(l.base)}</td>
-                <td className={tdNum}>{l.rate === null ? "фикс." : `${Number((l.rate * 100).toPrecision(3))}%`}</td>
+                <td className={td}>{t(l.label)}<Info k={taxKey(l.label)} label={t(l.label)} /></td>
+                <td className={tdNum}>{l.rate === null ? `${l.base} ${t("мес.")}` : money(l.base)}</td>
+                <td className={tdNum}>{l.rate === null ? t("фикс.") : `${Number((l.rate * 100).toPrecision(3))}%`}</td>
                 <td className={tdNum}>{money(l.amount)}</td>
-                <td className={`${td} num text-xs text-fl-cream/55`}>Дт {l.debit} Кт {l.credit}</td>
+                <td className={`${td} num text-xs text-fl-cream/55`}>{t("Дт")} {l.debit} {t("Кт")} {l.credit}</td>
               </tr>
             ))}
             <tr className={rowClass(false, "total")}>
-              <td className={td} colSpan={3}>Расчёт за период</td>
+              <td className={td} colSpan={3}>{t("Расчёт за период")}</td>
               <td className={tdNum}>{money(c.total)}</td>
               <td />
             </tr>
             <tr
-              className={rowClass(t.postedEntryIds.length > 0, "line")}
-              {...clickProps(t.postedEntryIds.length > 0, () => onDrill({ title: "Начисления налогов", entryIds: t.postedEntryIds }))}
+              className={rowClass(tx.postedEntryIds.length > 0, "line")}
+              {...clickProps(tx.postedEntryIds.length > 0, () => onDrill({ title: t("Начисления налогов"), entryIds: tx.postedEntryIds }))}
             >
-              <td className={td} colSpan={3}>Начислено в журнале<Link to="is" label="→ ОПиУ" onGoto={onGoto} /><Link to="bs" label="→ Баланс, стр. 340" onGoto={onGoto} /></td>
-              <td className={tdNum}>{money(t.posted)}</td>
+              <td className={td} colSpan={3}>{t("Начислено в журнале")}<Link to="is" label="→ ОПиУ" onGoto={onGoto} /><Link to="bs" label="→ Баланс, стр. 340" onGoto={onGoto} /></td>
+              <td className={tdNum}>{money(tx.posted)}</td>
               <td />
             </tr>
           </tbody>
@@ -376,8 +385,8 @@ export function TaxPanel({ s, onDrill, onGoto, canPost, posting, onPost }: State
 
       {s.regime === "general" && (
         <Notice>
-          НДС за период: начислено с выручки {money(t.vatOutput)} сом (счёт 3430), к зачёту {money(t.vatInput)} сом (счёт 1540).
-          НДС не входит в начисление выше — он выделяется в момент проведения выручки.
+          {t("НДС за период: начислено с выручки {a} сом (счёт 3430), к зачёту {b} сом (счёт 1540).", { a: money(tx.vatOutput), b: money(tx.vatInput) })}{" "}
+          {t("НДС не входит в начисление выше — он выделяется в момент проведения выручки.")}
         </Notice>
       )}
 
@@ -388,13 +397,13 @@ export function TaxPanel({ s, onDrill, onGoto, canPost, posting, onPost }: State
             disabled={posting}
             className="rounded-md bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50"
           >
-            {posting ? "Начисляю…" : t.postedEntryIds.length ? "Пересчитать начисление" : "Начислить налоги за период"}
+            {posting ? t("Начисляю…") : tx.postedEntryIds.length ? t("Пересчитать начисление") : t("Начислить налоги за период")}
           </button>
         ) : (
-          <span className="text-sm text-fl-cream/50">В демо-компании начисление уже проведено. Создайте свою копию демо в «Журнале», чтобы менять данные.</span>
+          <span className="text-sm text-fl-cream/50">{t("В демо-компании начисление уже проведено. Создайте свою копию демо в «Журнале», чтобы менять данные.")}</span>
         )}
-        {Math.abs(diff) >= 1 && t.postedEntryIds.length > 0 && (
-          <span className="text-sm text-fl-amber">Расхождение с расчётом: {money(diff)} сом</span>
+        {Math.abs(diff) >= 1 && tx.postedEntryIds.length > 0 && (
+          <span className="text-sm text-fl-amber">{t("Расхождение с расчётом: {d} сом", { d: money(diff) })}</span>
         )}
       </div>
     </div>
@@ -419,14 +428,15 @@ const DOT: Record<Check["status"], string> = { ok: "bg-fl-green", warn: "bg-fl-a
 const WORD: Record<Check["status"], string> = { ok: "сходится", warn: "внимание", error: "не сходится" };
 
 export function ChecksStrip({ checks, onSelect }: { checks: Check[]; onSelect?: (c: Check) => void }) {
+  const t = useT();
   const ok = checks.filter((c) => c.status === "ok").length;
   const bad = checks.filter((c) => c.status === "error").length;
   return (
-    <section aria-label="Сверки между формами" className="rounded-xl border border-fl-line bg-fl-charcoal-2">
+    <section aria-label={t("Сверки между формами")} className="rounded-xl border border-fl-line bg-fl-charcoal-2">
       <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-fl-line px-4 py-3 sm:px-5">
-        <h2 className="font-display text-base font-semibold text-fl-cream">Сверки между формами</h2>
+        <h2 className="font-display text-base font-semibold text-fl-cream">{t("Сверки между формами")}</h2>
         <p className={`text-sm ${bad ? "text-fl-red" : ok === checks.length ? "text-fl-green" : "text-fl-amber"}`}>
-          {ok} из {checks.length} сходятся
+          {t("{a} из {b} сходятся", { a: ok, b: checks.length })}
         </p>
       </header>
       <ul className="grid grid-cols-1 divide-y divide-fl-line md:grid-cols-2 md:divide-y-0">
@@ -439,14 +449,14 @@ export function ChecksStrip({ checks, onSelect }: { checks: Check[]; onSelect?: 
               <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${DOT[c.status]}`} aria-hidden />
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-baseline justify-between gap-x-2">
-                  <span className="text-sm text-fl-cream">{c.title}</span>
-                  <span className="sr-only">— {WORD[c.status]}</span>
+                  <span className="text-sm text-fl-cream">{t(c.title)}</span>
+                  <span className="sr-only">— {t(WORD[c.status])}</span>
                 </span>
                 {c.left && c.right ? (
                   <span className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs text-fl-cream/50">
-                    <span>{c.left.label} <span className="num text-fl-cream/80">{formatNumber(c.left.value, 0)}</span></span>
+                    <span>{t(c.left.label)} <span className="num text-fl-cream/80">{formatNumber(c.left.value, 0)}</span></span>
                     <span className={c.status === "ok" ? "text-fl-green" : "text-fl-red"}>{c.status === "ok" ? "=" : "≠"}</span>
-                    <span>{c.right.label} <span className="num text-fl-cream/80">{formatNumber(c.right.value, 0)}</span></span>
+                    <span>{t(c.right.label)} <span className="num text-fl-cream/80">{formatNumber(c.right.value, 0)}</span></span>
                   </span>
                 ) : null}
                 {(c.status !== "ok" || !c.left) && <span className="mt-1 block text-xs text-fl-cream/50">{c.detail}</span>}
@@ -464,6 +474,7 @@ export function Notice({ children }: { children: React.ReactNode }) {
 }
 
 function Empty() {
-  return <Notice>За этот период проводок нет. Добавьте их в «Журнале» или загрузите банковскую выписку.</Notice>;
+  const t = useT();
+  return <Notice>{t("За этот период проводок нет. Добавьте их в «Журнале» или загрузите банковскую выписку.")}</Notice>;
 }
 
