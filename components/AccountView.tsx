@@ -7,6 +7,8 @@
 
 import { useEffect, useState } from "react";
 import { accountLabel, type AccountView } from "@/lib/ledger/ifrs";
+import { getAccount } from "@/lib/ledger/accounts";
+import { useAccountName, useT } from "@/components/i18n";
 
 const KEY = "finlite:accountView";
 const EVENT = "finlite:accountView";
@@ -35,24 +37,26 @@ export function useAccountView(): [AccountView, (v: AccountView) => void] {
 /** Label of an account in the current view. */
 export function useAccountLabel(): (code: string) => string {
   const [view] = useAccountView();
-  return (code: string) => accountLabel(code, view);
+  const acc = useAccountName();
+  return (code: string) => (view === "ifrs" ? accountLabel(code, view) : `${code} ${acc(code, getAccount(code)?.name ?? "")}`.trim());
 }
 
 export function AccountViewToggle({ className = "" }: { className?: string }) {
   const [view, setView] = useAccountView();
+  const t = useT();
   const btn = (v: AccountView, label: string, title: string) => (
     <button
       type="button"
-      title={title}
+      title={t(title)}
       onClick={() => setView(v)}
       aria-pressed={view === v}
       className={`rounded-md px-2.5 py-1 text-xs font-medium ${view === v ? "bg-fl-gold/20 text-fl-gold" : "text-fl-cream/60 hover:text-fl-cream"}`}
     >
-      {label}
+      {t(label)}
     </button>
   );
   return (
-    <div className={`inline-flex items-center gap-0.5 rounded-lg border border-fl-line bg-fl-charcoal p-0.5 ${className}`} role="group" aria-label="Как показывать счета">
+    <div className={`inline-flex items-center gap-0.5 rounded-lg border border-fl-line bg-fl-charcoal p-0.5 ${className}`} role="group" aria-label={t("Как показывать счета")}>
       {btn("ifrs", "Статьи МСФО", "Названия статей по МСФО, без кодов счетов")}
       {btn("codes", "План счетов", "Коды и названия по плану счетов КР (Пост. № 231)")}
     </div>

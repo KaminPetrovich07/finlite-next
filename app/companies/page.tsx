@@ -5,6 +5,7 @@ import { AUTH_ON } from "@/lib/auth/mode";
 import { useToast } from "@/components/Toast";
 import { REGIME_INFO, REGIMES, type RegimeKey } from "@/lib/tax-engine";
 import { DEMO_COMPANY } from "@/lib/ledger/demo";
+import { useT } from "@/components/i18n";
 
 interface Company {
   id: string;
@@ -31,6 +32,7 @@ function open(id: string, path: string) {
 }
 
 export default function CompaniesPage() {
+  const t = useT();
   const [list, setList] = useState<Company[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -41,7 +43,7 @@ export default function CompaniesPage() {
   const load = useCallback(async () => {
     const res = await fetch("/api/companies");
     const body = await res.json().catch(() => null);
-    if (!res.ok) { setError(body?.error ?? "Не удалось загрузить компании"); setList([]); return; }
+    if (!res.ok) { setError(t(body?.error ?? "Не удалось загрузить компании")); setList([]); return; }
     setList(body);
   }, []);
 
@@ -63,8 +65,8 @@ export default function CompaniesPage() {
       const body = gz || typeof CompressionStream === "undefined" ? file : await new Response(file.stream().pipeThrough(new CompressionStream("gzip"))).blob();
       const res = await fetch("/api/companies/import", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
       const b = await res.json().catch(() => ({}));
-      if (!res.ok) { toast.show(b.error ?? "Не удалось загрузить копию", "error"); return; }
-      toast.show(`Загружено: «${b.name}», ${b.stats.entries} проводок`);
+      if (!res.ok) { toast.show(t(b.error ?? "Не удалось загрузить копию"), "error"); return; }
+      toast.show(t("Загружено: «{n}», проводок: {e}", { n: b.name, e: b.stats.entries }));
       load();
     } finally { setImporting(false); }
   }
@@ -72,8 +74,8 @@ export default function CompaniesPage() {
   async function demoCopy() {
     const res = await fetch("/api/demo", { method: "POST" });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) { toast.show(body.error ?? "Не удалось создать копию", "error"); return; }
-    toast.show("Создана копия демо-компании — её можно менять");
+    if (!res.ok) { toast.show(t(body.error ?? "Не удалось создать копию"), "error"); return; }
+    toast.show(t("Создана копия демо-компании — её можно менять"));
     load();
   }
 
@@ -81,53 +83,52 @@ export default function CompaniesPage() {
     <main className="mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6 sm:pt-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">Компании</h1>
+          <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">{t("Компании")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-fl-cream/60">
-            Ваши компании и компании, к которым вам открыли доступ. Создайте свою или сделайте копию демо-компании, чтобы менять её данные.
+            {t("Ваши компании и компании, к которым вам открыли доступ. Создайте свою или сделайте копию демо-компании, чтобы менять её данные.")}
           </p>
         </div>
         {signedIn !== false && <div className="flex flex-wrap gap-2">
             <button onClick={demoCopy} className="rounded-lg border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold/40">
-              Копия демо-компании
+              {t("Копия демо-компании")}
             </button>
-            <label className={`cursor-pointer rounded-lg border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold/40 ${importing ? "pointer-events-none opacity-60" : ""}`} title="Файл .finlite.json.gz, скачанный кнопкой «Резервная копия»">
-              {importing ? "Загружаю…" : "Загрузить из копии"}
+            <label className={`cursor-pointer rounded-lg border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold/40 ${importing ? "pointer-events-none opacity-60" : ""}`} title={t("Файл .finlite.json.gz, скачанный кнопкой «Резервная копия»")}>
+              {importing ? t("Загружаю…") : t("Загрузить из копии")}
               <input type="file" accept=".gz,.json,application/gzip,application/json" className="sr-only" disabled={importing}
                 onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) restore(f); }} />
             </label>
             <button onClick={() => setCreating(true)} className="rounded-lg bg-fl-accent px-4 py-2.5 text-sm font-semibold text-fl-on-accent shadow-card hover:bg-fl-accent-hover">
-              + Новая компания
+              {t("+ Новая компания")}
             </button>
         </div>}
       </header>
 
       {AUTH_ON && signedIn === false && (
         <div className="mb-5 rounded-xl border-l-4 border-fl-info bg-fl-info/[0.07] px-4 py-3 text-sm text-fl-cream/85">
-          <p className="font-semibold">Вы смотрите демо без входа</p>
-          <p className="mt-1">Чтобы вести свою компанию, <a href="/register" className="font-semibold text-fl-gold underline">зарегистрируйтесь</a> или <a href="/login" className="font-semibold text-fl-gold underline">войдите</a>. Данные каждой компании видят только её владелец и те, кому он открыл доступ.</p>
+          <p className="font-semibold">{t("Вы смотрите демо без входа")}</p>
+          <p className="mt-1">{t("Чтобы вести свою компанию,")} <a href="/register" className="font-semibold text-fl-gold underline">{t("зарегистрируйтесь")}</a> {t("или")} <a href="/login" className="font-semibold text-fl-gold underline">{t("войдите")}</a>{t(". Данные каждой компании видят только её владелец и те, кому он открыл доступ.")}</p>
         </div>
       )}
 
       {welcome && (
         <div className="mb-5 rounded-xl border-l-4 border-fl-gold bg-fl-gold/[0.07] px-4 py-3 text-sm text-fl-cream/85">
-          <p className="font-semibold text-fl-gold">Добро пожаловать в FinLite!</p>
+          <p className="font-semibold text-fl-gold">{t("Добро пожаловать в FinLite!")}</p>
           <p className="mt-1">
-            Создайте свою компанию и начните с начальных остатков в журнале — или откройте демо-компанию «{DEMO_COMPANY.name}»,
-            чтобы посмотреть готовую отчётность.
+            {t("Создайте свою компанию и начните с начальных остатков в журнале — или откройте демо-компанию «{d}», чтобы посмотреть готовую отчётность.", { d: DEMO_COMPANY.name })}
           </p>
         </div>
       )}
 
-      {creating && <CreateForm onDone={(id) => { setCreating(false); if (id) { toast.show("Компания создана"); load(); } }} />}
+      {creating && <CreateForm onDone={(id) => { setCreating(false); if (id) { toast.show(t("Компания создана")); load(); } }} />}
 
       {error && <p className="mb-4 rounded-lg bg-fl-red/10 px-4 py-3 text-sm text-fl-red">{error}</p>}
 
       <div className="space-y-4">
         <DemoCard />
-        {list === null && <p className="text-sm text-fl-cream/50">Загружаю…</p>}
+        {list === null && <p className="text-sm text-fl-cream/50">{t("Загружаю…")}</p>}
         {list?.length === 0 && !error && signedIn && (
           <p className="rounded-xl border border-dashed border-fl-line px-5 py-8 text-center text-sm text-fl-cream/55">
-            Своих компаний пока нет — создайте первую.
+            {t("Своих компаний пока нет — создайте первую.")}
           </p>
         )}
         {list?.map((c) => <CompanyCard key={c.id} c={c} onChanged={load} toast={toast.show} />)}
@@ -138,14 +139,15 @@ export default function CompaniesPage() {
 }
 
 function DemoCard() {
+  const t = useT();
   return (
     <article className={`${card} flex flex-wrap items-center gap-4 px-5 py-4`}>
       <div className="min-w-[15rem] flex-1">
         <p className="font-display text-lg font-semibold text-fl-cream">{DEMO_COMPANY.name}</p>
-        <p className="text-sm text-fl-cream/55">{DEMO_COMPANY.activity} · 3 квартал 2026 · только просмотр</p>
+        <p className="text-sm text-fl-cream/55">{DEMO_COMPANY.activity} · {t("3 квартал 2026 · только просмотр")}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => open(DEMO_COMPANY.id, "/reports")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">Отчётность</button>
+        <button onClick={() => open(DEMO_COMPANY.id, "/reports")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">{t("Отчётность")}</button>
         <button onClick={() => open(DEMO_COMPANY.id, "/esg")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">ESG</button>
       </div>
     </article>
@@ -153,6 +155,7 @@ function DemoCard() {
 }
 
 function CreateForm({ onDone }: { onDone: (id?: string) => void }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [inn, setInn] = useState("");
   const [activity, setActivity] = useState("");
@@ -170,40 +173,40 @@ function CreateForm({ onDone }: { onDone: (id?: string) => void }) {
     });
     const body = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!res.ok) { setError(body.error ?? "Не удалось создать компанию"); return; }
+    if (!res.ok) { setError(t(body.error ?? "Не удалось создать компанию")); return; }
     onDone(body.id);
   }
 
   return (
     <form onSubmit={submit} className={`${card} mb-6 p-5 sm:p-6`}>
-      <h2 className="font-display text-lg font-semibold text-fl-cream">Новая компания</h2>
+      <h2 className="font-display text-lg font-semibold text-fl-cream">{t("Новая компания")}</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="text-xs text-fl-cream/60 sm:col-span-2">
-          Название *
-          <input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ОсОО «Ала-Тоо Трейд»" className={field} />
+          {t("Название *")}
+          <input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t("ОсОО «Ала-Тоо Трейд»")} className={field} />
         </label>
         <label className="text-xs text-fl-cream/60">
-          ИНН
-          <input inputMode="numeric" value={inn} onChange={(e) => setInn(e.target.value.replace(/\D/g, ""))} placeholder="14 цифр" className={field} />
+          {t("ИНН")}
+          <input inputMode="numeric" value={inn} onChange={(e) => setInn(e.target.value.replace(/\D/g, ""))} placeholder={t("14 цифр")} className={field} />
         </label>
         <label className="text-xs text-fl-cream/60">
-          Налоговый режим
+          {t("Налоговый режим")}
           <select value={regime} onChange={(e) => setRegime(e.target.value as RegimeKey)} className={field}>
-            <option value="">выбрать позже</option>
+            <option value="">{t("выбрать позже")}</option>
             {(Object.keys(REGIMES) as RegimeKey[]).map((k) => <option key={k} value={k}>{REGIME_INFO[k].name}</option>)}
           </select>
         </label>
         <label className="text-xs text-fl-cream/60 sm:col-span-2">
-          Вид деятельности
-          <input value={activity} onChange={(e) => setActivity(e.target.value)} placeholder="Оптовая торговля стройматериалами, Бишкек" className={field} />
+          {t("Вид деятельности")}
+          <input value={activity} onChange={(e) => setActivity(e.target.value)} placeholder={t("Оптовая торговля стройматериалами, Бишкек")} className={field} />
         </label>
       </div>
       {error && <p className="mt-3 text-sm text-fl-red">{error}</p>}
       <div className="mt-5 flex gap-2">
         <button type="submit" disabled={busy} className="rounded-lg bg-fl-accent px-5 py-2.5 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover disabled:opacity-50">
-          {busy ? "Создаю…" : "Создать компанию"}
+          {busy ? t("Создаю…") : t("Создать компанию")}
         </button>
-        <button type="button" onClick={() => onDone()} className="rounded-lg border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80">Отмена</button>
+        <button type="button" onClick={() => onDone()} className="rounded-lg border border-fl-line px-4 py-2.5 text-sm text-fl-cream/80">{t("Отмена")}</button>
       </div>
     </form>
   );
@@ -212,10 +215,11 @@ function CreateForm({ onDone }: { onDone: (id?: string) => void }) {
 function CompanyCard({ c, onChanged, toast }: {
   c: Company; onChanged: () => void; toast: (m: string, k?: "success" | "error" | "info") => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const regime = c.defaultRegime && c.defaultRegime in REGIME_INFO ? REGIME_INFO[c.defaultRegime as RegimeKey].short : "режим не выбран";
+  const regime = c.defaultRegime && c.defaultRegime in REGIME_INFO ? t(REGIME_INFO[c.defaultRegime as RegimeKey].short) : t("режим не выбран");
 
   return (
     <article className={`${card} px-5 py-4`}>
@@ -224,32 +228,33 @@ function CompanyCard({ c, onChanged, toast }: {
           <p className="font-display text-lg font-semibold text-fl-cream">
             {c.name}
             <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-[11px] font-medium ${c.own ? "bg-fl-gold/15 text-fl-gold" : "bg-fl-info/15 text-fl-info"}`}>
-              {c.own ? "владелец" : c.adminView ? "администратор" : c.access === "edit" ? "доступ: изменение" : "доступ: просмотр"}
+              {c.own ? t("владелец") : c.adminView ? t("администратор") : c.access === "edit" ? t("доступ: изменение") : t("доступ: просмотр")}
             </span>
           </p>
-          {!c.own && <p className="mt-0.5 text-xs text-fl-cream/50">{c.owner ? `Владелец: ${c.owner.name ? `${c.owner.name} · ` : ""}${c.owner.email}` : "Владелец не назначен — назначьте его в разделе «Администрирование»"}</p>}
+          {!c.own && <p className="mt-0.5 text-xs text-fl-cream/50">{c.owner ? `${t("Владелец")}: ${c.owner.name ? `${c.owner.name} · ` : ""}${c.owner.email}` : t("Владелец не назначен — назначьте его в разделе «Администрирование»")}</p>}
           <p className="mt-0.5 text-sm text-fl-cream/55">
-            {[c.inn && `ИНН ${c.inn}`, regime, `${c.entries} ${c.entries % 10 === 1 && c.entries % 100 !== 11 ? "проводка" : c.entries % 10 >= 2 && c.entries % 10 <= 4 && (c.entries % 100 < 12 || c.entries % 100 > 14) ? "проводки" : "проводок"}`].filter(Boolean).join(" · ")}
+            {[c.inn && `${t("ИНН")} ${c.inn}`, regime, t("проводок: {n}", { n: c.entries })].filter(Boolean).join(" · ")}
           </p>
           {c.activity && <p className="mt-0.5 text-sm text-fl-cream/55">{c.activity}</p>}
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => open(c.id, "/ledger")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">Журнал</button>
-          <button onClick={() => open(c.id, "/reports")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">Отчётность</button>
-          <a href={`/api/companies/${c.id}/backup`} download title="Все проводки, выписки, справочники и настройки компании одним файлом" className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Резервная копия</a>
-          {c.access === "edit" && <button onClick={() => setEditing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Настройки</button>}
-          {AUTH_ON && c.manage && <button onClick={() => setSharing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">Доступ</button>}
-          {c.manage && <button onClick={() => setDeleting((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-red/80 hover:text-fl-red">Удалить</button>}
+          <button onClick={() => open(c.id, "/ledger")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">{t("Журнал")}</button>
+          <button onClick={() => open(c.id, "/reports")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream hover:border-fl-gold/40">{t("Отчётность")}</button>
+          <a href={`/api/companies/${c.id}/backup`} download title={t("Все проводки, выписки, справочники и настройки компании одним файлом")} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">{t("Резервная копия")}</a>
+          {c.access === "edit" && <button onClick={() => setEditing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">{t("Настройки")}</button>}
+          {AUTH_ON && c.manage && <button onClick={() => setSharing((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-cream/80 hover:text-fl-cream">{t("Доступ")}</button>}
+          {c.manage && <button onClick={() => setDeleting((v) => !v)} className="rounded-lg border border-fl-line px-3.5 py-2 text-sm text-fl-red/80 hover:text-fl-red">{t("Удалить")}</button>}
         </div>
       </div>
-      {editing && <EditForm c={c} onDone={(ok) => { setEditing(false); if (ok) { toast("Сохранено"); onChanged(); } }} />}
+      {editing && <EditForm c={c} onDone={(ok) => { setEditing(false); if (ok) { toast(t("Сохранено")); onChanged(); } }} />}
       {sharing && <AccessPanel companyId={c.id} toast={toast} />}
-      {deleting && <DeletePanel c={c} onDone={(ok) => { setDeleting(false); if (ok) { toast("Компания удалена"); onChanged(); } }} />}
+      {deleting && <DeletePanel c={c} onDone={(ok) => { setDeleting(false); if (ok) { toast(t("Компания удалена")); onChanged(); } }} />}
     </article>
   );
 }
 
 function EditForm({ c, onDone }: { c: Company; onDone: (ok: boolean) => void }) {
+  const t = useT();
   const [name, setName] = useState(c.name);
   const [inn, setInn] = useState(c.inn ?? "");
   const [activity, setActivity] = useState(c.activity ?? "");
@@ -264,27 +269,27 @@ function EditForm({ c, onDone }: { c: Company; onDone: (ok: boolean) => void }) 
       body: JSON.stringify({ name, inn, activity, ...(regime ? { defaultRegime: regime } : {}), patentAmount: Number(patent) || 0 }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) { setError(body.error ?? "Не удалось сохранить"); return; }
+    if (!res.ok) { setError(t(body.error ?? "Не удалось сохранить")); return; }
     onDone(true);
   }
 
   return (
     <div className="mt-4 grid gap-3 border-t border-fl-line pt-4 sm:grid-cols-2">
-      <label className="text-xs text-fl-cream/60">Название<input value={name} onChange={(e) => setName(e.target.value)} className={field} /></label>
-      <label className="text-xs text-fl-cream/60">ИНН<input value={inn} onChange={(e) => setInn(e.target.value.replace(/\D/g, ""))} className={field} /></label>
+      <label className="text-xs text-fl-cream/60">{t("Название")}<input value={name} onChange={(e) => setName(e.target.value)} className={field} /></label>
+      <label className="text-xs text-fl-cream/60">{t("ИНН")}<input value={inn} onChange={(e) => setInn(e.target.value.replace(/\D/g, ""))} className={field} /></label>
       <label className="text-xs text-fl-cream/60">
-        Налоговый режим
+        {t("Налоговый режим")}
         <select value={regime} onChange={(e) => setRegime(e.target.value)} className={field}>
-          <option value="" disabled>не выбран</option>
+          <option value="" disabled>{t("не выбран")}</option>
           {(Object.keys(REGIMES) as RegimeKey[]).map((k) => <option key={k} value={k}>{REGIME_INFO[k].name}</option>)}
         </select>
       </label>
-      <label className="text-xs text-fl-cream/60">Патент, сом в месяц<input inputMode="decimal" value={patent} onChange={(e) => setPatent(e.target.value)} className={field} /></label>
-      <label className="text-xs text-fl-cream/60 sm:col-span-2">Вид деятельности<input value={activity} onChange={(e) => setActivity(e.target.value)} className={field} /></label>
+      <label className="text-xs text-fl-cream/60">{t("Патент, сом в месяц")}<input inputMode="decimal" value={patent} onChange={(e) => setPatent(e.target.value)} className={field} /></label>
+      <label className="text-xs text-fl-cream/60 sm:col-span-2">{t("Вид деятельности")}<input value={activity} onChange={(e) => setActivity(e.target.value)} className={field} /></label>
       {error && <p className="text-sm text-fl-red sm:col-span-2">{error}</p>}
       <div className="flex gap-2 sm:col-span-2">
-        <button onClick={save} className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Сохранить</button>
-        <button onClick={() => onDone(false)} className="rounded-lg border border-fl-line px-4 py-2 text-sm text-fl-cream/80">Отмена</button>
+        <button onClick={save} className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">{t("Сохранить")}</button>
+        <button onClick={() => onDone(false)} className="rounded-lg border border-fl-line px-4 py-2 text-sm text-fl-cream/80">{t("Отмена")}</button>
       </div>
     </div>
   );
@@ -294,6 +299,7 @@ interface Grant { userId: string; email: string; name: string | null; level: "vi
 
 /** Share the company with a registered user — e.g. an outside accountant or the director. */
 function AccessPanel({ companyId, toast }: { companyId: string; toast: (m: string, k?: "success" | "error" | "info") => void }) {
+  const t = useT();
   const [rows, setRows] = useState<Grant[] | null>(null);
   const [email, setEmail] = useState("");
   const [level, setLevel] = useState<"view" | "edit">("view");
@@ -310,43 +316,43 @@ function AccessPanel({ companyId, toast }: { companyId: string; toast: (m: strin
     setError(null);
     const res = await fetch(`/api/companies/${companyId}/access`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, level }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) { setError(body.error ?? "Не удалось открыть доступ"); return; }
+    if (!res.ok) { setError(t(body.error ?? "Не удалось открыть доступ")); return; }
     setEmail("");
-    toast("Доступ открыт");
+    toast(t("Доступ открыт"));
     load();
   }
   async function revoke(userId: string) {
     await fetch(`/api/companies/${companyId}/access?userId=${encodeURIComponent(userId)}`, { method: "DELETE" });
-    toast("Доступ закрыт");
+    toast(t("Доступ закрыт"));
     load();
   }
 
   return (
     <div className="mt-4 border-t border-fl-line pt-4">
-      <p className="text-sm font-semibold text-fl-cream">Кто ещё видит компанию</p>
-      <p className="mt-0.5 text-xs text-fl-cream/55">Пользователь должен быть зарегистрирован в FinLite. «Просмотр» — только отчёты и журнал; «изменение» — может вносить проводки и менять настройки, но не удалять компанию и не управлять доступом.</p>
-      {rows === null ? <p className="mt-3 text-sm text-fl-cream/50">Загружаю…</p> : rows.length === 0 ? (
-        <p className="mt-3 text-sm text-fl-cream/55">Доступ никому не открыт.</p>
+      <p className="text-sm font-semibold text-fl-cream">{t("Кто ещё видит компанию")}</p>
+      <p className="mt-0.5 text-xs text-fl-cream/55">{t("Пользователь должен быть зарегистрирован в FinLite. «Просмотр» — только отчёты и журнал; «изменение» — может вносить проводки и менять настройки, но не удалять компанию и не управлять доступом.")}</p>
+      {rows === null ? <p className="mt-3 text-sm text-fl-cream/50">{t("Загружаю…")}</p> : rows.length === 0 ? (
+        <p className="mt-3 text-sm text-fl-cream/55">{t("Доступ никому не открыт.")}</p>
       ) : (
         <ul className="mt-3 divide-y divide-fl-line rounded-lg border border-fl-line">
           {rows.map((r) => (
             <li key={r.userId} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
               <span className="min-w-[12rem] flex-1 text-fl-cream">{r.name ? `${r.name} · ` : ""}{r.email}</span>
-              <span className="text-fl-cream/60">{r.level === "edit" ? "изменение" : "просмотр"}</span>
-              <button onClick={() => revoke(r.userId)} className="text-fl-red/80 hover:text-fl-red">Закрыть доступ</button>
+              <span className="text-fl-cream/60">{r.level === "edit" ? t("изменение") : t("просмотр")}</span>
+              <button onClick={() => revoke(r.userId)} className="text-fl-red/80 hover:text-fl-red">{t("Закрыть доступ")}</button>
             </li>
           ))}
         </ul>
       )}
       <form onSubmit={grant} className="mt-3 flex flex-wrap items-end gap-2">
-        <label className="min-w-[14rem] flex-1 text-xs text-fl-cream/60">E-mail пользователя<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="buh@example.kg" className={field} /></label>
-        <label className="text-xs text-fl-cream/60">Уровень
+        <label className="min-w-[14rem] flex-1 text-xs text-fl-cream/60">{t("E-mail пользователя")}<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="buh@example.kg" className={field} /></label>
+        <label className="text-xs text-fl-cream/60">{t("Уровень")}
           <select value={level} onChange={(e) => setLevel(e.target.value as "view" | "edit")} className={field}>
-            <option value="view">просмотр</option>
-            <option value="edit">изменение</option>
+            <option value="view">{t("просмотр")}</option>
+            <option value="edit">{t("изменение")}</option>
           </select>
         </label>
-        <button type="submit" className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">Открыть доступ</button>
+        <button type="submit" className="rounded-lg bg-fl-accent px-4 py-2 text-sm font-semibold text-fl-on-accent hover:bg-fl-accent-hover">{t("Открыть доступ")}</button>
       </form>
       {error && <p className="mt-2 text-sm text-fl-red">{error}</p>}
     </div>
@@ -354,23 +360,24 @@ function AccessPanel({ companyId, toast }: { companyId: string; toast: (m: strin
 }
 
 function DeletePanel({ c, onDone }: { c: Company; onDone: (ok: boolean) => void }) {
+  const t = useT();
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
   async function remove() {
     const res = await fetch(`/api/companies/${c.id}`, { method: "DELETE" });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) { setError(body.error ?? "Не удалось удалить"); return; }
+    if (!res.ok) { setError(t(body.error ?? "Не удалось удалить")); return; }
     onDone(true);
   }
   return (
     <div className="mt-4 rounded-lg border border-fl-red/40 bg-fl-red/[0.06] p-4">
-      <p className="text-sm font-semibold text-fl-red">Удаление нельзя отменить</p>
-      <p className="mt-1 text-sm text-fl-cream/70">Будут удалены журнал проводок ({c.entries}), выписки, документы и настройки компании. Перед удалением можно выгрузить все данные на странице «Мой аккаунт». Для подтверждения введите название компании.</p>
+      <p className="text-sm font-semibold text-fl-red">{t("Удаление нельзя отменить")}</p>
+      <p className="mt-1 text-sm text-fl-cream/70">{t("Будут удалены журнал проводок ({n}), выписки, документы и настройки компании. Перед удалением можно выгрузить все данные на странице «Мой аккаунт». Для подтверждения введите название компании.", { n: c.entries })}</p>
       <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={c.name} className={field} />
       {error && <p className="mt-2 text-sm text-fl-red">{error}</p>}
       <div className="mt-3 flex gap-2">
-        <button disabled={typed.trim() !== c.name.trim()} onClick={remove} className="rounded-lg bg-fl-red px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Удалить навсегда</button>
-        <button onClick={() => onDone(false)} className="rounded-lg border border-fl-line px-4 py-2 text-sm text-fl-cream/80">Отмена</button>
+        <button disabled={typed.trim() !== c.name.trim()} onClick={remove} className="rounded-lg bg-fl-red px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{t("Удалить навсегда")}</button>
+        <button onClick={() => onDone(false)} className="rounded-lg border border-fl-line px-4 py-2 text-sm text-fl-cream/80">{t("Отмена")}</button>
       </div>
     </div>
   );

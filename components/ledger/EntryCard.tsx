@@ -8,7 +8,7 @@ import { SOURCE_LABEL, type LedgerEntry } from "@/lib/ledger/types";
 import { formatNumber } from "@/lib/format";
 import { useAccountView } from "@/components/AccountView";
 import { ifrsName } from "@/lib/ledger/ifrs";
-import { useT } from "@/components/i18n";
+import { useAccountName, useT } from "@/components/i18n";
 
 const SOURCE_TONE: Record<string, string> = {
   opening: "border-fl-cream/20 text-fl-cream/60",
@@ -42,6 +42,7 @@ export function EntryCard({ entry, highlight = [], onDelete, onEdit, onHistory, 
   const [view] = useAccountView();
   const ifrs = view === "ifrs";
   const t = useT();
+  const acc = useAccountName();
   return (
     <article id={`e-${entry.id}`} className={`scroll-mt-24 rounded-lg border bg-fl-charcoal/60 p-3.5 transition-shadow ${selected ? "border-fl-gold/60 bg-fl-gold/5" : "border-fl-line"}`}>
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
@@ -98,10 +99,10 @@ export function EntryCard({ entry, highlight = [], onDelete, onEdit, onHistory, 
             const hot = highlight.includes(l.account);
             return (
               <tr key={i} className={hot ? "text-fl-gold-bright" : "text-fl-cream/65"}>
-                <td className="w-12 py-0.5 align-top num">{l.debit > 0 ? "Дт" : "Кт"}</td>
+                <td className="w-12 py-0.5 align-top num">{l.debit > 0 ? t("Дт") : t("Кт")}</td>
                 {!ifrs && <td className="w-14 py-0.5 align-top num">{l.account}</td>}
                 <td className="py-0.5 pr-2">
-                  {ifrs ? ifrsName(l.account) : accountName(l.account)}<Info t={accountTerm(l.account)} label={ifrs ? ifrsName(l.account) : accountName(l.account)} />
+                  {ifrs ? ifrsName(l.account) : acc(l.account, accountName(l.account))}<Info t={accountTerm(l.account)} label={ifrs ? ifrsName(l.account) : acc(l.account, accountName(l.account))} />
                   {l.memo && <span className="text-fl-cream/40"> — {l.memo}</span>}
                   {l.party && <span className="text-fl-gold/80"> · {l.party}</span>}
                   {l.item && <span className="text-fl-cream/55"> · {l.item}{l.qty ? `, ${String(l.qty).replace(".", ",")} ${l.unit ?? ""}` : ""}</span>}

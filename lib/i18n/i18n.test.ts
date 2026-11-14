@@ -25,3 +25,12 @@ test("перевод: подстановка, запасной русский т
   // в кыргызском тексте не должно остаться русских слов-связок
   for (const [ru, ky] of Object.entries(KY)) assert.doesNotMatch(` ${ky} `, /\s(и|или|для|на|по|из|не)\s/, `похоже на непереведённое: «${ru}» → «${ky}»`);
 });
+
+test("план счетов: у каждого счёта есть кыргызское название", async () => {
+  const { ACCOUNTS } = await import("@/lib/ledger/accounts");
+  const { ACCOUNTS_KY } = await import("./accounts-ky");
+  const missing = ACCOUNTS.filter((a) => !ACCOUNTS_KY[a.code]).map((a) => `${a.code} ${a.name}`);
+  assert.deepEqual(missing, []);
+  assert.equal(ACCOUNTS_KY["3430"], "Төлөнүүчү КНС");
+  assert.ok(Object.keys(ACCOUNTS_KY).every((c) => ACCOUNTS.some((a) => a.code === c)), "лишних кодов нет");
+});

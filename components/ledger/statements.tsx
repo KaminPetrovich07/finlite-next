@@ -14,6 +14,7 @@ import { CF_TABLE } from "@/lib/cash-flow";
 import { EQUITY_COLUMNS, EQUITY_ROWS, equityKey } from "@/lib/equity";
 import type { Check, Statements } from "@/lib/ledger/engine";
 import { formatNumber } from "@/lib/format";
+import { useAccountName } from "@/components/i18n";
 
 export type TabKey = "tb" | "is" | "bs" | "cf" | "eq" | "tax";
 
@@ -93,7 +94,8 @@ export function TrialBalanceTable({ s, onDrill }: StatementProps) {
   const { rows, totals } = s.trialBalance;
   const [view] = useAccountView();
   const ifrs = view === "ifrs";
-  const nameOf = (r: { account: string; name: string }) => (ifrs ? ifrsName(r.account) : r.name);
+  const acc = useAccountName();
+  const nameOf = (r: { account: string; name: string }) => (ifrs ? ifrsName(r.account) : acc(r.account, r.name));
   if (rows.length === 0) return <Empty />;
   return (
     <Frame footer="Нажмите на строку, чтобы увидеть проводки за период.">
@@ -116,7 +118,7 @@ export function TrialBalanceTable({ s, onDrill }: StatementProps) {
             <tr
               key={r.account}
               className={rowClass(true, "line")}
-              {...clickProps(true, () => onDrill({ title: ifrs ? nameOf(r) : `${r.account} ${r.name}`, subtitle: ifrs ? "Проводки по статье за период" : "Проводки по счёту за период", accounts: [r.account] }))}
+              {...clickProps(true, () => onDrill({ title: ifrs ? nameOf(r) : `${r.account} ${nameOf(r)}`, subtitle: ifrs ? "Проводки по статье за период" : "Проводки по счёту за период", accounts: [r.account] }))}
             >
               <td className={td}>{!ifrs && <span className="num mr-2 text-fl-cream/50">{r.account}</span>}{nameOf(r)}<Info t={accountTerm(r.account)} label={nameOf(r)} /></td>
               <td className={tdNum}>{money(r.openingDr)}</td>

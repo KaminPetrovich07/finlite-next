@@ -4,6 +4,7 @@
 // все компоненты с useT() перерисовываются сразу, без перезагрузки страницы.
 import { useCallback, useSyncExternalStore } from "react";
 import { isLang, LANG_COOKIE, LANG_KEY, LANG_NAME, LANG_SHORT, translate, type Lang } from "@/lib/i18n";
+import { ACCOUNTS_KY } from "@/lib/i18n/accounts-ky";
 
 const listeners = new Set<() => void>();
 let current: Lang | null = null;
@@ -36,6 +37,19 @@ export type TFn = (ru: string, vars?: Record<string, string | number>) => string
 export function useT(): TFn {
   const lang = useLang();
   return useCallback((ru, vars) => translate(lang, ru, vars), [lang]);
+}
+
+/** Name of an account of the KR chart in the interface language (the Russian name is the fallback). */
+export function useAccountName(): (code: string, ru: string) => string {
+  const lang = useLang();
+  return useCallback((code, ru) => (lang === "ky" ? ACCOUNTS_KY[code] ?? ru : ru), [lang]);
+}
+
+/** «1000 Оборотные активы» → the same group heading in the interface language. */
+export function useGroupTitle(): (title: string) => string {
+  const acc = useAccountName();
+  const t = useT();
+  return useCallback((title) => { const m = title.match(/^(\d{4})\s+(.*)$/); return m ? `${m[1]} ${acc(m[1], m[2])}` : t(title); }, [acc, t]);
 }
 
 /** Translated text inside server components: <T>Тарифы</T>. */

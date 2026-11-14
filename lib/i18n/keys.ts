@@ -9,6 +9,8 @@ import { DOC_LABEL, PAYMENT_LABEL } from "@/lib/trade/doc";
 import { SOURCE_LABEL } from "@/lib/ledger/types";
 import { SOURCE_NOTE } from "@/lib/ledger/source-note";
 import { PLANS } from "@/lib/plans";
+import { ALL_CATEGORIES } from "@/lib/categories";
+import { REGIME_INFO } from "@/lib/tax-engine";
 
 /** Files whose t("…") literals are checked. */
 export const TRANSLATED_FILES = [
@@ -16,6 +18,8 @@ export const TRANSLATED_FILES = [
   "components/i18n.tsx", "components/ledger/EntryCard.tsx", "components/ledger/PeriodPicker.tsx",
   "app/page.tsx", "app/login/page.tsx", "app/register/page.tsx", "app/reset/page.tsx",
   "app/ledger/page.tsx", "app/trade/page.tsx", "app/nomenclature/page.tsx",
+  "app/companies/page.tsx", "app/transactions/page.tsx", "app/inventory/page.tsx",
+  "components/ledger/Trash.tsx", "components/ledger/AccountPicker.tsx", "components/AccountView.tsx",
 ];
 
 /** Lists of labels that are passed to t() as variables. */
@@ -28,6 +32,14 @@ export function listKeys(): string[] {
   out.push(...Object.values(SOURCE_LABEL), ...Object.values(SOURCE_NOTE));
   out.push(...Object.values(PLANS).map((p) => p.name));
   out.push("Недавние", "Действия", "Найдено", "Месяц", "Квартал", "Год", "Свой период");
+  out.push(...ALL_CATEGORIES, ...Object.values(REGIME_INFO).map((r) => r.short));
+  out.push("МБанк", "Бакай Банк", "Элдик Банк", "Другой банк", "Выписка", "Дт", "Кт");
+  out.push("Статьи МСФО", "План счетов", "Названия статей по МСФО, без кодов счетов", "Коды и названия по плану счетов КР (Пост. № 231)");
+  // склад: заголовки таблиц
+  out.push("Номенклатура", "Продано", "На остатке", "Цена за ед.", "Средняя цена", "Себестоимость", "Счёт / статья", "Количество", "Сумма");
+  // «Удалённые»: причины и пометки сервера
+  out.push("нет снимка проводки", "уже восстановлена", "раздел уже сформировал её заново", "восстановлена из удалённых",
+    "восстановлена из удалённых как ручная проводка (строки выписки больше нет)", "удалена строка банковской выписки");
   return out;
 }
 
