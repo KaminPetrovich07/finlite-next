@@ -6,6 +6,8 @@ import { collect } from "@/lib/news/collect";
 import { publishFxDaily } from "@/lib/news/fxpost";
 import { runRecurringAll } from "@/lib/ledger/recurring-server";
 import { refreshIfStale } from "@/lib/science/server";
+import { pruneOld } from "@/lib/monitor/retention";
+import { storageState } from "@/lib/monitor/storage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,6 +24,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Нет доступа" }, { status: 401 });
   }
   const result: Record<string, unknown> = {};
+  // сначала убрать служебное старьё (входы, ошибки, старые автоновости), потом решать, есть ли место
+  try { result.pruned = await pruneOld(); } catch (e) { result.pruned = { error: e instanceof Error ? e.message : String(e) }; }
+  try {
+    const s = await storageState(true);
+    result.storage = { mb: Math.round(s.bytes / 1048576), limitMb: Math.round(s.limit / 1048576), level: s.level };
+    if (s.level !== "ok") await recordError({ source: "server", message: `База данных заполнена на ${Math.round(s.share * 100)} % (${Math.round(s.bytes / 1048576)} из ${Math.round(s.limit / 1048576)} МБ): автосбор новостей и редакций законов приостановлен. Админ → «База данных».`, url: "/api/cron/daily" });
+  } catch (e) { result.storage = { error: e instanceof Error ? e.message : String(e) }; }
   try { result.fx = await fetchNbkr(); } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     result.fx = { error: message };

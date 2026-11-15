@@ -7,6 +7,7 @@ import { HttpError } from "@/lib/auth/server";
 import { isPostKind, type PostKind } from "./types";
 import { autoTags, classify, isRelevant, ogImage, parseFeed, parseTelegram, type FeedItem } from "./feeds";
 import { DEFAULT_SOURCES } from "./sources";
+import { roomForExtras } from "@/lib/monitor/storage";
 
 export const REFRESH_EVERY_MIN = 180;
 const UA = "Mozilla/5.0 (compatible; FinLiteKG-NewsBot/1.0; +https://finlite.kg)";
@@ -74,6 +75,8 @@ export function collect(opts: { force?: boolean; sourceId?: string } = {}): Prom
 async function run({ force, sourceId }: { force?: boolean; sourceId?: string }): Promise<RunResult[]> {
   try {
     await ensureDefaults();
+    // база почти заполнена — новости не собираем, место нужно под учёт
+    if (!(await roomForExtras())) return [{ source: "Автосбор", ok: false, found: 0, added: 0, error: "база данных заполнена больше чем на 80 % — автосбор приостановлен" }];
     if (!force && !sourceId) {
       const last = await lastRun();
       if (last && Date.now() - last.getTime() < 20 * 60e3) return [];

@@ -4,6 +4,7 @@ import { HttpError, logActivity, requireCompany, route } from "@/lib/auth/server
 import { getCurrentUser } from "@/lib/auth/session";
 import { recordEntryEvent } from "@/lib/ledger/guard";
 import { ALLOWED, MAX_BYTES, MAX_PER_ENTRY, sniff } from "@/lib/attachments";
+import { assertRoom } from "@/lib/monitor/storage";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,7 @@ export const POST = route(async (req: NextRequest, { params }: { params: Promise
   if (file.size > MAX_BYTES) throw new HttpError(413, "Файл больше 4 МБ — уменьшите скан или разбейте PDF");
   const buf = new Uint8Array(await file.arrayBuffer());
   if (!sniff(buf, file.type)) throw new HttpError(415, "Содержимое файла не похоже на изображение или PDF");
+  await assertRoom("скан");
   const count = await prisma.attachment.count({ where: { companyId: e.companyId, entryId: id } });
   if (count >= MAX_PER_ENTRY) throw new HttpError(409, `К одной проводке можно прикрепить не больше ${MAX_PER_ENTRY} файлов`);
   const me = await getCurrentUser();

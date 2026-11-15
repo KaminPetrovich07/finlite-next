@@ -3,6 +3,7 @@
 // is set) and the translations are reused on the next update.
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
+import { roomForExtras } from "@/lib/monitor/storage";
 import { applyTranslations, fetchScope, SCOPES, untranslated, type Fetcher, type ScienceSnapshot, type ScopeSnapshot } from "./openalex";
 
 const KEY = "science:snapshot";
@@ -115,6 +116,7 @@ export async function refreshSnapshot(get: Fetcher = openAlexFetch, opts: Refres
 /** Daily cron: refresh when the snapshot is missing or older than a week; otherwise translate what is left. */
 export async function refreshIfStale(): Promise<{ refreshed: boolean; updatedAt: string | null; translated?: number; errors?: string[] }> {
   const s = await loadSnapshot();
+  if (!(await roomForExtras())) return { refreshed: false, updatedAt: s?.updatedAt ?? null, errors: ["база данных заполнена больше чем на 80 % — обновление пропущено"] };
   if (s && Date.now() - Date.parse(s.updatedAt) < REFRESH_DAYS * 864e5) {
     const todo = untranslated(s);
     if (!todo.length || !process.env.ANTHROPIC_API_KEY) return { refreshed: false, updatedAt: s.updatedAt };

@@ -7,8 +7,11 @@ import { HttpError } from "@/lib/auth/server";
 import { LAW_CATALOG } from "./catalog";
 import { compareEditions, lastAmendment, outline, requisites, textHash, type Changes } from "./text";
 import { LoadError, textFromUrl } from "./load";
+import { KEEP_EDITIONS } from "@/lib/monitor/retention";
+import { roomForExtras } from "@/lib/monitor/storage";
 
-const KEEP_EDITIONS = 5;
+/** Изменилось ли что-то по существу: статьи или (у документов без статей) сам текст. Пробелы, кавычки, оформление — не в счёт. */
+export const isRealChange = (c: Changes) => c.whole || c.changed.length > 0 || c.added.length > 0 || c.removed.length > 0;
 
 export function missingTables(e: unknown): never {
   if (/LegalDoc|LegalEdition|does not exist|P2021/i.test(String(e))) throw new HttpError(503, "В базе ещё нет таблиц правовой базы. Выполните один раз: npx prisma db push");
@@ -44,6 +47,12 @@ export async function saveText(docId: string, text: string, origin: "url" | "fil
     return { status: "same", chars: text.length };
   }
   const changes = doc.text ? compareEditions(doc.text, text) : undefined;
+  if (changes && !isRealChange(changes)) {
+    // страница источника поменялась только в оформлении — текст в базе не переписываем
+    // (каждая перезапись кодекса — мегабайты в истории изменений базы)
+    await prisma.legalDoc.update({ where: { id: docId }, data: { checkedAt: now, lastError: null, ...(sourceUrl ? { sourceUrl } : {}) } });
+    return { status: "same", chars: text.length };
+  }
   const amendedAt = lastAmendment(text);
   await prisma.$transaction(async (tx) => {
     if (doc.text && doc.hash) {
@@ -72,12 +81,14 @@ export async function saveText(docId: string, text: string, origin: "url" | "fil
   return { status: doc.text ? "changed" : "first", changes, chars: text.length };
 }
 
-export interface CheckResult { slug: string; title: string; status: SaveResult["status"] | "error"; error?: string }
+export interface CheckResult { slug: string; title: string; status: SaveResult["status"] | "error" | "skipped"; error?: string }
 
 /** Daily: download every act with a source link and store new editions. */
 export async function checkAll(): Promise<CheckResult[]> {
   try {
     await ensureCatalog();
+    // база почти заполнена — новые редакции подождут, место нужно под учёт
+    if (!(await roomForExtras())) return [{ slug: "", title: "Проверка редакций", status: "skipped", error: "база данных заполнена больше чем на 80 % — проверка пропущена" }];
     const docs = await prisma.legalDoc.findMany({ where: { autoUpdate: true, sourceUrl: { not: null } }, select: { id: true, slug: true, title: true, sourceUrl: true }, orderBy: { checkedAt: { sort: "asc", nulls: "first" } } });
     const out: CheckResult[] = [];
     const started = Date.now();

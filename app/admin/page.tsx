@@ -7,8 +7,8 @@ import { PLANS, PLAN_ORDER, planKey } from "@/lib/plans";
 import { reviewOverdue, TAX_RULES } from "@/lib/tax-rules";
 import { card, field, ghostBtn } from "@/components/auth/ui";
 
-type Tab = "metrics" | "auth" | "users" | "companies" | "feedback" | "errors";
-const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["auth", "Вход и пилот"], ["users", "Пользователи"], ["companies", "Компании"], ["feedback", "Обратная связь"], ["errors", "Ошибки"]];
+type Tab = "metrics" | "auth" | "users" | "companies" | "feedback" | "errors" | "storage";
+const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["auth", "Вход и пилот"], ["users", "Пользователи"], ["companies", "Компании"], ["feedback", "Обратная связь"], ["errors", "Ошибки"], ["storage", "База данных"]];
 const pct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)} %`);
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString("ru-RU") : "—");
 
@@ -44,6 +44,7 @@ export default function AdminPage() {
         {tab === "companies" && <Companies />}
         {tab === "feedback" && <Feedback />}
         {tab === "errors" && <Errors />}
+        {tab === "storage" && <Storage />}
       </div>
     </main>
   );
@@ -461,6 +462,97 @@ function Errors() {
             ))}
           </ul>
         )}
+      </section>
+    </div>
+  );
+}
+
+interface StorageInfo {
+  bytes: number; limit: number; share: number; level: "ok" | "warn" | "full";
+  tables: Array<{ table: string; bytes: number; rows: number }>;
+  editions: number; attachments: { count: number; bytes: number };
+  retention: { visitsDays: number; activityDays: number; resolvedErrorsDays: number; errorsDays: number; autoNewsDays: number; keepEditions: number };
+}
+const TABLE_NAMES: Record<string, string> = {
+  JournalEntry: "Проводки", JournalLine: "Строки проводок", EntryEvent: "История изменений журнала", Attachment: "Сканы к проводкам",
+  CompanyRecord: "Документы, справочники, настройки компаний", LegalDoc: "Правовая база — тексты", LegalEdition: "Правовая база — прошлые редакции",
+  Post: "Новости и публикации", ActivityLog: "Журнал действий пользователей", ErrorEvent: "Ошибки сайта", AppSetting: "Настройки (в т. ч. сводка науки)",
+  BankTransaction: "Банковские выписки", Report: "Расчёты отчётов", Session: "Сессии входа", Company: "Компании", User: "Пользователи",
+  FxRate: "Курсы валют", Comment: "Комментарии", Feedback: "Обратная связь", EsgReport: "ESG-отчёты", Submission: "Учёба — ответы",
+};
+const mb = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(2)} ГБ` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(b >= 100 * 1024 ** 2 ? 0 : 1)} МБ` : `${Math.max(1, Math.round(b / 1024))} КБ`);
+
+function Storage() {
+  const [s, setS] = useState<StorageInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = useCallback(() => {
+    fetch("/api/admin/storage").then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b?.error ?? "Не удалось узнать размер базы"); setS(b); }).catch((e) => setError(e.message));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  async function prune() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/admin/storage", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const b = await r.json();
+      if (!r.ok) throw new Error(b?.error ?? "Не получилось");
+      const p = b.pruned as Record<string, number>;
+      const n = Object.values(p).reduce((a, x) => a + x, 0);
+      const freed = b.before - b.after;
+      setMsg(`Удалено записей: ${n} (действия ${p.activity}, ошибки ${p.errors}, автоновости ${p.news}, сессии ${p.sessions + p.resets}, редакции законов ${p.editions}). ${freed > 0 ? `Освобождено ${mb(freed)}.` : "Размер не уменьшился — значит, место занимает учёт, а не служебное."}`);
+      load();
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  }
+  if (error) return <p className="text-sm text-fl-red">{error}</p>;
+  if (!s) return <p className="text-sm text-fl-cream/50">Загружаю…</p>;
+  const pctUsed = Math.min(100, Math.round(s.share * 100));
+  const color = s.level === "full" ? "bg-fl-red" : s.level === "warn" ? "bg-fl-amber" : "bg-fl-green";
+  const r = s.retention;
+  return (
+    <div className="space-y-4">
+      <section className={`${card} p-4`}>
+        <h2 className="font-semibold text-fl-cream">Место в базе: {mb(s.bytes)} из {mb(s.limit)} <span className="text-fl-cream/55">({pctUsed} %)</span></h2>
+        <div className="mt-2 h-3 overflow-hidden rounded-full bg-fl-surface-2"><div className={`h-full ${color}`} style={{ width: `${pctUsed}%` }} /></div>
+        <p className="mt-2 text-sm text-fl-cream/70">
+          {s.level === "ok" && "Места достаточно."}
+          {s.level === "warn" && "Больше 80 %: автосбор новостей, проверка редакций законов и обновление науки приостановлены, учёт работает как обычно."}
+          {s.level === "full" && "Больше 92 %: новые сканы к проводкам не принимаются, чтобы осталось место под проводки и документы. Очистите старое или перейдите на платный тариф Neon."}
+        </p>
+        <p className="mt-1 text-xs text-fl-cream/50">
+          Это размер самих данных. Панель Neon может показывать больше: она прибавляет историю изменений за последние часы (окно восстановления) — после крупной загрузки цифра там вырастает и потом сама уменьшается.
+          Лимит берётся из переменной <code>FL_DB_LIMIT_MB</code> (по умолчанию 1024).
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button className={ghostBtn} disabled={busy} onClick={prune}>{busy ? "Чищу…" : "Очистить старое"}</button>
+          <span className="text-xs text-fl-cream/55">Каждую ночь это делается само. Учёт, документы, история журнала и сканы не удаляются.</span>
+        </div>
+        {msg && <p className="mt-2 text-sm text-fl-cream/80">{msg}</p>}
+      </section>
+      <section className={`${card} overflow-x-auto p-4`}>
+        <h2 className="font-semibold text-fl-cream">Что занимает место</h2>
+        <table className="mt-2 w-full text-sm">
+          <thead><tr className="text-left text-xs text-fl-cream/50"><th className="py-1 pr-3 font-normal">Таблица</th><th className="py-1 pr-3 text-right font-normal">Строк (примерно)</th><th className="py-1 text-right font-normal">Размер</th></tr></thead>
+          <tbody className="divide-y divide-fl-line">
+            {s.tables.map((t) => (
+              <tr key={t.table}>
+                <td className="py-1.5 pr-3 text-fl-cream/85">{TABLE_NAMES[t.table] ?? t.table} <span className="text-xs text-fl-cream/40">{t.table}</span></td>
+                <td className="py-1.5 pr-3 text-right tabular-nums text-fl-cream/65">{t.rows.toLocaleString("ru-RU")}</td>
+                <td className="py-1.5 text-right tabular-nums text-fl-cream">{mb(t.bytes)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-2 text-xs text-fl-cream/50">Сканов к проводкам: {s.attachments.count} на {mb(s.attachments.bytes)}. Прошлых редакций законов: {s.editions}.</p>
+      </section>
+      <section className={`${card} p-4 text-sm text-fl-cream/70`}>
+        <h2 className="font-semibold text-fl-cream">Сколько хранится служебное</h2>
+        <ul className="mt-1 list-disc space-y-0.5 pl-5">
+          <li>входы и «был на сайте» — {r.visitsDays} дней, остальные действия пользователей — {r.activityDays} дней;</li>
+          <li>ошибки сайта: исправленные — {r.resolvedErrorsDays} дней, остальные — {r.errorsDays} дней с последнего повторения;</li>
+          <li>новости из автосбора — {r.autoNewsDays} дней (закреплённые и новости о законах остаются);</li>
+          <li>прошлые редакции законов — {r.keepEditions} последние на документ; если на сайте-источнике поменялось только оформление, текст не перезаписывается.</li>
+        </ul>
       </section>
     </div>
   );
