@@ -47,3 +47,8 @@ export async function recordError(e: ErrorInput): Promise<void> {
     }
   } catch { /* журнал ошибок не должен ломать запрос */ }
 }
+
+// Для instrumentation.ts: он не импортирует этот модуль (иначе весь Prisma попадает в общий
+// для всех функций пакет Vercel), а берёт запись ошибок отсюда, когда модуль уже загружен —
+// а он загружен всегда, когда загружена база (через lib/auth/server).
+(globalThis as { __flRecordError?: typeof recordError }).__flRecordError = recordError;

@@ -40,6 +40,21 @@ const nextConfig = {
   // (fontkit tries, AFM metrics); bundling breaks those paths, so Node loads
   // them from node_modules instead.
   serverExternalPackages: ["pdfmake", "exceljs", "pdfjs-dist", "mammoth"],
+  // Каждый деплой хранит пакеты серверных функций (Vercel → Usage → Functions Storage, на Hobby 10 ГБ).
+  // В прод работает родной движок Prisma; его WebAssembly-варианты (Postgres, MySQL, SQLite, edge)
+  // нужны только локальным тестам — в пакеты функций их не кладём (~8 МБ на функцию).
+  outputFileTracingExcludes: {
+    "*": [
+      "node_modules/@prisma/client/runtime/query_engine_bg.*",
+      "node_modules/@prisma/client/runtime/edge*.js",
+      "node_modules/@prisma/client/runtime/react-native.js",
+      "node_modules/.prisma/client/query_engine_bg.*",
+      "node_modules/.prisma/client/deno/**",
+      "node_modules/.prisma/client/edge.js",
+      "node_modules/prisma/**",
+      "node_modules/@prisma/engines/**",
+    ],
+  },
   poweredByHeader: false,
   async headers() {
     return [
