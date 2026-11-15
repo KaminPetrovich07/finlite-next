@@ -71,6 +71,18 @@ export default function CompaniesPage() {
     } finally { setImporting(false); }
   }
 
+  const [showcasing, setShowcasing] = useState(false);
+  async function showcase() {
+    setShowcasing(true);
+    try {
+      const res = await fetch("/api/demo?kind=showcase", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.show(t(body.error ?? "Не удалось создать демо-компанию"), "error"); return; }
+      toast.show(t("Создана демо-компания для показа: торговля с импортом, август–ноябрь 2026"));
+      load();
+    } finally { setShowcasing(false); }
+  }
+
   async function demoCopy() {
     const res = await fetch("/api/demo", { method: "POST" });
     const body = await res.json().catch(() => ({}));
@@ -91,6 +103,9 @@ export default function CompaniesPage() {
         {signedIn !== false && <div className="flex flex-wrap gap-2">
             <button onClick={demoCopy} className="rounded-lg border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold/40">
               {t("Копия демо-компании")}
+            </button>
+            <button onClick={showcase} disabled={showcasing} title={t("Торговая компания с импортом из Китая и Казахстана: накладные, оплаты, зарплата, налоги и риски — для показа")} className="rounded-lg border border-fl-gold/50 bg-fl-gold/10 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold disabled:opacity-60">
+              {showcasing ? t("Создаю…") : t("Демо для показа")}
             </button>
             <label className={`cursor-pointer rounded-lg border border-fl-line bg-fl-charcoal-2 px-4 py-2.5 text-sm font-medium text-fl-cream shadow-card hover:border-fl-gold/40 ${importing ? "pointer-events-none opacity-60" : ""}`} title={t("Файл .finlite.json.gz, скачанный кнопкой «Резервная копия»")}>
               {importing ? t("Загружаю…") : t("Загрузить из копии")}
