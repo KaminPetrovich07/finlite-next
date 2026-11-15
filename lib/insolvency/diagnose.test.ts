@@ -1,7 +1,7 @@
 // Финансовая диагностика: остатки, возраст долгов по FIFO, признаки неплатёжеспособности.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { diagnose, groups, balancesAt, openDebts, monthsBack, whatIf, altmanZ } from "./diagnose";
+import { diagnose, groups, balancesAt, openDebts, monthsBack, whatIf, altmanZ, DIAG_TEXTS } from "./diagnose";
 import { demoEntries } from "@/lib/ledger/demo";
 import type { LedgerEntry } from "@/lib/ledger/types";
 
@@ -60,4 +60,18 @@ test("демо-компания: диагностика считается бе�
   assert.ok(r.balance.totalAssets > 0);
   assert.ok(r.altman && Number.isFinite(r.altman.z));
   assert.equal(altmanZ({ ...r.balance, totalAssets: 0 }, 0, 0), null);
+});
+
+test("все тексты диагностики — шаблоны из DIAG_TEXTS (их переводит интерфейс)", () => {
+  const es = [
+    E("2026-01-01", [L("1210", 1000, 0), L("5110", 0, 1000)], { source: "opening" }),
+    E("2026-02-01", [L("1610", 90000, 0), L("3110", 0, 90000, "Поставщик")]),
+    E("2026-03-31", [L("8010", 9000, 0), L("3520", 0, 9000, "Работники")]),
+    E("2026-04-30", [L("8010", 1000, 0), L("3430", 0, 1000)]),
+    E("2026-05-01", [L("9510", 500, 0), L("3550", 0, 500, "Банк")]),
+  ];
+  for (const r of [diagnose(es, "2026-11-15", { months: 6 }), diagnose(demoEntries() as LedgerEntry[], "2026-09-30", { months: 3 })]) {
+    const texts = [r.verdict.title, r.verdict.detail, ...r.signals.flatMap((s) => [s.title, s.detail]), ...r.indicators.flatMap((i) => [i.label, i.norm, i.hint])];
+    for (const t of texts) if (t !== "{list}") assert.ok(DIAG_TEXTS.includes(t), `нет в DIAG_TEXTS: ${t}`);
+  }
 });

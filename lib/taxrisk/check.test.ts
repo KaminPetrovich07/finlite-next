@@ -1,13 +1,16 @@
 // Налоговые риски: склад, цена ниже себестоимости, НДС, ЕАЭС, валютные закупки, ИНН.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { taxRisks } from "./check";
+import { taxRisks, RISK_TEXTS } from "./check";
 import { calcImport } from "@/lib/import-goods/calc";
 import type { LedgerEntry } from "@/lib/ledger/types";
 
 let n = 0;
 const E = (date: string, lines: LedgerEntry["lines"], o: Partial<LedgerEntry> = {}): LedgerEntry => ({ id: `e${++n}`, date, description: "", source: "manual", lines, ...o });
-const kinds = (r: ReturnType<typeof taxRisks>) => r.risks.map((x) => x.kind).sort();
+const kinds = (r: ReturnType<typeof taxRisks>) => {
+  for (const x of r.risks) for (const t of [x.title, x.detail]) assert.ok(RISK_TEXTS.includes(t), `нет в RISK_TEXTS: ${t}`);
+  return r.risks.map((x) => x.kind).sort();
+};
 
 test("продажа без остатка и ниже средней себестоимости", () => {
   const es = [
@@ -33,7 +36,7 @@ test("НДС: возмещение три месяца подряд, высок�
   es.push(E("2026-10-25", [{ account: "1110", debit: 50_000, credit: 0 }, { account: "6110", debit: 0, credit: 50_000 }]));
   const r = taxRisks(es, "2026-07-01", "2026-10-31");
   assert.ok(r.risks.some((x) => x.kind === "vat-refund"));
-  assert.ok(r.risks.some((x) => x.kind === "vat-share" && x.title.endsWith("2026-10")));
+  assert.ok(r.risks.some((x) => x.kind === "vat-share" && x.vars?.month === "2026-10"));
   assert.equal(r.risks.find((x) => x.kind === "sale-no-vat")!.amount, 50_000);
   assert.equal(r.vat.length, 4);
 });

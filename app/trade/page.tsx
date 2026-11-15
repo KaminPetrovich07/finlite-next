@@ -40,7 +40,7 @@ async function readSheets(file: File): Promise<Array<{ name: string; rows: Cell[
 }
 const IMPORT_CHUNK = 100;
 
-interface Summary { entryId: string; type: DocType; number: string; date: string; party: string; payment: Payment; gross: number; vat: number; rows: number; locked: boolean; editedInJournal: boolean; paid?: number; due?: number; dueStatus?: "paid" | "partial" | "open"; baseEntryId?: string }
+interface Summary { entryId: string; type: DocType; number: string; date: string; party: string; payment: Payment; gross: number; vat: number; rows: number; locked: boolean; editedInJournal: boolean; paid?: number; due?: number; dueStatus?: "paid" | "partial" | "open"; baseEntryId?: string; importDoc?: boolean }
 interface Stock { item: string; unit: string; qty: number; account: string }
 type RowDraft = Omit<DocRow, "qty" | "price"> & { qty: string; price: string };
 interface Draft { entryId?: string; version?: string; type: DocType; number: string; date: string; party: string; partyInn: string; payment: Payment; vatIncluded: boolean; basis: string; comment: string; baseEntryId?: string; rows: RowDraft[] }
@@ -459,7 +459,7 @@ export default function TradePage() {
 
       <section className={card}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1 rounded-xl bg-fl-surface-2 p-1 text-sm">
+          <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-fl-surface-2 p-1 text-sm">
             {([["", t("Все")], ["sale", t("Реализация")], ["purchase", t("Поступление")], ["return", t("Возвраты")]] as Array<[DocType | "" | "return", string]>).map(([k, v]) => (
               <button key={k} onClick={() => setFilter(k)} className={`rounded-lg px-3 py-1.5 ${filter === k ? "bg-fl-charcoal-2 font-semibold text-fl-cream shadow-card" : "text-fl-cream/60 hover:text-fl-cream"}`}>{v}</button>
             ))}
@@ -476,7 +476,7 @@ export default function TradePage() {
               <Fragment key={s.entryId}>
                 <tr className="border-t border-fl-line align-top">
                   <td className="whitespace-nowrap py-2 pr-3 text-fl-cream/70">{dmy(s.date)}</td>
-                  <td className="py-2 pr-3"><span className={`mr-1.5 inline-block rounded border px-1.5 py-px text-[11px] ${s.type === "sale" ? "border-fl-green/40 text-fl-green" : s.type === "purchase" ? "border-fl-info/40 text-fl-info" : "border-fl-amber/50 text-fl-amber"}`}>{t(DOC_LABEL[s.type])}</span>№ {s.number}<span className="ml-1 text-xs text-fl-cream/45">· {t("{n} стр.", { n: s.rows })}</span>{s.locked && <span className="ml-1 text-xs text-fl-cream/45">🔒</span>}</td>
+                  <td className="py-2 pr-3"><span className={`mr-1.5 inline-block rounded border px-1.5 py-px text-[11px] ${s.type === "sale" ? "border-fl-green/40 text-fl-green" : s.type === "purchase" ? "border-fl-info/40 text-fl-info" : "border-fl-amber/50 text-fl-amber"}`}>{s.importDoc ? t("Ввоз (импорт)") : t(DOC_LABEL[s.type])}</span>№ {s.number}<span className="ml-1 text-xs text-fl-cream/45">· {t("{n} стр.", { n: s.rows })}</span>{s.locked && <span className="ml-1 text-xs text-fl-cream/45">🔒</span>}</td>
                   <td className="py-2 pr-3 text-fl-cream/85">{s.party || "—"}</td>
                   <td className="py-2 pr-3 text-xs text-fl-cream/60">{t(PAYMENT_LABEL[s.type][s.payment])}
                     {s.dueStatus === "paid" && <span className="block text-fl-green">{t("оплачено")}</span>}
@@ -486,12 +486,14 @@ export default function TradePage() {
                   <td className="num py-2 pr-3 text-right">{m2(s.gross)}</td>
                   <td className="num py-2 pr-3 text-right text-fl-cream/60">{s.vat ? m2(s.vat) : "—"}</td>
                   <td className="whitespace-nowrap py-2 text-right text-xs">
+                    {s.importDoc ? <a href="/import-goods" className="text-fl-info hover:underline">{t("Открыть ввоз")}</a> : <>
                     <button onClick={() => open(s)} className="text-fl-info hover:underline">{ro || s.locked ? t("Открыть") : t("Изменить")}</button>
                     <button onClick={() => print(s.entryId, s.type, "pdf")} className="ml-2 text-fl-cream/60 hover:text-fl-gold hover:underline">{s.type === "sale" ? t("Накладная") : s.type === "purchase" ? "М-4" : t("Накладная")}</button>
                     {s.type === "sale" && <button onClick={() => esf(s)} className="ml-2 text-fl-cream/60 hover:text-fl-gold hover:underline">ЭСФ</button>}
                     {!ro && (s.due ?? 0) > 0 && <button onClick={() => setPayFor(payFor?.entryId === s.entryId ? null : { entryId: s.entryId, amount: String(s.due).replace(".", ","), date: today(), via: "bank" })} className="ml-2 text-fl-gold hover:underline">{t("Оплата")}</button>}
                     {!ro && !company?.demo && (s.type === "sale" || s.type === "purchase") && <button onClick={() => startReturn(s)} className="ml-2 text-fl-cream/60 hover:text-fl-gold hover:underline">{t("Возврат")}</button>}
                     {!ro && !s.locked && <button onClick={() => remove(s)} className="ml-2 text-fl-cream/40 hover:text-fl-red hover:underline">{t("Удалить")}</button>}
+                    </>}
                   </td>
                 </tr>
                 {payFor?.entryId === s.entryId && (

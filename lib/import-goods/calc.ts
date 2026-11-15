@@ -114,28 +114,39 @@ export function allocate(total: number, weights: number[]): number[] {
   return parts;
 }
 
-export function validateImport(d: ImportDoc): string[] {
+/** Подстановка {…} без перевода — по умолчанию; интерфейс передаёт свой t() для кыргызского. */
+export type Tr = (text: string, vars?: Record<string, string | number>) => string;
+const plain: Tr = (text, vars) => (vars ? text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : text);
+
+export const IMPORT_TEXTS = [
+  "Укажите номер документа", "Укажите дату", "Укажите поставщика", "Укажите курс валюты", "Добавьте хотя бы одну позицию",
+  "Строка {n}: наименование", "Строка {n}: код ТН ВЭД — 10 цифр (его проверяет ГНС в отчёте по ЕАЭС)", "Строка {n}: единица измерения",
+  "Строка {n}: количество больше нуля", "Строка {n}: цена больше нуля", "Строка {n}: ставка пошлины не может быть отрицательной",
+  "Расходы не могут быть отрицательными",
+];
+
+export function validateImport(d: ImportDoc, tr: Tr = plain): string[] {
   const p: string[] = [];
-  if (!d.number.trim()) p.push("Укажите номер документа");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) p.push("Укажите дату");
-  if (!d.supplier.trim()) p.push("Укажите поставщика");
-  if (!(d.rate > 0)) p.push("Укажите курс валюты");
-  if (!d.rows.length) p.push("Добавьте хотя бы одну позицию");
+  if (!d.number.trim()) p.push(tr("Укажите номер документа"));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) p.push(tr("Укажите дату"));
+  if (!d.supplier.trim()) p.push(tr("Укажите поставщика"));
+  if (!(d.rate > 0)) p.push(tr("Укажите курс валюты"));
+  if (!d.rows.length) p.push(tr("Добавьте хотя бы одну позицию"));
   d.rows.forEach((r, i) => {
-    const n = `Строка ${i + 1}`;
-    if (!r.item.trim()) p.push(`${n}: наименование`);
-    if (!/^\d{10}$/.test(r.hs.replace(/\s/g, ""))) p.push(`${n}: код ТН ВЭД — 10 цифр (его проверяет ГНС в отчёте по ЕАЭС)`);
-    if (!r.unit.trim()) p.push(`${n}: единица измерения`);
-    if (!(r.qty > 0)) p.push(`${n}: количество больше нуля`);
-    if (!(r.price > 0)) p.push(`${n}: цена больше нуля`);
-    if (d.origin === "third" && (r.duty ?? 0) < 0) p.push(`${n}: ставка пошлины не может быть отрицательной`);
+    const v = { n: i + 1 };
+    if (!r.item.trim()) p.push(tr("Строка {n}: наименование", v));
+    if (!/^\d{10}$/.test(r.hs.replace(/\s/g, ""))) p.push(tr("Строка {n}: код ТН ВЭД — 10 цифр (его проверяет ГНС в отчёте по ЕАЭС)", v));
+    if (!r.unit.trim()) p.push(tr("Строка {n}: единица измерения", v));
+    if (!(r.qty > 0)) p.push(tr("Строка {n}: количество больше нуля", v));
+    if (!(r.price > 0)) p.push(tr("Строка {n}: цена больше нуля", v));
+    if (d.origin === "third" && (r.duty ?? 0) < 0) p.push(tr("Строка {n}: ставка пошлины не может быть отрицательной", v));
   });
-  if (d.delivery < 0 || d.fees < 0 || d.other < 0) p.push("Расходы не могут быть отрицательными");
+  if (d.delivery < 0 || d.fees < 0 || d.other < 0) p.push(tr("Расходы не могут быть отрицательными"));
   return p;
 }
 
-export function calcImport(d: ImportDoc): ImportCalc {
-  const problems = validateImport(d);
+export function calcImport(d: ImportDoc, tr: Tr = plain): ImportCalc {
+  const problems = validateImport(d, tr);
   const third = d.origin === "third";
   const invoices = d.rows.map((r) => r2(r.qty * r.price * d.rate));
   const deliv = allocate(r2(d.delivery), invoices);

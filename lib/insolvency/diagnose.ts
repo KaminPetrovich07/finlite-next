@@ -128,6 +128,8 @@ function termOf(k: CreditorKind, account: string, t: Terms): number {
 export interface Debt {
   key: string;
   creditor: string;
+  /** долг по начисленным процентам (3550), а не по телу кредита */
+  interest?: boolean;
   kind: CreditorKind;
   accounts: string[];
   amount: number;
@@ -158,7 +160,7 @@ function creditorName(l: LedgerLine, kind: CreditorKind): string {
  */
 export function openDebts(entries: LedgerEntry[], asOf: string, terms: Terms = DEFAULT_TERMS): Debt[] {
   const sorted = entries.filter((e) => e.date <= asOf).sort((a, b) => a.date.localeCompare(b.date) || (a.source === "opening" ? -1 : b.source === "opening" ? 1 : 0));
-  const book = new Map<string, { creditor: string; kind: CreditorKind; accounts: Set<string>; parts: Array<{ date: string; left: number }>; prepaid: number; term: number }>();
+  const book = new Map<string, { creditor: string; interest: boolean; kind: CreditorKind; accounts: Set<string>; parts: Array<{ date: string; left: number }>; prepaid: number; term: number }>();
   for (const e of sorted) {
     for (const l of e.lines) {
       // резервы, отсроченные доходы и отсроченный налог — оценки, а не требования кредиторов
@@ -167,7 +169,7 @@ export function openDebts(entries: LedgerEntry[], asOf: string, terms: Terms = D
       const name = creditorName(l, kind);
       const interest = kind === "lenders" && l.account.startsWith("3550");
       const key = `${kind}|${interest ? "%" : ""}${kind === "budget" ? name : nameKey(name) || name}`;
-      const b = book.get(key) ?? book.set(key, { creditor: interest ? `${name} — проценты` : name, kind, accounts: new Set(), parts: [], prepaid: 0, term: termOf(kind, l.account, terms) }).get(key)!;
+      const b = book.get(key) ?? book.set(key, { creditor: name, interest, kind, accounts: new Set(), parts: [], prepaid: 0, term: termOf(kind, l.account, terms) }).get(key)!;
       b.accounts.add(l.account);
       let pay = l.debit - l.credit; // погашение долга — дебет счёта обязательства
       if (pay < 0) {
@@ -192,7 +194,7 @@ export function openDebts(entries: LedgerEntry[], asOf: string, terms: Terms = D
     const term = b.term;
     const overdue = r2(open.filter((p) => days(p.date, asOf) > term).reduce((s, p) => s + p.left, 0));
     const overdue90 = r2(open.filter((p) => days(p.date, asOf) > term + 90).reduce((s, p) => s + p.left, 0));
-    out.push({ key, creditor: b.creditor, kind: b.kind, accounts: [...b.accounts].sort(), amount, oldest: open[0].date, age: days(open[0].date, asOf), overdue, overdue90 });
+    out.push({ key, creditor: b.creditor, ...(b.interest ? { interest: true } : {}), kind: b.kind, accounts: [...b.accounts].sort(), amount, oldest: open[0].date, age: days(open[0].date, asOf), overdue, overdue90 });
   }
   return out.sort((a, b) => b.overdue - a.overdue || b.amount - a.amount);
 }
@@ -201,7 +203,8 @@ export function openDebts(entries: LedgerEntry[], asOf: string, terms: Terms = D
 
 export type Level = "ok" | "watch" | "risk";
 export interface Indicator { key: string; label: string; value: number | null; unit: "x" | "%" | "сом" | "мес"; norm: string; level: Level; hint: string }
-export interface Signal { level: "risk" | "watch"; title: string; detail: string }
+/** title и detail — шаблоны с подстановками {…}: интерфейс переводит их (t(detail, vars)), PDF подставляет по-русски. */
+export interface Signal { level: "risk" | "watch"; title: string; detail: string; vars?: Record<string, string | number> }
 
 export interface MonthRow {
   month: string; date: string;
@@ -304,18 +307,18 @@ export function diagnose(entries: LedgerEntry[], asOf: string, opts: { months?: 
 
   const signals: Signal[] = [];
   const staff = byKind.find((k) => k.kind === "staff"), budget = byKind.find((k) => k.kind === "budget"), sup = byKind.find((k) => k.kind === "suppliers"), lend = byKind.find((k) => k.kind === "lenders");
-  if (balance.equity < 0) signals.push({ level: "risk", title: "Недостаточность активов", detail: `Обязательства (${fmt(balance.liabilities)} сом) больше всех активов (${fmt(balance.totalAssets)} сом) на ${fmt(-balance.equity)} сом.` });
-  if (overdue > 0.01 && balance.liquid < overdue) signals.push({ level: "risk", title: "Ликвидных активов меньше, чем просроченных долгов", detail: `Просрочено ${fmt(overdue)} сом, денег и дебиторки — ${fmt(balance.liquid)} сом. Это и есть неплатёжеспособность в смысле ст. 3 Закона.` });
-  if (staff && staff.overdue > 0.01) signals.push({ level: "risk", title: "Задержка зарплаты", detail: `Не выплачено дольше ${terms.staff} дней: ${fmt(staff.overdue)} сом.` });
-  if (budget && budget.overdue > 0.01) signals.push({ level: budget.overdue > balance.cash ? "risk" : "watch", title: "Не погашены налоги и взносы", detail: `Дольше ${terms.budget} дней после начисления: ${fmt(budget.overdue)} сом. Налоговые долги учитываются при неплатёжеспособности наравне с другими.` });
-  if (sup && sup.overdue > 0.01) signals.push({ level: overdue90 > 0.01 ? "risk" : "watch", title: "Просрочка поставщикам", detail: `${fmt(sup.overdue)} сом не оплачено дольше ${terms.suppliers} дней${overdue90 > 0.01 ? `, из них ${fmt(overdue90)} сом — ещё на 90 дней дольше` : ""}.` });
-  if (lend && lend.overdue > 0.01) signals.push({ level: "risk", title: "Не уплачены проценты по кредитам", detail: `${fmt(lend.overdue)} сом начисленных процентов не уплачено дольше ${terms.interest} дней.` });
-  if (lossStreak) signals.push({ level: "watch", title: "Убыток три месяца подряд", detail: lastNet.map((n, i) => `${months[months.length - 3 + i].month}: ${fmt(n)}`).join("; ") });
-  if (runway != null && runway < 1) signals.push({ level: "watch", title: "Денег меньше чем на месяц", detail: `При нынешнем оттоке деньги закончатся примерно через ${runway} мес.` });
-  if (altman?.zone === "distress") signals.push({ level: "watch", title: "Модель Альтмана: зона высокого риска", detail: `Z'' = ${altman.z} (ниже 1,1).` });
+  if (balance.equity < 0) signals.push({ level: "risk", title: "Недостаточность активов", detail: "Обязательства ({liab} сом) больше всех активов ({assets} сом) на {gap} сом.", vars: { liab: fmt(balance.liabilities), assets: fmt(balance.totalAssets), gap: fmt(-balance.equity) } });
+  if (overdue > 0.01 && balance.liquid < overdue) signals.push({ level: "risk", title: "Ликвидных активов меньше, чем просроченных долгов", detail: "Просрочено {overdue} сом, денег и дебиторки — {liquid} сом. Это и есть неплатёжеспособность в смысле ст. 3 Закона.", vars: { overdue: fmt(overdue), liquid: fmt(balance.liquid) } });
+  if (staff && staff.overdue > 0.01) signals.push({ level: "risk", title: "Задержка зарплаты", detail: "Не выплачено дольше {days} дней: {sum} сом.", vars: { days: terms.staff, sum: fmt(staff.overdue) } });
+  if (budget && budget.overdue > 0.01) signals.push({ level: budget.overdue > balance.cash ? "risk" : "watch", title: "Не погашены налоги и взносы", detail: "Дольше {days} дней после начисления: {sum} сом. Налоговые долги учитываются при неплатёжеспособности наравне с другими.", vars: { days: terms.budget, sum: fmt(budget.overdue) } });
+  if (sup && sup.overdue > 0.01) signals.push({ level: overdue90 > 0.01 ? "risk" : "watch", title: "Просрочка поставщикам", detail: overdue90 > 0.01 ? "{sum} сом не оплачено дольше {days} дней, из них {sum90} сом — ещё на 90 дней дольше." : "{sum} сом не оплачено дольше {days} дней.", vars: { sum: fmt(sup.overdue), days: terms.suppliers, sum90: fmt(overdue90) } });
+  if (lend && lend.overdue > 0.01) signals.push({ level: "risk", title: "Не уплачены проценты по кредитам", detail: "{sum} сом начисленных процентов не уплачено дольше {days} дней.", vars: { sum: fmt(lend.overdue), days: terms.interest } });
+  if (lossStreak) signals.push({ level: "watch", title: "Убыток три месяца подряд", detail: "{list}", vars: { list: lastNet.map((n, i) => `${months[months.length - 3 + i].month}: ${fmt(n)}`).join("; ") } });
+  if (runway != null && runway < 1) signals.push({ level: "watch", title: "Денег меньше чем на месяц", detail: "При нынешнем оттоке деньги закончатся примерно через {n} мес.", vars: { n: String(runway).replace(".", ",") } });
+  if (altman?.zone === "distress") signals.push({ level: "watch", title: "Модель Альтмана: зона высокого риска", detail: "Z'' = {z} (ниже 1,1).", vars: { z: String(altman.z).replace(".", ",") } });
   const trend = months.filter((m) => m.current != null).slice(-4);
   if (trend.length >= 4 && trend.every((m, i) => i === 0 || (m.current ?? 0) < (trend[i - 1].current ?? 0)) && (trend[3].current ?? 0) < 1.5) {
-    signals.push({ level: "watch", title: "Ликвидность падает четвёртый месяц", detail: trend.map((m) => `${m.month}: ${m.current}`).join(" → ") });
+    signals.push({ level: "watch", title: "Ликвидность падает четвёртый месяц", detail: "{list}", vars: { list: trend.map((m) => `${m.month}: ${String(m.current).replace(".", ",")}`).join(" → ") } });
   }
 
   // главный признак (ст. 3 Закона): просроченного больше, чем ликвидных активов, или активов меньше, чем долгов.
@@ -339,3 +342,25 @@ export function whatIf(b: BalanceGroups, overdue: number, o: { collect: number; 
   const cl = b.currentLiabilities - overdue * (o.defer / 100);
   return { cash: r2(cash), liquid: r2(liquid), overdue: r2(od), coverage: ratio(liquid, od), current: ratio(b.currentAssets, cl), absolute: ratio(cash + b.investments, cl) };
 }
+
+/** Все тексты модуля, которые интерфейс переводит через t() (для проверки полноты кыргызского словаря). */
+export const DIAG_TEXTS: string[] = [
+  ...Object.values(CREDITOR_KIND), ...Object.values(BUDGET_NAMES), "Налоги", "Работники", "без указания контрагента", "{name} — проценты",
+  "Недостаточность активов", "Обязательства ({liab} сом) больше всех активов ({assets} сом) на {gap} сом.",
+  "Ликвидных активов меньше, чем просроченных долгов", "Просрочено {overdue} сом, денег и дебиторки — {liquid} сом. Это и есть неплатёжеспособность в смысле ст. 3 Закона.",
+  "Задержка зарплаты", "Не выплачено дольше {days} дней: {sum} сом.",
+  "Не погашены налоги и взносы", "Дольше {days} дней после начисления: {sum} сом. Налоговые долги учитываются при неплатёжеспособности наравне с другими.",
+  "Просрочка поставщикам", "{sum} сом не оплачено дольше {days} дней, из них {sum90} сом — ещё на 90 дней дольше.", "{sum} сом не оплачено дольше {days} дней.",
+  "Не уплачены проценты по кредитам", "{sum} сом начисленных процентов не уплачено дольше {days} дней.",
+  "Убыток три месяца подряд", "Денег меньше чем на месяц", "При нынешнем оттоке деньги закончатся примерно через {n} мес.",
+  "Модель Альтмана: зона высокого риска", "Z'' = {z} (ниже 1,1).", "Ликвидность падает четвёртый месяц",
+  "Есть признаки неплатёжеспособности", "Компания уже не гасит часть долгов в срок, и средств на них не хватает. Нужен план: реструктуризация долгов, взыскание дебиторки, продажа лишних запасов — пока это ещё оздоровление, а не ликвидация.",
+  "Есть риски — стоит следить", "Признаков неплатёжеспособности нет, но часть показателей ниже нормы. Посмотрите, что тянет их вниз.",
+  "Финансово устойчива", "Долги гасятся в срок, ликвидных средств на них хватает.",
+  "Текущая ликвидность", "от 1,5; ниже 1 — риск", "Оборотные активы / краткосрочные обязательства: хватит ли всего оборотного имущества на текущие долги.",
+  "Быстрая ликвидность", "от 0,8; ниже 0,5 — риск", "Деньги, вложения и дебиторка / краткосрочные обязательства — без запасов, которые ещё надо продать.",
+  "Абсолютная ликвидность", "от 0,2", "Только деньги / краткосрочные обязательства: какую часть долгов можно погасить прямо сейчас.",
+  "Доля собственного капитала", "от 50 %; меньше 0 — активов меньше, чем долгов", "Капитал / активы. Отрицательный капитал — недостаточность активов: всего имущества не хватит на все долги.",
+  "Покрытие просроченных долгов", "от 1; ниже 1 — признак ст. 3", "Ликвидные активы / долги, не погашенные в срок. Ниже 1 — не хватает средств погасить просроченное.",
+  "Денег хватит", "от 2 месяцев", "Деньги / средний чистый отток за последние 3 месяца.",
+];

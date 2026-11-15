@@ -6,7 +6,7 @@ import { quietly, recordEntryEvent } from "@/lib/ledger/guard";
 import { createDoc, payDoc } from "@/lib/trade/server";
 import { createImport } from "@/lib/import-goods/server";
 import { putRecord } from "@/lib/records";
-import { showcasePlan, SHOWCASE, VAT_SETTLE } from "./plan";
+import { FILED, showcasePlan, SHOWCASE, VAT_SETTLE } from "./plan";
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const monthEnd = (ym: string) => { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
@@ -20,12 +20,14 @@ export async function createShowcase(ownerId: string | null) {
   try {
     // склад: себестоимость списывается сама при каждой реализации (по средней)
     await putRecord(companyId, "stock", "main", { auto: true });
+    await putRecord(companyId, "taxreports", "main", { size: "small", filed: FILED });
     await quietly(async () => {
       for (const op of showcasePlan()) {
         if (op.kind === "entry") {
           await createEntry(prisma, { companyId, date: op.date, description: op.description, source: op.source ?? "manual", sourceRef: op.sourceRef, lines: op.lines });
         } else if (op.kind === "trade") {
-          const r = await createDoc(companyId, op.doc);
+          const base = op.baseTag ? tags.get(op.baseTag) : undefined;
+          const r = await createDoc(companyId, base ? { ...op.doc, baseEntryId: base } : op.doc);
           if (op.tag) tags.set(op.tag, r.entryId);
           notes.push(...r.problems);
         } else if (op.kind === "import") {

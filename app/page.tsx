@@ -27,7 +27,7 @@ interface Stat {
 interface Ev { key: string; companyId: string; form: string; title: string; periodLabel: string; deadline: string; daysLeft: number; status: string; amount: number | null }
 interface News { id: string; kind: PostKind; title: string; sourceName: string | null; authorName: string; docDate: string | null; createdAt: string }
 
-const SOURCE: Record<string, string> = { manual: "вручную", bank: "из выписки", opening: "остатки", closing: "закрытие", payroll: "зарплата", esf: "ЭСФ", depreciation: "амортизация", cogs: "себестоимость", fx: "курсовые", import1c: "из 1С", demo: "демо" };
+const SOURCE: Record<string, string> = { trade: "документ", manual: "вручную", bank: "из выписки", opening: "остатки", closing: "закрытие", payroll: "зарплата", esf: "ЭСФ", depreciation: "амортизация", cogs: "себестоимость", fx: "курсовые", import1c: "из 1С", demo: "демо" };
 
 function Step({ done, n, title, text, href, cta }: { done: boolean; n: number; title: string; text: string; href: string; cta: string }) {
   const t = useT();
@@ -212,7 +212,7 @@ export default function Home() {
         ))}
       </section>
 
-      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className={`${card} p-4 sm:p-5`}>
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold text-fl-cream">{t("Последние операции")}</h2>

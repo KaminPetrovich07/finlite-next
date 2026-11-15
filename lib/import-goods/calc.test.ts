@@ -64,3 +64,13 @@ test("не плательщик НДС: НДС в себестоимости; о
   assert.ok(bad.problems.some((p) => /ТН ВЭД/.test(p)));
   assert.ok(bad.problems.some((p) => /единица/.test(p)));
 });
+
+test("раздел 3 STI-123: строки ввоза из ЕАЭС за месяц с кодами ТН ВЭД, единицами и количеством", async () => {
+  const { sti123Rows, sti123Xlsx } = await import("./sti123");
+  const eaeu = base({ origin: "eaeu", country: "Казахстан", currency: "KZT", rate: 0.17, rows: [{ item: "Мука", hs: "1101001100", unit: "кг", qty: 20_000, price: 180, minBase: 40 }], fees: 0, delivery: 0 });
+  const rows = sti123Rows([eaeu, base(), { ...eaeu, number: "2", date: "2026-12-02" }], "2026-11");
+  assert.equal(rows.length, 1, "из третьих стран и другого месяца — не попадают");
+  assert.deepEqual([rows[0].hs, rows[0].unit, rows[0].qty, rows[0].amount, rows[0].vatBase, rows[0].vat], ["1101001100", "кг", 20_000, 612_000, 800_000, 96_000]);
+  const buf = await sti123Xlsx("ОсОО Тест", null, "2026-11", rows);
+  assert.ok(buf.length > 4000);
+});

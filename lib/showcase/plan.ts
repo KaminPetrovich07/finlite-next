@@ -31,7 +31,7 @@ const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export type Op =
   | { kind: "entry"; date: string; description: string; lines: LedgerLine[]; sourceRef?: string; source?: "opening" | "manual" | "payroll" }
-  | { kind: "trade"; doc: TradeDoc; tag?: string }
+  | { kind: "trade"; doc: TradeDoc; tag?: string; baseTag?: string }
   | { kind: "import"; doc: ImportDoc }
   | { kind: "pay"; tag: string; date: string; amount: number; via: "bank" | "cash" };
 
@@ -129,10 +129,13 @@ export function showcasePlan(): Op[] {
     const d = (day: number) => `2026-${x.m}-${String(day).padStart(2, "0")}`;
     const half = (n: number) => Math.round(n / 2);
     ops.push(sale(d(x.m === "11" ? 4 : 8), P.toomarket, "credit", [goods("Мука пшеничная в/с", "кг", half(x.flour), 48), goods("Сахар-песок", "кг", half(x.sugar), 78)], `tm-${x.m}`));
-    ops.push(sale(d(x.m === "11" ? 6 : 12), P.jashyl, "bank", [goods("Мука пшеничная в/с", "кг", half(x.flour) - 1_000, 47), goods("Сахар-песок", "кг", half(x.sugar), 77)]));
+    ops.push(sale(d(x.m === "11" ? 6 : 12), P.jashyl, "bank", [goods("Мука пшеничная в/с", "кг", half(x.flour) - 1_000, 47), goods("Сахар-песок", "кг", half(x.sugar), 77)], `jb-${x.m}`));
     ops.push(sale(d(x.m === "11" ? 7 : 15), P.sadykov, "credit", [goods("Кроссовки мужские", "пар", x.shoes, 2_400), ...(x.bags ? [goods("Рюкзаки городские", "шт", x.bags, 1_500)] : [])], `sd-${x.m}`));
     ops.push(sale(d(x.m === "11" ? 9 : 20), P.ysyk, "cash", [goods("Мука пшеничная в/с", "кг", 1_000, 50)]));
   }
+  // возврат от покупателя: часть сахара с повреждённой упаковкой, деньги вернули на счёт
+  ops.push({ kind: "trade", baseTag: "jb-10", doc: { type: "saleReturn", number: "1", date: "2026-10-16", party: P.jashyl.name, partyInn: P.jashyl.inn, payment: "bank", vatIncluded: true,
+    basis: "Акт о повреждении упаковки (демо)", rows: [goods("Сахар-песок", "кг", 200, 77)] } });
   // распродажа рюкзаков ниже себестоимости (уценка)
   ops.push(sale("2026-10-18", P.ysyk, "cash", [goods("Рюкзаки городские", "шт", 120, 600)]));
   // носки
@@ -183,10 +186,20 @@ export function showcasePlan(): Op[] {
   ops.push({ kind: "entry", date: "2026-08-31", description: "Амортизация оборудования склада", lines: [L("8470", 6_500, 0), L("2194", 0, 6_500)] });
   ops.push({ kind: "entry", date: "2026-09-30", description: "Амортизация оборудования склада", lines: [L("8470", 6_500, 0), L("2194", 0, 6_500)] });
   ops.push({ kind: "entry", date: "2026-10-31", description: "Амортизация оборудования склада", lines: [L("8470", 6_500, 0), L("2194", 0, 6_500)] });
+  // номера реализаций — сквозные по дате, как в настоящем журнале
+  const sales = ops.filter((o): o is Extract<Op, { kind: "trade" }> => o.kind === "trade" && o.doc.type === "sale").sort((a, b) => a.doc.date.localeCompare(b.doc.date));
+  sales.forEach((o, i) => { o.doc.number = String(i + 1); });
   return ops;
 }
 
 /** НДС за месяц: зачёт входного и уплата остатка — строится по журналу при посеве (суммы зависят от себестоимости и ввоза). */
+/** Отчёты, уже сданные в ГНС к середине ноября (форма|начало периода → дата сдачи) — чтобы календарь не горел красным. */
+export const FILED: Record<string, string> = {
+  "STI-161|2026-08-01": "2026-09-18", "STI-161|2026-09-01": "2026-10-17",
+  "STI-062|2026-08-01": "2026-09-19", "STI-062|2026-09-01": "2026-10-19",
+  "STI-129|2026-07-01": "2026-10-19",
+};
+
 export const VAT_SETTLE = [
   { month: "2026-08", pay: "2026-09-20" },
   { month: "2026-09", pay: "2026-10-20" },

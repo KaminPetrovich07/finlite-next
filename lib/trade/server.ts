@@ -4,7 +4,8 @@
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/http-error";
 import { quietly, recordEntryEvent, snapshotOf } from "@/lib/ledger/guard";
-import { createEntry, fromIsoDate, loadEntries, toLedgerEntry } from "@/lib/ledger/repo";
+import { createEntry, fromIsoDate, loadEntries, toIsoDate, toLedgerEntry } from "@/lib/ledger/repo";
+import { calcImport, type ImportDoc } from "@/lib/import-goods/calc";
 import { stockWithAverage } from "@/lib/stock/cogs";
 import { docDues, payRef, type DueStatus } from "./settle";
 import { normalizeUnit } from "@/lib/okei";
@@ -86,6 +87,8 @@ export interface DocSummary {
   paid?: number; due?: number; dueStatus?: DueStatus;
   /** возврат: по какому документу */
   baseEntryId?: string;
+  /** ввоз товара (импорт) — открывается на странице «Ввоз товара», а не здесь */
+  importDoc?: boolean;
 }
 
 const today = () => new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 10); // Бишкек
@@ -102,7 +105,8 @@ export async function listDocs(companyId: string, from: string, to: string): Pro
   for (const c of copies) { const b = (c.data as { baseEntryId?: string } | null)?.baseEntryId; if (b) links.set(c.key, b); }
   const dues = entries.some((r) => (r.sourceRef ?? "").startsWith("sale:") || (r.sourceRef ?? "").startsWith("purchase:"))
     ? docDues(await loadEntries(companyId), today(), links) : new Map();
-  return entries.map((row) => {
+  const imports = await importSummaries(companyId, from, to, company?.lockedThrough ?? null);
+  const docs = entries.map((row) => {
     const e = toLedgerEntry(row);
     const copy = byId.get(e.id);
     const edited = !!copy && !!row.updatedAt && row.updatedAt.getTime() > copy.updatedAt.getTime() + 1000;
@@ -120,6 +124,25 @@ export async function listDocs(companyId: string, from: string, to: string): Pro
       ...(due ? { paid: due.paid, due: due.due, dueStatus: due.status } : {}),
       ...(doc.baseEntryId ? { baseEntryId: doc.baseEntryId } : {}),
     };
+  });
+  return [...docs, ...imports].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Ввозы товара за период — в общем списке как поступления (суммы и НДС из документа ввоза). */
+async function importSummaries(companyId: string, from: string, to: string, lockedThrough: Date | null): Promise<DocSummary[]> {
+  const rows = await prisma.journalEntry.findMany({ where: { companyId, sourceRef: { startsWith: "import:" }, date: { gte: fromIsoDate(from), lte: fromIsoDate(to) } }, select: { id: true, date: true } });
+  if (!rows.length) return [];
+  const copies = await prisma.companyRecord.findMany({ where: { companyId, kind: "importDoc", key: { in: rows.map((r) => r.id) } }, select: { key: true, data: true } });
+  const byId = new Map(copies.map((c) => [c.key, c.data as unknown as ImportDoc]));
+  return rows.flatMap((r) => {
+    const d = byId.get(r.id);
+    if (!d) return [];
+    const c = calcImport(d);
+    return [{
+      entryId: r.id, type: "purchase" as const, number: d.number, date: toIsoDate(r.date), party: d.supplier, payment: "credit",
+      gross: Math.round((c.totals.cost + (d.vatPayer ? c.totals.vat : 0)) * 100) / 100, vat: c.totals.vat, rows: d.rows.length,
+      locked: !!lockedThrough && r.date.getTime() <= lockedThrough.getTime(), editedInJournal: false, importDoc: true,
+    }];
   });
 }
 
