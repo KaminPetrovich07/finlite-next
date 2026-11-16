@@ -15,6 +15,7 @@ import { NATURE_LABEL } from "@/lib/ledger/accounts";
 import { DIAG_TEXTS } from "@/lib/insolvency/diagnose";
 import { RISK_TEXTS } from "@/lib/taxrisk/check";
 import { EAEU, IMPORT_TEXTS, ORIGIN_LABEL } from "@/lib/import-goods/calc";
+import { SCORE_TEXTS } from "@/lib/portfolio/score";
 
 /** Files whose t("…") literals are checked. */
 export const TRANSLATED_FILES = [
@@ -22,7 +23,7 @@ export const TRANSLATED_FILES = [
   "components/i18n.tsx", "components/ledger/EntryCard.tsx", "components/ledger/PeriodPicker.tsx",
   "app/page.tsx", "app/login/page.tsx", "app/register/page.tsx", "app/reset/page.tsx",
   "app/ledger/page.tsx", "app/trade/page.tsx", "app/nomenclature/page.tsx",
-  "app/diagnostics/page.tsx", "app/taxrisk/page.tsx", "app/import-goods/page.tsx",
+  "app/diagnostics/page.tsx", "app/taxrisk/page.tsx", "app/import-goods/page.tsx", "app/portfolio/page.tsx",
   "app/companies/page.tsx", "app/transactions/page.tsx", "app/inventory/page.tsx",
   "components/ledger/Trash.tsx", "components/ledger/AccountPicker.tsx", "components/AccountView.tsx",
   "components/ledger/statements.tsx", "app/reports/page.tsx", "components/ledger/Dashboard.tsx",
@@ -58,7 +59,7 @@ export function listKeys(): string[] {
   out.push("нет снимка проводки", "уже восстановлена", "раздел уже сформировал её заново", "восстановлена из удалённых",
     "восстановлена из удалённых как ручная проводка (строки выписки больше нет)", "удалена строка банковской выписки");
   // финансовая диагностика, налоговые риски, ввоз товара: тексты из lib, которые страницы переводят через t()
-  out.push(...DIAG_TEXTS, ...RISK_TEXTS, ...IMPORT_TEXTS, ...Object.values(ORIGIN_LABEL), ...EAEU, "Китай", "НДС при ввозе из ЕАЭС", "Таможенная служба КР", "Перевозчик");
+  out.push(...SCORE_TEXTS, "Госпредприятия (демо)", ...DIAG_TEXTS, ...RISK_TEXTS, ...IMPORT_TEXTS, ...Object.values(ORIGIN_LABEL), ...EAEU, "Китай", "НДС при ввозе из ЕАЭС", "Таможенная служба КР", "Перевозчик");
   return out;
 }
 

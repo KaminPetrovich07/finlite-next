@@ -59,3 +59,23 @@ export async function createShowcase(ownerId: string | null) {
   }
   return { id: companyId, name: company.name, operations: count, notes };
 }
+
+/** Одно демо-госпредприятие из портфеля (i = 0…9): клиент вызывает по одному, чтобы не упереться в лимит времени функции. */
+export async function createSoe(ownerId: string | null, i: number) {
+  const { SOE_PROFILES, SOE_SEGMENT, soeEntries } = await import("./soe");
+  const p = SOE_PROFILES[i];
+  if (!p) throw new Error("Нет такого демо-предприятия");
+  const company = await prisma.company.create({ data: { name: p.name, defaultRegime: "general", activity: `Госпредприятие (демо): ${p.activity}`, ownerId } });
+  try {
+    await putRecord(company.id, "profile", "main", { segment: SOE_SEGMENT });
+    await putRecord(company.id, "taxreports", "main", { size: "small", filed: {} });
+    await quietly(async () => {
+      for (const e of soeEntries(p)) await createEntry(prisma, { companyId: company.id, date: e.date, description: e.description, source: e.source, lines: e.lines });
+      await recordEntryEvent(prisma, { companyId: company.id, action: "import", source: "demo", entryDate: "2025-11-01", note: "Демо-госпредприятие для портфеля" });
+    });
+  } catch (e) {
+    await prisma.company.delete({ where: { id: company.id } }).catch(() => undefined);
+    throw e;
+  }
+  return { id: company.id, name: company.name };
+}

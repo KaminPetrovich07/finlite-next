@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createDemoCopy } from "@/lib/ledger/demo-copy";
-import { createShowcase } from "@/lib/showcase/seed";
-import { logActivity, requireUser, route } from "@/lib/auth/server";
+import { createShowcase, createSoe } from "@/lib/showcase/seed";
+import { HttpError, logActivity, requireUser, route } from "@/lib/auth/server";
 import { assertCanCreateCompany } from "@/lib/server/plan-guard";
 import { AUTH_ON } from "@/lib/auth/mode";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -17,6 +17,13 @@ export const maxDuration = 60;
 export const POST = route(async (req: NextRequest) => {
   const me = AUTH_ON ? await requireUser() : await getCurrentUser();
   await assertCanCreateCompany(me);
+  if (req.nextUrl.searchParams.get("kind") === "soe") {
+    const i = Number(req.nextUrl.searchParams.get("i"));
+    if (!Number.isInteger(i) || i < 0 || i > 9) throw new HttpError(400, "i = 0…9");
+    const r = await createSoe(me?.id ?? null, i);
+    await logActivity("demo_soe", r.id, { i });
+    return NextResponse.json(r, { status: 201 });
+  }
   if (req.nextUrl.searchParams.get("kind") === "showcase") {
     const r = await createShowcase(me?.id ?? null);
     await logActivity("demo_showcase", r.id, { operations: r.operations });

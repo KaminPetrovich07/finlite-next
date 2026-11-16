@@ -24,7 +24,7 @@ export interface Metrics {
 
 const OFFSET = 6 * 3600 * 1000;
 const DAY = 24 * 3600 * 1000;
-export const OUTPUT_ACTIONS = new Set(["export", "policy_export", "primary_export", "costing_export", "counterparties_export", "taxreports_export", "export1c", "insolvency_export"]);
+export const OUTPUT_ACTIONS = new Set(["export", "policy_export", "primary_export", "costing_export", "counterparties_export", "taxreports_export", "export1c", "insolvency_export", "portfolio_export"]);
 
 export const dayOf = (d: Date) => new Date(d.getTime() + OFFSET).toISOString().slice(0, 10);
 /** Monday of the week (Bishkek time) as YYYY-MM-DD */
