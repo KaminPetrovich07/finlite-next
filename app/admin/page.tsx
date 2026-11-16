@@ -6,9 +6,10 @@ import { CHART } from "@/lib/chart-theme";
 import { PLANS, PLAN_ORDER, planKey } from "@/lib/plans";
 import { reviewOverdue, TAX_RULES } from "@/lib/tax-rules";
 import { card, field, ghostBtn } from "@/components/auth/ui";
+import { actionLabel, type ActivityRow } from "@/lib/monitor/actions";
 
-type Tab = "metrics" | "auth" | "users" | "companies" | "feedback" | "errors" | "storage";
-const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["auth", "Вход и пилот"], ["users", "Пользователи"], ["companies", "Компании"], ["feedback", "Обратная связь"], ["errors", "Ошибки"], ["storage", "База данных"]];
+type Tab = "metrics" | "auth" | "users" | "companies" | "activity" | "feedback" | "errors" | "storage" | "system";
+const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["auth", "Вход и пилот"], ["users", "Пользователи"], ["companies", "Компании"], ["activity", "Журнал действий"], ["feedback", "Обратная связь"], ["errors", "Ошибки"], ["storage", "База данных"], ["system", "Система"]];
 const pct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)} %`);
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString("ru-RU") : "—");
 
@@ -45,6 +46,8 @@ export default function AdminPage() {
         {tab === "feedback" && <Feedback />}
         {tab === "errors" && <Errors />}
         {tab === "storage" && <Storage />}
+        {tab === "activity" && <Activity />}
+        {tab === "system" && <SystemInfo />}
       </div>
     </main>
   );
@@ -553,6 +556,134 @@ function Storage() {
           <li>новости из автосбора — {r.autoNewsDays} дней (закреплённые и новости о законах остаются);</li>
           <li>прошлые редакции законов — {r.keepEditions} последние на документ; если на сайте-источнике поменялось только оформление, текст не перезаписывается.</li>
         </ul>
+      </section>
+    </div>
+  );
+}
+
+// ── Журнал действий ─────────────────────────────────────────────────────────
+/** Кто, когда и что сделал: фильтры, подгрузка по 100, выгрузка CSV для проверки. */
+function Activity() {
+  const [f, setF] = useState({ user: "", group: "", action: "", companyId: "", from: "", to: "" });
+  const [rows, setRows] = useState<ActivityRow[]>([]);
+  const [groups, setGroups] = useState<string[]>([]);
+  const [more, setMore] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const qs = (extra: Record<string, string> = {}) => new URLSearchParams(Object.entries({ ...f, ...extra }).filter(([, v]) => v)).toString();
+  const load = useCallback(async (before?: string) => {
+    setBusy(true); setError(null);
+    try {
+      const r = await fetch(`/api/admin/activity?${qs(before ? { before } : {})}`);
+      const b = await r.json();
+      if (!r.ok) throw new Error(b?.error ?? "Не удалось загрузить журнал");
+      setRows((x) => (before ? [...x, ...b.rows] : b.rows)); setMore(b.more); setGroups(b.groups);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f]);
+  useEffect(() => { const t = setTimeout(() => load(), 300); return () => clearTimeout(t); }, [load]);
+  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const local = (iso: string) => new Date(iso).toLocaleString("ru-RU", { timeZone: "Asia/Bishkek", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <div className="space-y-4">
+      <p className="max-w-3xl text-sm text-fl-cream/65">Каждое значимое действие пользователей записывается: входы (с IP-адресом), неудачные попытки, изменения и удаление проводок, загрузки, выгрузки, доступ к компаниям, действия администраторов. Записи нельзя изменить из интерфейса. Изменения самих проводок дополнительно хранятся в истории журнала (кто, когда, что было и что стало).</p>
+      <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <label className="text-xs text-fl-cream/55">Пользователь (e-mail)<input className={field} value={f.user} onChange={set("user")} placeholder="часть адреса" /></label>
+        <label className="text-xs text-fl-cream/55">Группа<select className={field} value={f.group} onChange={set("group")}><option value="">Все, кроме «был на сайте»</option>{groups.map((g) => <option key={g} value={g}>{g}</option>)}</select></label>
+        <label className="text-xs text-fl-cream/55">Код действия<input className={field} value={f.action} onChange={set("action")} placeholder="например entry_delete" /></label>
+        <label className="text-xs text-fl-cream/55">ID компании<input className={field} value={f.companyId} onChange={set("companyId")} /></label>
+        <label className="text-xs text-fl-cream/55">С даты<input type="date" className={field} value={f.from} onChange={set("from")} /></label>
+        <label className="text-xs text-fl-cream/55">По дату<input type="date" className={field} value={f.to} onChange={set("to")} /></label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <a className={ghostBtn} href={`/api/admin/activity?${qs({ format: "csv" })}`}>Выгрузить в Excel (CSV)</a>
+        <span className="text-xs text-fl-cream/50">До 50 000 записей по текущему фильтру. Выгрузка сама записывается в журнал. Время — по Бишкеку.</span>
+      </div>
+      {error && <p className="text-sm text-fl-red">{error}</p>}
+      <div className={`${card} overflow-x-auto`}>
+        <table className="w-full min-w-[760px] text-sm">
+          <thead><tr className="text-left text-xs text-fl-cream/50"><th className="px-3 py-2 font-normal">Время</th><th className="px-3 py-2 font-normal">Пользователь</th><th className="px-3 py-2 font-normal">Действие</th><th className="px-3 py-2 font-normal">Компания</th><th className="px-3 py-2 font-normal">Подробности</th></tr></thead>
+          <tbody className="divide-y divide-fl-line">
+            {rows.map((r) => {
+              const d = r.details && typeof r.details === "object" ? JSON.stringify(r.details) : r.details == null ? "" : String(r.details);
+              return (
+                <tr key={r.id} className={r.action === "login_failed" ? "bg-fl-red/[0.05]" : r.action.startsWith("admin_") || r.action === "audit_export" ? "bg-fl-amber/[0.05]" : ""}>
+                  <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-fl-cream/70">{local(r.createdAt)}</td>
+                  <td className="px-3 py-1.5 text-fl-cream/85">{r.userEmail ?? "—"}</td>
+                  <td className="px-3 py-1.5 text-fl-cream">{actionLabel(r.action)} <span className="text-xs text-fl-cream/35">{r.action}</span></td>
+                  <td className="px-3 py-1.5 text-fl-cream/75">{r.companyName ?? ""}</td>
+                  <td className="max-w-[320px] px-3 py-1.5 text-xs text-fl-cream/60">
+                    {d.length > 80 && open !== r.id ? <button className="text-left hover:text-fl-cream" onClick={() => setOpen(r.id)}>{d.slice(0, 80)}… <span className="text-fl-gold">ещё</span></button> : <span className="break-all">{d}</span>}
+                  </td>
+                </tr>
+              );
+            })}
+            {!rows.length && !busy && <tr><td colSpan={5} className="px-3 py-4 text-center text-fl-cream/50">Записей по фильтру нет.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {more && <button className={ghostBtn} disabled={busy} onClick={() => load(more)}>{busy ? "Загружаю…" : "Показать ещё 100"}</button>}
+    </div>
+  );
+}
+
+// ── Система ─────────────────────────────────────────────────────────────────
+interface SystemData {
+  release: string; releaseDate: string;
+  runtime: { node: string; platform: string; hosting: string; uptimeMin: number; timezone: string };
+  database: { engine: string; version: string; mb: number | null; limitMb: number | null };
+  counts: { users: number; admins: number; blocked: number; companies: number; entries: number | null };
+  security: { authOn: boolean; passwordHash: string; passwordRule: string; lockout: string; sessionDays: number; cookie: string; twofaUsers: number; twofaAdmins: number; clientIp: string; auditDays: number; cronSecret: boolean };
+  integrations: Array<{ name: string; on: boolean; note: string }>;
+}
+
+/** Версия, окружение, настройки защиты и внешние подключения — то, что спросит IT-специалист. */
+function SystemInfo() {
+  const [s, setS] = useState<SystemData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { fetch("/api/admin/system").then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b?.error ?? "Не удалось загрузить"); setS(b); }).catch((e) => setError(e.message)); }, []);
+  if (error) return <p className="text-sm text-fl-red">{error}</p>;
+  if (!s) return <p className="text-sm text-fl-cream/50">Загружаю…</p>;
+  const row = (k: string, v: React.ReactNode, warn = false) => (
+    <tr key={k}><td className="py-1.5 pr-4 align-top text-fl-cream/55">{k}</td><td className={`py-1.5 ${warn ? "text-fl-amber" : "text-fl-cream/90"}`}>{v}</td></tr>
+  );
+  const sec = s.security;
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className={`${card} p-4`}>
+        <h2 className="font-semibold text-fl-cream">Выпуск и окружение</h2>
+        <table className="mt-2 w-full text-sm"><tbody className="divide-y divide-fl-line">
+          {row("Выпуск", `${s.release} от ${s.releaseDate.split("-").reverse().join(".")}`)}
+          {row("Где работает", s.runtime.hosting)}
+          {row("Node.js", `${s.runtime.node} · ${s.runtime.platform}`)}
+          {row("Работает без перезапуска", `${s.runtime.uptimeMin} мин`)}
+          {row("База данных", `${s.database.engine} ${s.database.version}${s.database.mb != null ? ` · ${s.database.mb} МБ из ${s.database.limitMb} МБ` : ""}`)}
+          {row("Время", s.runtime.timezone)}
+          {row("Пользователи", `${s.counts.users} (администраторов ${s.counts.admins}, заблокировано ${s.counts.blocked})`)}
+          {row("Компании / проводки", `${s.counts.companies} / ${s.counts.entries ?? "—"}`)}
+        </tbody></table>
+      </section>
+      <section className={`${card} p-4`}>
+        <h2 className="font-semibold text-fl-cream">Защита</h2>
+        <table className="mt-2 w-full text-sm"><tbody className="divide-y divide-fl-line">
+          {row("Вход по учётным записям", sec.authOn ? "включён" : "ВЫКЛЮЧЕН — открытый режим, включите NEXT_PUBLIC_FL_AUTH=on", !sec.authOn)}
+          {row("Хранение паролей", sec.passwordHash)}
+          {row("Требования к паролю", sec.passwordRule)}
+          {row("Подбор пароля", sec.lockout)}
+          {row("Сессия", `${sec.sessionDays} дней, cookie ${sec.cookie}`)}
+          {row("Двухфакторный вход", `у ${sec.twofaUsers} пользователей; администраторов с 2FA: ${sec.twofaAdmins} из ${s.counts.admins}`, sec.twofaAdmins < s.counts.admins)}
+          {row("Адрес клиента", sec.clientIp, sec.clientIp.startsWith("без"))}
+          {row("Журнал действий хранится", `${sec.auditDays} дней (FL_AUDIT_DAYS)`)}
+          {row("Секрет плановых задач", sec.cronSecret ? "задан" : "не задан — ночные задачи не запускаются", !sec.cronSecret)}
+        </tbody></table>
+      </section>
+      <section className={`${card} p-4 lg:col-span-2`}>
+        <h2 className="font-semibold text-fl-cream">Внешние подключения</h2>
+        <p className="mt-1 text-xs text-fl-cream/55">Всё, куда сервер обращается сам. Учётные данные компаний никуда не передаются, кроме строки, отмеченной ниже (только если она включена).</p>
+        <ul className="mt-2 space-y-1.5 text-sm">{s.integrations.map((i) => (
+          <li key={i.name} className="flex flex-wrap gap-2"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${i.on ? "bg-fl-green/15 text-fl-green" : "bg-fl-surface-2 text-fl-cream/50"}`}>{i.on ? "включено" : "выключено"}</span><span className="text-fl-cream">{i.name}</span><span className="text-fl-cream/55">— {i.note}</span></li>
+        ))}</ul>
       </section>
     </div>
   );

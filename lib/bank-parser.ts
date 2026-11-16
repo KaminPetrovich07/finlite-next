@@ -7,9 +7,12 @@
 // assuming a fixed schema. More robust to format drift, but should be
 // validated against a real export and the HEADER_ALIASES below extended
 // if a real file's headers aren't recognized.
+//
+// Excel (.xlsx/.xls) is read in the browser (lib/sheet-client.ts) and comes
+// here as rows of JSON: the server never parses binary spreadsheets, so a
+// crafted file cannot reach the spreadsheet library on the server.
 // ════════════════════════════════════════════════════════════════════════
 
-import * as XLSX from "xlsx";
 import Papa from "papaparse";
 
 export interface ParsedTransaction {
@@ -128,10 +131,22 @@ function rowsToTransactions(headers: string[], rows: Record<string, unknown>[]):
   };
 }
 
-export function parseXlsx(buffer: ArrayBuffer): ParseResult {
-  const wb = XLSX.read(buffer, { type: "array", cellDates: true });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+export const MAX_ROWS = 50_000;
+
+/** Rows read from Excel in the browser: an array of plain objects with primitive values. */
+export function parseRows(input: unknown): ParseResult {
+  if (!Array.isArray(input)) throw new Error("Неверный формат строк выписки");
+  if (input.length > MAX_ROWS) throw new Error(`Слишком много строк: больше ${MAX_ROWS.toLocaleString("ru-RU")}`);
+  const rows: Record<string, unknown>[] = [];
+  for (const r of input) {
+    if (!r || typeof r !== "object" || Array.isArray(r)) throw new Error("Неверный формат строк выписки");
+    const clean: Record<string, unknown> = Object.create(null);
+    for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
+      if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
+      clean[k.slice(0, 200)] = v == null || typeof v === "number" || typeof v === "boolean" ? v : String(v).slice(0, 2000);
+    }
+    rows.push({ ...clean });
+  }
   const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
   return rowsToTransactions(headers, rows);
 }
@@ -183,7 +198,7 @@ export function parseTxt(text: string): ParseResult {
 
 export function parseStatementFile(filename: string, buffer: ArrayBuffer): ParseResult {
   const ext = filename.toLowerCase().split(".").pop();
-  if (ext === "xlsx" || ext === "xls") return parseXlsx(buffer);
+  if (ext === "xlsx" || ext === "xls") throw new Error("Excel-файл читается в браузере — обновите страницу (Ctrl+F5) и загрузите файл снова");
   if (ext === "csv") return parseCsv(new TextDecoder("utf-8").decode(buffer));
   if (ext === "txt") return parseTxt(new TextDecoder("utf-8").decode(buffer));
   throw new Error(`Неподдерживаемый формат файла: .${ext}`);

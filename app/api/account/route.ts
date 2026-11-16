@@ -26,7 +26,7 @@ export const PATCH = route(async (req: NextRequest) => {
   return NextResponse.json(user);
 });
 
-const Delete = z.object({ password: z.string().max(200), confirm: z.literal("УДАЛИТЬ", { errorMap: () => ({ message: "Введите слово УДАЛИТЬ" }) }) });
+const Delete = z.object({ password: z.string().max(200), confirm: z.literal("УДАЛИТЬ", { error: "Введите слово УДАЛИТЬ" }) });
 
 /**
  * DELETE /api/account — removes the account, every company the user owns

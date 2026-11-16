@@ -9,7 +9,7 @@ import { defaultPolicy, normalizePolicy } from "@/lib/policy/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const Body = z.object({ companyId: z.string().min(1), data: z.record(z.unknown()) });
+const Body = z.object({ companyId: z.string().min(1), data: z.record(z.string(), z.unknown()) });
 
 /**
  * POST /api/policy/export?format=pdf|docx — the policy as on screen (also

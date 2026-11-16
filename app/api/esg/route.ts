@@ -11,7 +11,7 @@ const Schema = z.object({
   companyId: z.string().min(1),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
 });
 
 const TEXT_MAX: Partial<Record<keyof EsgInput, number>> = { region: 200, esgOwner: 200, companyDescription: 6000, ceoMessage: 6000 };

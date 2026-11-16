@@ -40,7 +40,7 @@ export const GET = route(async (req: NextRequest) => {
 
 const Body = z.object({
   companyId: z.string().min(1),
-  asset: z.record(z.unknown()),
+  asset: z.record(z.string(), z.unknown()),
   /** create the acquisition entry: Dt asset / Кт 3110 supplier, 1210 bank or 1110 cash */
   post: z.object({ creditAccount: z.enum(["3110", "1210", "1110", "5240"]) }).optional(),
 });

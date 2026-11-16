@@ -15,7 +15,7 @@ const Schema = z.object({
   name: z.string().trim().min(2, "Укажите имя").max(120),
   organization: z.string().trim().max(200).optional().or(z.literal("")),
   phone: z.string().trim().regex(/^[+\d][\d\s()-]{6,20}$/, "Телефон в формате +996 …").optional().or(z.literal("")),
-  consent: z.literal(true, { errorMap: () => ({ message: "Нужно согласие на обработку персональных данных" }) }),
+  consent: z.literal(true, { error: "Нужно согласие на обработку персональных данных" }),
 });
 
 const adminEmails = () => (process.env.FL_ADMIN_EMAILS ?? "").split(",").map((e) => normalizeEmail(e)).filter(Boolean);

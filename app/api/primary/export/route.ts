@@ -16,7 +16,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const Item = z.object({
   kind: z.string(),
   entryId: z.string().optional(),
-  overrides: z.record(z.string().max(300)).optional(),
+  overrides: z.record(z.string(), z.string().max(300)).optional(),
 });
 const Body = z.object({
   companyId: z.string().min(1),

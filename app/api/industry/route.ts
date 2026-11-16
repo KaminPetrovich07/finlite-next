@@ -22,7 +22,7 @@ export const GET = route(async (req: NextRequest) => {
 
 /** PUT /api/industry — { companyId, sector, data } */
 export const PUT = route(async (req: NextRequest) => {
-  const p = z.object({ companyId: z.string().min(1), sector: z.string(), data: z.record(z.unknown()) }).safeParse(await req.json().catch(() => null));
+  const p = z.object({ companyId: z.string().min(1), sector: z.string(), data: z.record(z.string(), z.unknown()) }).safeParse(await req.json().catch(() => null));
   if (!p.success || !isSector(p.data.sector)) throw new HttpError(400, "Неверные данные");
   const { companyId, sector, data } = p.data;
   if (companyId === DEMO_COMPANY.id) throw new HttpError(403, "Демо-компанию можно только смотреть");

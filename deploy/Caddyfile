@@ -1,0 +1,24 @@
+# Caddy — HTTPS перед приложением.
+# FL_SITE_ADDRESS (deploy/.env):
+#   finlite.example.kg  — доменное имя, видимое из интернета: сертификат Let's Encrypt выпускается сам;
+#   10.0.5.20 или localhost — внутренняя сеть: сертификат от внутреннего центра Caddy
+#                          (браузер предупредит, пока корневой сертификат не установлен, см. README).
+# Свой сертификат организации: положите cert.pem и key.pem в deploy/certs и раскомментируйте строку tls.
+{
+	admin off
+}
+
+{$FL_SITE_ADDRESS} {
+	# tls /certs/cert.pem /certs/key.pem
+	encode zstd gzip
+	request_body {
+		max_size 40MB
+	}
+	reverse_proxy app:3000 {
+		header_up -X-Real-IP
+	}
+	log {
+		output stdout
+		format console
+	}
+}

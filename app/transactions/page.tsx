@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ALL_CATEGORIES } from "@/lib/categories";
 import { formatNumber } from "@/lib/format";
 import { useT, type TFn } from "@/components/i18n";
+import { isSheetFile, readSheetRows } from "@/lib/sheet-client";
 
 interface Company { id: string; name: string }
 interface Txn {
@@ -58,7 +59,13 @@ export default function TransactionsPage() {
     setUploadResult(null);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      if (isSheetFile(file.name)) {
+        // Excel разбирается здесь, в браузере; на сервер уходят только строки
+        let rows: Record<string, unknown>[];
+        try { rows = await readSheetRows(file); } catch { throw new Error(t("Не удалось прочитать Excel-файл")); }
+        fd.append("rows", JSON.stringify(rows));
+        fd.append("filename", file.name);
+      } else fd.append("file", file);
       fd.append("companyId", companyId);
       fd.append("bank", bank);
       const res = await fetch("/api/transactions/import", { method: "POST", body: fd });

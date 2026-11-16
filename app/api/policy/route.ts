@@ -25,7 +25,7 @@ export const GET = route(async (req: NextRequest) => {
   });
 });
 
-const Body = z.object({ companyId: z.string().min(1), data: z.record(z.unknown()) });
+const Body = z.object({ companyId: z.string().min(1), data: z.record(z.string(), z.unknown()) });
 
 /** PUT /api/policy — saves the policy; answers with fresh checks */
 export const PUT = route(async (req: NextRequest) => {

@@ -11,7 +11,7 @@ export const maxDuration = 60;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const Body = z.object({
   companyId: z.string().min(1), from: z.string().regex(ISO), to: z.string().regex(ISO),
-  products: z.array(z.unknown()).max(100), outputs: z.record(z.unknown()), productId: z.string().optional(),
+  products: z.array(z.unknown()).max(100), outputs: z.record(z.string(), z.unknown()), productId: z.string().optional(),
 });
 
 /** POST /api/costing/export?format=pdf|docx — калькуляционный отчёт и карточки-калькуляции */

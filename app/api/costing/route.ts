@@ -17,7 +17,7 @@ export const GET = route(async (req: NextRequest) => {
   return NextResponse.json({ products, outputs, result, demo: ctx.c.demo, hasProduction: ctx.c.policy?.activities.some((a) => a !== "services" && a !== "trade") ?? false });
 });
 
-const Body = z.object({ companyId: z.string().min(1), from: z.string().regex(ISO), to: z.string().regex(ISO), products: z.array(z.unknown()).max(100), outputs: z.record(z.unknown()) });
+const Body = z.object({ companyId: z.string().min(1), from: z.string().regex(ISO), to: z.string().regex(ISO), products: z.array(z.unknown()).max(100), outputs: z.record(z.string(), z.unknown()) });
 
 /** PUT /api/costing — saves the product norms and the period's output */
 export const PUT = route(async (req: NextRequest) => {

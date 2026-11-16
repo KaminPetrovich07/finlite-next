@@ -36,6 +36,9 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // Свой сервер (Docker, см. deploy/): FL_STANDALONE=1 собирает самостоятельный
+  // сервер .next/standalone — только нужные файлы node_modules, без исходников.
+  ...(process.env.FL_STANDALONE === "1" ? { output: "standalone" } : {}),
   // PDF/Excel libraries read data files from their own folders at runtime
   // (fontkit tries, AFM metrics); bundling breaks those paths, so Node loads
   // them from node_modules instead.

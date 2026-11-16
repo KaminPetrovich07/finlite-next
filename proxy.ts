@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { overLimit, PROBE } from "@/lib/security/guard";
+import { pickClientIp } from "@/lib/security/ip";
 
 // Runs before every page and API request.
 // 1) API: state-changing requests from another site are rejected (CSRF).
@@ -10,7 +11,7 @@ import { overLimit, PROBE } from "@/lib/security/guard";
 const PUBLIC = ["/login", "/register", "/reset", "/privacy", "/terms", "/pricing", "/tax-rules", "/manifest.webmanifest"];
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-const ipOf = (req: NextRequest) => req.headers.get("x-real-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "?";
+const ipOf = (req: NextRequest) => pickClientIp((n) => req.headers.get(n));
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;

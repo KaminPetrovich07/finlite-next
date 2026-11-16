@@ -4,7 +4,8 @@
 // Учёт (проводки, документы, история изменений журнала, сканы) не трогается
 // никогда. Чистится только то, что копится само:
 //   • журнал входов и «был на сайте» — 150 дней (метрикам нужно 120),
-//     остальные действия пользователей — 400 дней;
+//     остальные действия пользователей — 400 дней (FL_AUDIT_DAYS — дольше,
+//     например 1825 = 5 лет, если так требует регламент организации);
 //   • ошибки сайта: исправленные — 30 дней, любые — 90 дней с последнего раза;
 //   • новости из автосбора старше года (кроме закреплённых и новостей о законах);
 //   • истёкшие сессии и ссылки сброса пароля;
@@ -16,9 +17,15 @@ import { prisma } from "@/lib/db";
 const DAY = 24 * 3600 * 1000;
 export const KEEP_EDITIONS = 3;
 
+/** Срок хранения журнала действий: FL_AUDIT_DAYS (от 90 до 3650), иначе 400 дней. */
+export const auditDays = (env: Record<string, string | undefined> = process.env) => {
+  const n = Math.floor(Number(env.FL_AUDIT_DAYS));
+  return Number.isFinite(n) && n >= 90 ? Math.min(n, 3650) : 400;
+};
+
 export const RETENTION = {
   visitsDays: 150,
-  activityDays: 400,
+  activityDays: auditDays(),
   resolvedErrorsDays: 30,
   errorsDays: 90,
   autoNewsDays: 365,

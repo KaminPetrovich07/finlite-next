@@ -4,6 +4,7 @@
 import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { newToken, sha256 } from "@/lib/auth/tokens";
+import { pickClientIp } from "@/lib/security/ip";
 
 export const SESSION_COOKIE = "fl_session";
 export const DEMO_COOKIE = "fl_demo";
@@ -26,7 +27,8 @@ const secure = () => process.env.NODE_ENV === "production";
 async function requestMeta() {
   try {
     const h = await headers();
-    const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || null;
+    const found = pickClientIp((n) => h.get(n));
+    const ip = found === "unknown" ? null : found;
     return { ip, userAgent: h.get("user-agent")?.slice(0, 300) ?? null };
   } catch {
     return { ip: null, userAgent: null };

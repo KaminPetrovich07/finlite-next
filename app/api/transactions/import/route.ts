@@ -1,28 +1,35 @@
 import { assertCanPost } from "@/lib/server/plan-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { parseStatementFile } from "@/lib/bank-parser";
+import { parseRows, parseStatementFile } from "@/lib/bank-parser";
 import { categorizeTransactions } from "@/lib/categorize";
 import { postBankTransactions } from "@/lib/ledger/repo";
 import { logActivity, requireCompany, route } from "@/lib/auth/server";
 
-export const runtime = "nodejs"; // xlsx parsing needs Node, not Edge
+export const runtime = "nodejs";
 
 export const POST = route(async (req: NextRequest) => {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
+  // Excel приходит уже разобранным в браузере: rows — JSON-массив строк
+  const rowsJson = formData.get("rows");
   const companyId = formData.get("companyId") as string | null;
   const bank = (formData.get("bank") as string | null) ?? "unknown";
 
-  if (!file || !companyId) {
+  if ((!file && typeof rowsJson !== "string") || !companyId) {
     return NextResponse.json({ error: "Нужны file и companyId" }, { status: 400 });
   }
   await requireCompany(companyId, "edit");
 
   let parsed;
   try {
-    const buffer = await file.arrayBuffer();
-    parsed = parseStatementFile(file.name, buffer);
+    if (typeof rowsJson === "string") {
+      if (rowsJson.length > 30_000_000) throw new Error("Файл слишком большой");
+      parsed = parseRows(JSON.parse(rowsJson));
+    } else {
+      if (file!.size > 15_000_000) throw new Error("Файл слишком большой");
+      parsed = parseStatementFile(file!.name, await file!.arrayBuffer());
+    }
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Не удалось разобрать файл" }, { status: 400 });
   }
@@ -61,7 +68,8 @@ export const POST = route(async (req: NextRequest) => {
     return acc;
   }, {});
 
-  await logActivity("bank_import", companyId, { file: file.name, count: categorized.length });
+  const fileName = file?.name ?? String(formData.get("filename") ?? "excel").slice(0, 200);
+  await logActivity("bank_import", companyId, { file: fileName, count: categorized.length });
   return NextResponse.json({
     importBatch,
     count: categorized.length,

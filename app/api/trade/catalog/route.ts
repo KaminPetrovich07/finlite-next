@@ -22,8 +22,8 @@ export const GET = route(async (req: NextRequest) => {
 });
 
 const Body = z.union([
-  z.object({ companyId: z.string().min(1), item: z.record(z.unknown()) }),
-  z.object({ companyId: z.string().min(1), merge: z.array(z.record(z.unknown())).min(1).max(20000) }),
+  z.object({ companyId: z.string().min(1), item: z.record(z.string(), z.unknown()) }),
+  z.object({ companyId: z.string().min(1), merge: z.array(z.record(z.string(), z.unknown())).min(1).max(20000) }),
   z.object({ companyId: z.string().min(1), fromJournal: z.literal(true) }),
 ]);
 
