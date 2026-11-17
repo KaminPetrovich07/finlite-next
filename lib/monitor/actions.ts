@@ -17,6 +17,8 @@ export const ACTION_LABELS: Record<string, string> = {
   trade_doc_create: "Документ продажи/закупки", trade_doc_update: "Изменение документа", trade_doc_pay: "Оплата документа", trade_doc_import: "Документы из 1С", trade_print: "Печать документа",
   catalog_save: "Справочник товаров", catalog_merge: "Объединение товаров", catalog_delete: "Удаление товара", cogs: "Списание себестоимости",
   import_goods_create: "Ввоз товара (импорт)", reported_import: "Загрузка отчётности предприятий", reported_delete: "Удаление отчётности предприятия", fx_revalue: "Переоценка валюты", fx_nbkr: "Курсы НБКР",
+  collect_create: "Объявлен сбор отчётности", collect_submit: "Отчёт сдан в сбор", collect_return: "Отчёт возвращён на доработку", collect_accept: "Отчёт принят",
+  collect_close: "Сбор закрыт", collect_reopen: "Сбор открыт снова", collect_demo: "Демо-статусы сбора", collect_export: "Выгрузка сводки сбора",
   land_save: "Земельный участок", land_delete: "Удаление земельного участка", land_export: "Выгрузка реестра участков",
   asset_create: "Основное средство", asset_dispose: "Выбытие ОС", asset_doc: "Документ по ОС", depreciation: "Амортизация",
   hr_employee: "Сотрудник", hr_post: "Начисление зарплаты",
@@ -38,7 +40,7 @@ export const ACTION_LABELS: Record<string, string> = {
 export const ACTION_GROUPS: Record<string, string[]> = {
   "Вход и учётные записи": ["register", "login", "login_failed", "login_backup_code", "password_forgot", "password_reset", "account_delete", "password_change", "sessions_revoke", "profile_update", "consent", "account_export"],
   "Доступ к компаниям": ["segment_grant", "segment_revoke", "company_create", "company_update", "company_delete", "company_import", "company_backup", "access_grant", "access_revoke"],
-  "Изменения учёта": ["reported_import", "reported_delete", "entry_update", "entry_delete", "entries_delete", "entries_restore", "bank_import", "bank_delete", "esf_import", "trade_doc_create", "trade_doc_update", "trade_doc_pay", "trade_doc_import", "import_goods_create", "hr_post", "depreciation", "cogs", "fx_revalue", "recurring_run", "attachment_add", "attachment_delete"],
+  "Изменения учёта": ["collect_create", "collect_submit", "collect_return", "collect_accept", "collect_close", "collect_reopen", "reported_import", "reported_delete", "entry_update", "entry_delete", "entries_delete", "entries_restore", "bank_import", "bank_delete", "esf_import", "trade_doc_create", "trade_doc_update", "trade_doc_pay", "trade_doc_import", "import_goods_create", "hr_post", "depreciation", "cogs", "fx_revalue", "recurring_run", "attachment_add", "attachment_delete"],
   "Выгрузки": ["land_export", "export", "taxreports_export", "form_export", "primary_export", "insolvency_export", "portfolio_export", "counterparties_export", "policy_export", "costing_export", "company_backup", "account_export", "trade_print"],
   "Действия администратора": ["audit_verify", "audit_export", "segment_grant", "segment_revoke", "admin_user_update", "admin_reset_link", "admin_pilot", "admin_grant_pilot", "admin_company_owner", "admin_claim_orphans", "admin_assign_owner"],
 };

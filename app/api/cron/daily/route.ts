@@ -7,6 +7,7 @@ import { publishFxDaily } from "@/lib/news/fxpost";
 import { runRecurringAll } from "@/lib/ledger/recurring-server";
 import { refreshIfStale } from "@/lib/science/server";
 import { pruneOld } from "@/lib/monitor/retention";
+import { sendReminders } from "@/lib/collect/server";
 import { prisma } from "@/lib/db";
 import { storageState } from "@/lib/monitor/storage";
 
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
   const result: Record<string, unknown> = {};
   // сначала убрать служебное старьё (входы, ошибки, старые автоновости), потом решать, есть ли место
   try { result.pruned = await pruneOld(); } catch (e) { result.pruned = { error: e instanceof Error ? e.message : String(e) }; }
+  try { result.collectReminders = await sendReminders(); } catch (e) { result.collectReminders = { error: e instanceof Error ? e.message : String(e) }; }
   // отпечаток журнала действий раз в сутки — в журнал сервера (docker logs, Vercel Logs), вне базы:
   // по нему можно убедиться, что записи до этого момента потом не переписали целиком
   try {

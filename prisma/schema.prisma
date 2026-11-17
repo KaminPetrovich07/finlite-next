@@ -657,3 +657,44 @@ model Attachment {
 
   @@index([companyId, entryId])
 }
+
+// ── Сбор отчётности: ведомство объявляет сбор, предприятия сдают отчёт ─────
+model ReportCampaign {
+  id         String   @id @default(cuid())
+  title      String
+  /// группа предприятий (сегмент портфеля)
+  segment    String
+  /// дата окончания отчётного периода, ГГГГ-ММ-ДД
+  periodEnd  String
+  /// срок сдачи, ГГГГ-ММ-ДД (включительно, по Бишкеку)
+  deadline   String
+  note       String?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  closedAt   DateTime?
+  submissions ReportSubmission[]
+
+  @@index([segment])
+}
+
+model ReportSubmission {
+  id           String   @id @default(cuid())
+  campaign     ReportCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId   String
+  companyId    String
+  /// draft — заполняется; submitted — сдан; returned — возвращён на доработку; accepted — принят
+  status       String   @default("draft")
+  values       Json?
+  signerName   String?
+  signerTitle  String?
+  submittedAt  DateTime?
+  submittedBy  String?
+  returnReason String?
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@unique([campaignId, companyId])
+  @@index([companyId])
+}
