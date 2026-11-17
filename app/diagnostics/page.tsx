@@ -92,6 +92,11 @@ export default function DiagnosticsPage() {
       </div>
 
       {err && <p className="mb-4 text-sm text-fl-red">{t(err)}</p>}
+      {r?.source === "reported" && (
+        <p className="mb-4 rounded-xl border border-fl-info/40 bg-fl-info/[0.06] px-4 py-2.5 text-sm text-fl-cream/85">
+          {t("Предприятие не ведёт учёт в программе: диагностика — по загруженной отчётности на {date}, по кварталам. Просрочка — как указало предприятие; возраст отдельных долгов в отчёте не указывается.", { date: r.asOf.split("-").reverse().join(".") })} <a href="/reported" className="text-fl-gold underline">{t("Отчётность предприятий")}</a>
+        </p>
+      )}
       {!r ? !err && <p className="text-sm text-fl-cream/50">{t("Считаю…")}</p> : (
         <div className="space-y-5">
           <section className={`rounded-2xl border p-4 ${TONE[r.verdict.level]}`}>
@@ -116,7 +121,7 @@ export default function DiagnosticsPage() {
           </section>
 
           <section className="rounded-2xl border border-fl-line bg-fl-charcoal-2 p-4">
-            <h2 className="font-semibold text-fl-cream">{t("Динамика: ликвидность и просроченные долги")}</h2>
+            <h2 className="font-semibold text-fl-cream">{r.source === "reported" ? t("Динамика по кварталам: ликвидность и просроченные долги") : t("Динамика: ликвидность и просроченные долги")}</h2>
             <div className="mt-3 h-64" role="img" aria-label={t("Ликвидность и просроченные долги по месяцам")}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -164,7 +169,7 @@ export default function DiagnosticsPage() {
                       <td className="py-1.5 pr-3 text-fl-cream/65">{t(CREDITOR_KIND[d.kind])}</td>
                       <td className="py-1.5 pr-3 text-fl-cream/55">{d.accounts.join(", ")}</td>
                       <td className="py-1.5 pr-3 text-right tabular-nums text-fl-cream">{money(d.amount)}</td>
-                      <td className="py-1.5 pr-3 text-right tabular-nums text-fl-cream/65">{d.oldest.split("-").reverse().join(".")} <span className="text-xs text-fl-cream/45">{t("({n} дн.)", { n: d.age })}</span></td>
+                      <td className="py-1.5 pr-3 text-right tabular-nums text-fl-cream/65">{d.oldest ? <>{d.oldest.split("-").reverse().join(".")} <span className="text-xs text-fl-cream/45">{t("({n} дн.)", { n: d.age })}</span></> : "—"}</td>
                       <td className={`py-1.5 text-right tabular-nums ${d.overdue > 0 ? (d.overdue90 > 0 ? "font-semibold text-fl-red" : "text-fl-amber") : "text-fl-cream/40"}`}>{d.overdue > 0 ? money(d.overdue) : "—"}</td>
                     </tr>
                   ))}
@@ -208,7 +213,7 @@ export default function DiagnosticsPage() {
                 <p className="mt-1 text-xs text-fl-cream/55">{t("6,56·X1 + 3,26·X2 + 6,72·X3 + 1,05·X4, где X1 = оборотный капитал / активы ({x1}), X2 = нераспределённая прибыль / активы ({x2}), X3 = операционная прибыль за год / активы ({x3}), X4 = капитал / обязательства ({x4}). Выше 2,6 — устойчиво, ниже 1,1 — высокий риск. Международный ориентир (Altman, 1995), не норма законодательства КР.", { x1: r.altman.x1, x2: r.altman.x2, x3: r.altman.x3, x4: r.altman.x4 })}</p>
               </> : <p className="mt-1 text-fl-cream/60">{t("Нет активов на дату — модель не считается.")}</p>}
             </section>
-            <section className="rounded-2xl border border-fl-line bg-fl-charcoal-2 p-4 text-sm">
+            {r.source !== "reported" && <section className="rounded-2xl border border-fl-line bg-fl-charcoal-2 p-4 text-sm">
               <h2 className="font-semibold text-fl-cream">{t("Когда долг считается непогашенным в срок, дней")}</h2>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {TERM_KEYS.map((k) => (
@@ -218,7 +223,7 @@ export default function DiagnosticsPage() {
                 ))}
               </div>
               <p className="mt-2 text-xs text-fl-cream/50">{t("Ориентиры для раннего предупреждения; точные сроки — в договорах и Налоговом кодексе. Тело кредитов гасится по графику договора и здесь просрочкой не считается.")}</p>
-            </section>
+            </section>}
           </div>
         </div>
       )}

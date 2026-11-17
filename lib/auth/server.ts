@@ -8,6 +8,8 @@ import { DEMO_COMPANY } from "@/lib/ledger/demo";
 import { allows, isAdmin, levelFor, type Level } from "@/lib/auth/access";
 import { getCurrentUser, type CurrentUser } from "@/lib/auth/session";
 import { AUTH_ON } from "@/lib/auth/mode";
+import { adminTwofaRequired } from "@/lib/auth/policy";
+import { appendActivity } from "@/lib/monitor/audit";
 import { encodeVersions, requestContext, VERSIONS_HEADER } from "@/lib/request-context";
 
 import { HttpError } from "@/lib/http-error";
@@ -24,6 +26,7 @@ export async function requireUser(): Promise<CurrentUser> {
 export async function requireAdmin(): Promise<CurrentUser> {
   const u = await requireUser();
   if (!isAdmin(u)) throw new HttpError(403, "Доступно только администратору");
+  if (adminTwofaRequired() && !u.twofa) throw new HttpError(403, "Для раздела администратора включите двухфакторный вход: «Мой аккаунт» → «Двухфакторный вход»");
   return u;
 }
 
@@ -109,9 +112,7 @@ async function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response>
 export async function logActivity(action: string, companyId?: string | null, details?: Record<string, unknown>) {
   try {
     const user = await getCurrentUser();
-    await prisma.activityLog.create({
-      data: { action, userId: user?.id ?? null, companyId: companyId ?? null, details: (details ?? undefined) as object | undefined },
-    });
+    await appendActivity({ action, userId: user?.id ?? null, companyId: companyId ?? null, details });
   } catch {
     /* ignore */
   }

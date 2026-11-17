@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { appendActivity } from "@/lib/monitor/audit";
 import { HttpError, logActivity, requireUser, route } from "@/lib/auth/server";
 import { verifyPassword } from "@/lib/auth/password";
 import { endSession } from "@/lib/auth/session";
@@ -45,9 +46,10 @@ export const DELETE = route(async (req: NextRequest) => {
   const companies = await prisma.company.findMany({ where: { ownerId: me.id }, select: { id: true } });
   await prisma.$transaction([
     prisma.company.deleteMany({ where: { ownerId: me.id } }),
-    prisma.activityLog.create({ data: { action: "account_delete", details: { companies: companies.length } } }),
     prisma.user.delete({ where: { id: me.id } }),
   ]);
+  // в цепочку журнала: кто удалил — сохраняется в actor, хотя учётной записи больше нет
+  await appendActivity({ userId: null, action: "account_delete", details: { user: me.id, companies: companies.length } }).catch(() => undefined);
   await endSession();
   return NextResponse.json({ ok: true });
 });

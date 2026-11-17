@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { appendActivity } from "@/lib/monitor/audit";
 import { HttpError, route } from "@/lib/auth/server";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { normalizeEmail } from "@/lib/auth/tokens";
@@ -45,7 +46,7 @@ export const POST = route(async (req: NextRequest) => {
       where: { id: user.id },
       data: failed >= MAX_FAILED ? { failedLogins: 0, lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60000) } : { failedLogins: failed },
     });
-    await prisma.activityLog.create({ data: { userId: user.id, action: "login_failed", details: { ip } } });
+    await appendActivity({ userId: user.id, action: "login_failed", details: { ip } });
     if (failed >= MAX_FAILED) throw new HttpError(401, `Слишком много неверных попыток. Вход закрыт на ${LOCK_MINUTES} мин.`);
     if (passwordOk) return NextResponse.json({ need2fa: true, error: "Код неверный или уже использован — введите новый код из приложения" }, { status: 401 });
     throw new HttpError(401, WRONG);
@@ -59,9 +60,9 @@ export const POST = route(async (req: NextRequest) => {
       ...(totp?.step !== undefined ? { totpLastStep: totp.step } : {}), ...(totp?.backup ? { totpBackup: totp.backup } : {}),
     },
   });
-  if (totp?.backup) await prisma.activityLog.create({ data: { userId: user.id, action: "login_backup_code", details: { left: totp.backup.length, ip } } });
+  if (totp?.backup) await appendActivity({ userId: user.id, action: "login_backup_code", details: { left: totp.backup.length, ip } });
   await startSession(user.id);
-  await prisma.activityLog.create({ data: { userId: user.id, action: "login", details: { ip } } });
+  await appendActivity({ userId: user.id, action: "login", details: { ip } });
   const claimed = await claimPending(user);
   return NextResponse.json({ id: user.id, email: user.email, name: user.name, role: user.role, claimed });
 });

@@ -4,16 +4,18 @@ import { loadEntries } from "@/lib/ledger/repo";
 import { getCurrentUser } from "@/lib/auth/session";
 import { isAdmin } from "@/lib/auth/access";
 import { AUTH_ON } from "@/lib/auth/mode";
-import { putRecord } from "@/lib/records";
+import { setCompanySegment } from "@/lib/access/segments";
 import { diagnose } from "@/lib/insolvency/diagnose";
 import { taxRisks } from "@/lib/taxrisk/check";
 import { monthsBack } from "@/lib/insolvency/diagnose";
+import { diagnoseReported } from "@/lib/reported/reported";
+import { reportedByCompany } from "@/lib/reported/server";
 import { portfolioRow, summarize, type PortfolioRow, type PortfolioSummary } from "./score";
 
 export interface Profile { segment?: string; region?: string }
 
 /** Компании, которые видит пользователь (как в /api/companies): владелец, общий доступ, администратор — все. */
-async function visibleCompanies(): Promise<Array<{ id: string; name: string; access: "view" | "edit" }>> {
+export async function visibleCompanies(): Promise<Array<{ id: string; name: string; access: "view" | "edit" }>> {
   const me = await getCurrentUser();
   if (!AUTH_ON) return (await prisma.company.findMany({ orderBy: { createdAt: "desc" }, select: { id: true, name: true } })).map((c) => ({ ...c, access: "edit" as const }));
   if (!me) return [];
@@ -33,11 +35,15 @@ export async function portfolio(asOf: string, months = 6, segment?: string): Pro
   const segments = [...new Set([...seg.values()].filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
   const chosen = companies.filter((c) => !segment || (segment === "—" ? !seg.get(c.id) : seg.get(c.id) === segment));
   const from = `${monthsBack(asOf, months)[0]}-01`;
+  // предприятия без журнала, но с загруженной отчётностью, оцениваются по ней (последние кварталы)
+  const reported = await reportedByCompany(chosen.map((c) => c.id));
   const rows: PortfolioRow[] = [];
   // по 4 компании параллельно: быстрее, но без лавины запросов к базе
   for (let i = 0; i < chosen.length; i += 4) {
     rows.push(...(await Promise.all(chosen.slice(i, i + 4).map(async (c) => {
       const entries = await loadEntries(c.id);
+      const rep = !entries.length && reported.has(c.id) ? diagnoseReported(reported.get(c.id)!, asOf, Math.max(2, Math.ceil(months / 3) + 1)) : null;
+      if (rep) return portfolioRow({ id: c.id, name: c.name, segment: seg.get(c.id) ?? "" }, rep, null, reported.get(c.id)!.length);
       const d = diagnose(entries, asOf, { months });
       const tax = entries.length ? taxRisks(entries, from, asOf, { today: asOf }) : null;
       return portfolioRow({ id: c.id, name: c.name, segment: seg.get(c.id) ?? "" }, d, tax, entries.length);
@@ -48,6 +54,5 @@ export async function portfolio(asOf: string, months = 6, segment?: string): Pro
 }
 
 export async function setSegment(companyId: string, segment: string) {
-  const cur = await prisma.companyRecord.findUnique({ where: { companyId_kind_key: { companyId, kind: "profile", key: "main" } }, select: { data: true } });
-  await putRecord(companyId, "profile", "main", { ...((cur?.data as Profile) ?? {}), segment: segment.trim().slice(0, 80) });
+  await setCompanySegment(companyId, segment);
 }

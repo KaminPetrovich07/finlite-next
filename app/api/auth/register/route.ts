@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { appendActivity } from "@/lib/monitor/audit";
 import { HttpError, logActivity, route } from "@/lib/auth/server";
 import { hashPassword, passwordProblem } from "@/lib/auth/password";
 import { normalizeEmail } from "@/lib/auth/tokens";
@@ -47,7 +48,7 @@ export const POST = route(async (req: NextRequest) => {
     select: { id: true, email: true, name: true, role: true },
   });
   await startSession(user.id);
-  await prisma.activityLog.create({ data: { userId: user.id, action: "register" } });
+  await appendActivity({ userId: user.id, action: "register" });
   await logActivity("consent", null, { version: CONSENT_VERSION });
   const claimed = await claimPending(user);
   return NextResponse.json({ ...user, plan: plan.plan, claimed }, { status: 201 });

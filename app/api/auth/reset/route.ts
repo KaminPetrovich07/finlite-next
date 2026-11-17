@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { appendActivity } from "@/lib/monitor/audit";
 import { HttpError, route } from "@/lib/auth/server";
 import { hashPassword, passwordProblem } from "@/lib/auth/password";
 import { sha256 } from "@/lib/auth/tokens";
@@ -24,6 +25,6 @@ export const POST = route(async (req: NextRequest) => {
     prisma.session.deleteMany({ where: { userId: r.userId } }),
   ]);
   await startSession(r.userId);
-  await prisma.activityLog.create({ data: { userId: r.userId, action: "password_reset" } });
+  await appendActivity({ userId: r.userId, action: "password_reset" });
   return NextResponse.json({ ok: true });
 });

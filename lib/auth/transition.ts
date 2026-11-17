@@ -4,6 +4,7 @@
 //    зарегистрирован, — компании переходят к нему при регистрации или следующем входе.
 // Обе настройки хранятся в AppSetting, схема базы не меняется.
 import { prisma } from "@/lib/db";
+import { appendActivity } from "@/lib/monitor/audit";
 import { normalizeEmail } from "@/lib/auth/tokens";
 
 const PILOT_KEY = "auth:pilot";
@@ -86,6 +87,6 @@ export async function claimPending(user: { id: string; email: string }): Promise
   await prisma.companyAccess.deleteMany({ where: { companyId: { in: ids }, userId: user.id } });
   for (const id of ids) delete p[id];
   await savePending(p);
-  await prisma.activityLog.create({ data: { userId: user.id, action: "companies_claimed", details: { count: r.count } } }).catch(() => undefined);
+  await appendActivity({ userId: user.id, action: "companies_claimed", details: { count: r.count } }).catch(() => undefined);
   return r.count;
 }

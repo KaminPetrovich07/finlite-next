@@ -3,8 +3,10 @@
 // lastSeenAt, and a session with less than half its life left is extended.
 import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
+import { appendActivity } from "@/lib/monitor/audit";
 import { newToken, sha256 } from "@/lib/auth/tokens";
 import { pickClientIp } from "@/lib/security/ip";
+import { idleExpired, idleMinutes, touchEveryMs } from "@/lib/auth/policy";
 
 export const SESSION_COOKIE = "fl_session";
 export const DEMO_COOKIE = "fl_demo";
@@ -20,6 +22,8 @@ export interface CurrentUser {
   plan: string;
   paidUntil: Date | null;
   sessionId: string;
+  /** двухфакторный вход включён */
+  twofa: boolean;
 }
 
 const secure = () => process.env.NODE_ENV === "production";
@@ -78,11 +82,18 @@ async function lookup(token: string | undefined): Promise<CurrentUser | null> {
     const id = sha256(token);
     const s = await prisma.session.findUnique({
       where: { id },
-      include: { user: { select: { id: true, email: true, name: true, organization: true, role: true, blocked: true, plan: true, paidUntil: true } } },
+      include: { user: { select: { id: true, email: true, name: true, organization: true, role: true, blocked: true, plan: true, paidUntil: true, totpEnabledAt: true } } },
     });
     if (!s || s.expiresAt.getTime() < Date.now() || s.user.blocked) return null;
     const now = Date.now();
-    if (now - s.lastSeenAt.getTime() > 3600 * 1000) {
+    // выход по бездействию (FL_IDLE_MINUTES): сессия удаляется, следующий переход ведёт на вход
+    const idle = idleMinutes();
+    if (idleExpired(s.lastSeenAt.getTime(), now, idle)) {
+      await prisma.session.deleteMany({ where: { id } }).catch(() => undefined);
+      try { (await cookies()).delete(SESSION_COOKIE); } catch { /* страница, а не API: cookie удалит следующий запрос */ }
+      return null;
+    }
+    if (now - s.lastSeenAt.getTime() > touchEveryMs(idle)) {
       const extend = s.expiresAt.getTime() - now < (TTL_DAYS / 2) * DAY;
       const newDay = dayKey(s.lastSeenAt) !== dayKey(new Date(now));
       await prisma.session.update({
@@ -90,10 +101,10 @@ async function lookup(token: string | undefined): Promise<CurrentUser | null> {
         data: { lastSeenAt: new Date(now), ...(extend ? { expiresAt: new Date(now + TTL_DAYS * DAY) } : {}) },
       }).catch(() => undefined);
       // one "active day" mark per user per day — the basis of DAU/WAU and retention
-      if (newDay) await prisma.activityLog.create({ data: { userId: s.user.id, action: "active_day" } }).catch(() => undefined);
+      if (newDay) await appendActivity({ userId: s.user.id, action: "active_day" }).catch(() => undefined);
     }
-    const { blocked: _b, ...u } = s.user;
-    return { ...u, sessionId: id };
+    const { blocked: _b, totpEnabledAt, ...u } = s.user;
+    return { ...u, sessionId: id, twofa: !!totpEnabledAt };
   } catch {
     return null;
   }

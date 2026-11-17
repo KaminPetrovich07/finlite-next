@@ -7,6 +7,7 @@ import { publishFxDaily } from "@/lib/news/fxpost";
 import { runRecurringAll } from "@/lib/ledger/recurring-server";
 import { refreshIfStale } from "@/lib/science/server";
 import { pruneOld } from "@/lib/monitor/retention";
+import { prisma } from "@/lib/db";
 import { storageState } from "@/lib/monitor/storage";
 
 export const runtime = "nodejs";
@@ -26,6 +27,12 @@ export async function GET(req: NextRequest) {
   const result: Record<string, unknown> = {};
   // сначала убрать служебное старьё (входы, ошибки, старые автоновости), потом решать, есть ли место
   try { result.pruned = await pruneOld(); } catch (e) { result.pruned = { error: e instanceof Error ? e.message : String(e) }; }
+  // отпечаток журнала действий раз в сутки — в журнал сервера (docker logs, Vercel Logs), вне базы:
+  // по нему можно убедиться, что записи до этого момента потом не переписали целиком
+  try {
+    const head = await prisma.activityLog.findFirst({ where: { hash: { not: null } }, orderBy: { createdAt: "desc" }, select: { hash: true, createdAt: true } });
+    if (head?.hash) { result.auditHead = { hash: head.hash, at: head.createdAt.toISOString() }; console.log(`[audit-anchor] ${head.createdAt.toISOString()} ${head.hash}`); }
+  } catch { /* не мешает остальным задачам */ }
   try {
     const s = await storageState(true);
     result.storage = { mb: Math.round(s.bytes / 1048576), limitMb: Math.round(s.limit / 1048576), level: s.level };

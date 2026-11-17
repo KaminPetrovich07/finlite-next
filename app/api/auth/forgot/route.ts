@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { appendActivity } from "@/lib/monitor/audit";
 import { HttpError, route } from "@/lib/auth/server";
 import { newToken, normalizeEmail, sha256 } from "@/lib/auth/tokens";
 import { clientIp } from "@/lib/auth/session";
@@ -46,7 +47,7 @@ export const POST = route(async (req: NextRequest) => {
   await prisma.feedback.create({
     data: { userId: user.id, kind: "question", page: "/login", message: sent ? "Запрос на смену пароля — ссылка отправлена на почту." : "Запрос на смену пароля. Выдайте одноразовую ссылку: Администрирование → Пользователи → «ссылка сброса».", status: sent ? "done" : "new" },
   });
-  await prisma.activityLog.create({ data: { userId: user.id, action: "password_forgot", details: { mailed: sent } } });
+  await appendActivity({ userId: user.id, action: "password_forgot", details: { mailed: sent } });
   if (!sent && telegramReady()) {
     const chats = new Set<string>((await alertSettings()).chats.map((c) => String(c.id)));
     if (process.env.FL_ALERT_CHAT_ID) chats.add(process.env.FL_ALERT_CHAT_ID);

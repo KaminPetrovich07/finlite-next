@@ -3,6 +3,8 @@ import { z } from "zod";
 import { HttpError, logActivity, requireCompany, route } from "@/lib/auth/server";
 import { loadCompanyContext } from "@/lib/server/company-context";
 import { diagnose, DEFAULT_TERMS } from "@/lib/insolvency/diagnose";
+import { diagnoseReported } from "@/lib/reported/reported";
+import { reportedPeriods } from "@/lib/reported/server";
 import { buildDiagnosisDoc } from "@/lib/insolvency/doc";
 import { docFormat, sendDoc } from "@/lib/server/send-file";
 
@@ -23,6 +25,11 @@ async function run(params: Record<string, unknown>) {
   await requireCompany(companyId, "view");
   const ctx = await loadCompanyContext(companyId);
   const terms = Object.fromEntries(Object.entries(t).filter(([, v]) => v != null)) as Partial<typeof DEFAULT_TERMS>;
+  // нет журнала, но есть загруженная отчётность — диагностика по кварталам отчётности
+  if (!ctx.entries.length && !ctx.demo) {
+    const rep = diagnoseReported(await reportedPeriods(companyId), asOf, Math.max(2, Math.ceil(months / 3) + 1));
+    if (rep) return { ctx, d: rep };
+  }
   return { ctx, d: diagnose(ctx.entries, asOf, { months, terms }) };
 }
 

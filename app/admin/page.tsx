@@ -8,18 +8,25 @@ import { reviewOverdue, TAX_RULES } from "@/lib/tax-rules";
 import { card, field, ghostBtn } from "@/components/auth/ui";
 import { actionLabel, type ActivityRow } from "@/lib/monitor/actions";
 
-type Tab = "metrics" | "auth" | "users" | "companies" | "activity" | "feedback" | "errors" | "storage" | "system";
-const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["auth", "Вход и пилот"], ["users", "Пользователи"], ["companies", "Компании"], ["activity", "Журнал действий"], ["feedback", "Обратная связь"], ["errors", "Ошибки"], ["storage", "База данных"], ["system", "Система"]];
+type Tab = "metrics" | "auth" | "users" | "companies" | "segments" | "activity" | "feedback" | "errors" | "storage" | "system";
+const TABS: Array<[Tab, string]> = [["metrics", "Метрики"], ["auth", "Вход и пилот"], ["users", "Пользователи"], ["companies", "Компании"], ["segments", "Ведомства"], ["activity", "Журнал действий"], ["feedback", "Обратная связь"], ["errors", "Ошибки"], ["storage", "База данных"], ["system", "Система"]];
 const pct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)} %`);
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString("ru-RU") : "—");
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("metrics");
   const [allowed, setAllowed] = useState<boolean | null>(null);
-  useEffect(() => { fetch("/api/auth/me").then((r) => r.json()).then((b) => setAllowed(b?.user?.role === "admin")).catch(() => setAllowed(false)); }, []);
+  const [need2fa, setNeed2fa] = useState(false);
+  useEffect(() => { fetch("/api/auth/me").then((r) => r.json()).then((b) => { setAllowed(b?.user?.role === "admin"); setNeed2fa(!!b?.security?.adminTwofaRequired && !b?.user?.twofa); }).catch(() => setAllowed(false)); }, []);
 
   if (allowed === null) return <main className="mx-auto max-w-6xl px-4 py-10 text-sm text-fl-cream/50">Загружаю…</main>;
   if (!allowed) return <main className="mx-auto max-w-6xl px-4 py-10 text-fl-cream/70">Раздел доступен только администратору.</main>;
+  if (need2fa) return (
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      <h1 className="font-display text-3xl font-bold text-fl-cream">Администрирование</h1>
+      <p className="mt-4 rounded-xl border-l-4 border-fl-amber bg-fl-amber/10 px-4 py-3 text-fl-cream/85">На этом сервере раздел администратора открывается только с двухфакторным входом. Включите его в разделе <a href="/account" className="text-fl-gold underline">«Мой аккаунт» → «Двухфакторный вход»</a> и вернитесь сюда.</p>
+    </main>
+  );
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-24 pt-6 sm:px-6 sm:pt-8">
@@ -47,6 +54,7 @@ export default function AdminPage() {
         {tab === "errors" && <Errors />}
         {tab === "storage" && <Storage />}
         {tab === "activity" && <Activity />}
+        {tab === "segments" && <Segments />}
         {tab === "system" && <SystemInfo />}
       </div>
     </main>
@@ -551,7 +559,7 @@ function Storage() {
       <section className={`${card} p-4 text-sm text-fl-cream/70`}>
         <h2 className="font-semibold text-fl-cream">Сколько хранится служебное</h2>
         <ul className="mt-1 list-disc space-y-0.5 pl-5">
-          <li>входы и «был на сайте» — {r.visitsDays} дней, остальные действия пользователей — {r.activityDays} дней;</li>
+          <li>отметки «был на сайте» — {r.visitsDays} дней, действия пользователей (включая входы) — {r.activityDays} дней;</li>
           <li>ошибки сайта: исправленные — {r.resolvedErrorsDays} дней, остальные — {r.errorsDays} дней с последнего повторения;</li>
           <li>новости из автосбора — {r.autoNewsDays} дней (закреплённые и новости о законах остаются);</li>
           <li>прошлые редакции законов — {r.keepEditions} последние на документ; если на сайте-источнике поменялось только оформление, текст не перезаписывается.</li>
@@ -634,7 +642,7 @@ interface SystemData {
   runtime: { node: string; platform: string; hosting: string; uptimeMin: number; timezone: string };
   database: { engine: string; version: string; mb: number | null; limitMb: number | null };
   counts: { users: number; admins: number; blocked: number; companies: number; entries: number | null };
-  security: { authOn: boolean; passwordHash: string; passwordRule: string; lockout: string; sessionDays: number; cookie: string; twofaUsers: number; twofaAdmins: number; clientIp: string; auditDays: number; cronSecret: boolean };
+  security: { authOn: boolean; passwordHash: string; passwordRule: string; lockout: string; sessionDays: number; cookie: string; twofaUsers: number; twofaAdmins: number; clientIp: string; auditDays: number; cronSecret: boolean; adminTwofaRequired: boolean; idleMinutes: number };
   integrations: Array<{ name: string; on: boolean; note: string }>;
 }
 
@@ -673,11 +681,14 @@ function SystemInfo() {
           {row("Подбор пароля", sec.lockout)}
           {row("Сессия", `${sec.sessionDays} дней, cookie ${sec.cookie}`)}
           {row("Двухфакторный вход", `у ${sec.twofaUsers} пользователей; администраторов с 2FA: ${sec.twofaAdmins} из ${s.counts.admins}`, sec.twofaAdmins < s.counts.admins)}
+          {row("2FA для администраторов", sec.adminTwofaRequired ? "обязательна (FL_REQUIRE_ADMIN_2FA)" : "не обязательна — включите FL_REQUIRE_ADMIN_2FA=on", !sec.adminTwofaRequired)}
+          {row("Выход по бездействию", sec.idleMinutes ? `через ${sec.idleMinutes} мин (FL_IDLE_MINUTES)` : "выключен — задайте FL_IDLE_MINUTES, например 30")}
           {row("Адрес клиента", sec.clientIp, sec.clientIp.startsWith("без"))}
-          {row("Журнал действий хранится", `${sec.auditDays} дней (FL_AUDIT_DAYS)`)}
+          {row("Журнал действий хранится", `${sec.auditDays} дней (FL_AUDIT_DAYS), записи связаны цепочкой SHA-256`)}
           {row("Секрет плановых задач", sec.cronSecret ? "задан" : "не задан — ночные задачи не запускаются", !sec.cronSecret)}
         </tbody></table>
       </section>
+      <ChainCheck />
       <section className={`${card} p-4 lg:col-span-2`}>
         <h2 className="font-semibold text-fl-cream">Внешние подключения</h2>
         <p className="mt-1 text-xs text-fl-cream/55">Всё, куда сервер обращается сам. Учётные данные компаний никуда не передаются, кроме строки, отмеченной ниже (только если она включена).</p>
@@ -686,5 +697,106 @@ function SystemInfo() {
         ))}</ul>
       </section>
     </div>
+  );
+}
+
+// ── Ведомства: доступ к группе компаний ───────────────────────────────────────
+interface SegRow { segment: string; companies: number; grants: Array<{ userId: string; level: "view" | "edit"; at: string; email: string; name: string | null; organization: string | null }> }
+
+/** Пользователь ведомства видит все компании группы, включая те, что появятся в ней позже. */
+function Segments() {
+  const [rows, setRows] = useState<SegRow[] | null>(null);
+  const [form, setForm] = useState({ segment: "", email: "", level: "view" as "view" | "edit" });
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { fetch("/api/admin/segments").then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); setRows(b.segments); }).catch((e) => setMsg({ ok: false, text: e.message })); }, []);
+  useEffect(() => { load(); }, [load]);
+  async function call(method: "POST" | "DELETE", body: object) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/admin/segments", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const b = await r.json();
+      if (!r.ok) throw new Error(b.error ?? "Не получилось");
+      setMsg({ ok: true, text: method === "POST" ? `Доступ открыт. Новых компаний в доступе: ${b.companies}.` : `Доступ снят с компаний: ${b.companies}.` });
+      if (method === "POST") setForm((f) => ({ ...f, email: "" }));
+      load();
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); } finally { setBusy(false); }
+  }
+  return (
+    <div className="space-y-4">
+      <p className="max-w-3xl text-sm text-fl-cream/65">Ведомство (министерство, фонд, холдинг) видит все предприятия своей группы на одном экране — портфель, диагностику, отчёты — и сразу получает доступ к предприятиям, которые попадут в группу позже. «Просмотр» — только смотреть и выгружать; изменять учёт может владелец компании. Группа задаётся в портфеле или в файле отчётности.</p>
+      <section className={`${card} p-4`}>
+        <h2 className="font-semibold text-fl-cream">Открыть доступ к группе</h2>
+        <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
+          <label className="text-xs text-fl-cream/55">Группа
+            <input className={field} list="fl-segments" value={form.segment} onChange={(e) => setForm({ ...form, segment: e.target.value })} placeholder="например: Подведомственные предприятия" />
+            <datalist id="fl-segments">{(rows ?? []).map((r) => <option key={r.segment} value={r.segment} />)}</datalist>
+          </label>
+          <label className="text-xs text-fl-cream/55">E-mail сотрудника ведомства<input className={field} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="зарегистрированный пользователь" /></label>
+          <label className="text-xs text-fl-cream/55">Уровень
+            <select className={field} value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value as "view" | "edit" })}><option value="view">просмотр</option><option value="edit">изменение</option></select>
+          </label>
+          <div className="flex items-end"><button className={ghostBtn} disabled={busy || !form.segment.trim() || !form.email.trim()} onClick={() => call("POST", form)}>{busy ? "…" : "Открыть доступ"}</button></div>
+        </div>
+        {msg && <p className={`mt-2 text-sm ${msg.ok ? "text-fl-green" : "text-fl-red"}`}>{msg.text}</p>}
+      </section>
+      <section className={`${card} overflow-x-auto p-4`}>
+        <h2 className="font-semibold text-fl-cream">Группы и ведомства</h2>
+        {!rows ? <p className="mt-2 text-sm text-fl-cream/50">Загружаю…</p> : !rows.length ? <p className="mt-2 text-sm text-fl-cream/55">Групп пока нет. Задайте группу компаниям в портфеле или загрузите отчётность с указанием ведомства.</p> : (
+          <table className="mt-2 w-full min-w-[640px] text-sm">
+            <thead><tr className="text-left text-xs text-fl-cream/50"><th className="py-1.5 pr-3 font-normal">Группа</th><th className="py-1.5 pr-3 text-right font-normal">Компаний</th><th className="py-1.5 font-normal">Кто видит группу целиком</th></tr></thead>
+            <tbody className="divide-y divide-fl-line">{rows.map((r) => (
+              <tr key={r.segment} className="align-top">
+                <td className="py-2 pr-3 text-fl-cream">{r.segment}</td>
+                <td className="py-2 pr-3 text-right tabular-nums text-fl-cream/70">{r.companies}</td>
+                <td className="py-2">{r.grants.length ? r.grants.map((g) => (
+                  <div key={g.userId} className="flex flex-wrap items-center gap-2">
+                    <span className="text-fl-cream/85">{g.email}</span>{g.organization && <span className="text-xs text-fl-cream/45">{g.organization}</span>}
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] ${g.level === "edit" ? "bg-fl-amber/15 text-fl-amber" : "bg-fl-info/15 text-fl-info"}`}>{g.level === "edit" ? "изменение" : "просмотр"}</span>
+                    <span className="text-xs text-fl-cream/40">с {date(g.at)}</span>
+                    <button className="text-xs text-fl-cream/50 hover:text-fl-red" disabled={busy} onClick={() => { if (confirm(`Снять доступ ${g.email} к группе «${r.segment}»?`)) call("DELETE", { segment: r.segment, userId: g.userId }); }}>снять</button>
+                  </div>
+                )) : <span className="text-fl-cream/40">только владельцы компаний и администраторы</span>}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  );
+}
+
+interface ChainReport { checked: number; firstAt: string | null; lastAt: string | null; head: string | null; startsAtGenesis: boolean; breaks: Array<{ id: string; at: string; action: string; kind: "changed" | "gap" }> }
+
+/** Проверка цепочки хэшей журнала действий: изменённая или удалённая в базе запись видна как разрыв. */
+function ChainCheck() {
+  const [r, setR] = useState<ChainReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = () => {
+    setBusy(true); setError(null);
+    fetch("/api/admin/audit-chain").then(async (x) => { const b = await x.json(); if (!x.ok) throw new Error(b.error); setR(b); }).catch((e) => setError(e.message)).finally(() => setBusy(false));
+  };
+  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("ru-RU", { timeZone: "Asia/Bishkek" }) : "—");
+  return (
+    <section className={`${card} p-4 lg:col-span-2`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold text-fl-cream">Целостность журнала действий</h2>
+        <button className={ghostBtn} disabled={busy} onClick={run}>{busy ? "Проверяю…" : "Проверить целостность"}</button>
+      </div>
+      <p className="mt-1 text-xs text-fl-cream/55">Каждая запись хранит SHA-256 предыдущей записи и своих полей. Если запись изменят или удалят прямо в базе, проверка покажет разрыв на этом месте. Отпечаток последней записи раз в сутки пишется в журнал сервера — вне базы.</p>
+      {error && <p className="mt-2 text-sm text-fl-red">{error}</p>}
+      {r && (
+        <div className="mt-3 text-sm">
+          {r.breaks.length === 0
+            ? <p className="rounded-lg border border-fl-green/40 bg-fl-green/[0.06] px-3 py-2 text-fl-cream/90">Цепочка цела: проверено записей — {r.checked.toLocaleString("ru-RU")}, с {when(r.firstAt)} по {when(r.lastAt)}.{!r.startsAtGenesis && r.checked > 0 ? " Более ранние записи удалены по сроку хранения." : ""}</p>
+            : <div className="rounded-lg border border-fl-red/50 bg-fl-red/[0.06] px-3 py-2 text-fl-cream/90">
+                <p className="font-semibold text-fl-red">Найдены нарушения: {r.breaks.length}</p>
+                <ul className="mt-1 space-y-0.5 text-xs">{r.breaks.slice(0, 20).map((b) => <li key={b.id + b.kind}>{when(b.at)} · {actionLabel(b.action)} · {b.kind === "changed" ? "запись изменена" : "перед записью удалены или вставлены записи"} · <span className="text-fl-cream/50">{b.id}</span></li>)}</ul>
+              </div>}
+          {r.head && <p className="mt-2 text-xs text-fl-cream/55">Отпечаток последней записи: <span className="font-mono text-fl-cream/80">{r.head}</span> — его можно записать в служебную записку и позже сверить.</p>}
+        </div>
+      )}
+    </section>
   );
 }

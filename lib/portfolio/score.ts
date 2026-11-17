@@ -54,12 +54,16 @@ export interface PortfolioRow {
   taxTitles: Array<{ title: string; vars?: Record<string, string | number> }>;
   topSignal: { title: string; detail: string; vars?: Record<string, string | number> } | null;
   empty: boolean;
+  /** откуда цифры: журнал проводок или отчётность из Excel */
+  source: "ledger" | "reported";
+  /** дата данных: дата диагностики или последнего отчётного периода */
+  dataDate: string;
 }
 
 export const SCORE_TEXTS = [
   "Недостаточность активов", "Просроченного больше, чем ликвидных активов", "Задержка зарплаты", "Просрочка перед бюджетом",
   "Просрочка поставщикам", "Поставщикам не платят больше 120 дней", "Текущая ликвидность ниже 1", "Ликвидность падает 3 месяца подряд", "Убыток 3 месяца подряд",
-  "Денег меньше чем на месяц", "Высокие налоговые риски",
+  "Денег меньше чем на месяц", "Высокие налоговые риски", "Ликвидность падает 3 квартала подряд", "Убыток за последний квартал",
 ];
 
 export const bandOf = (score: number): Band => (score >= 50 ? "risk" : score >= 20 ? "watch" : "ok");
@@ -79,10 +83,13 @@ export function scoreCompany(d: Diagnosis, tax: Pick<TaxRiskReport, "risks"> | n
   add("suppliers90", "Поставщикам не платят больше 120 дней", 10, d.debts.filter((x) => x.kind === "suppliers").reduce((a, x) => a + x.overdue90, 0) >= material);
   const cur = d.indicators.find((i) => i.key === "current")?.value ?? null;
   add("current", "Текущая ликвидность ниже 1", 15, cur != null && cur < 1);
-  const tr = d.months.map((m) => m.current).filter((x): x is number => x != null).slice(-4);
-  add("falling", "Ликвидность падает 3 месяца подряд", 5, tr.length === 4 && tr.every((v, i) => i === 0 || v < tr[i - 1]));
-  const last3 = d.months.slice(-3).map((m) => m.netProfit);
-  add("loss", "Убыток 3 месяца подряд", 5, last3.length === 3 && last3.every((n) => n < 0));
+  // отчётность по кварталам: «3 квартала подряд» и «убыток за квартал» (те же три месяца)
+  const q = d.granularity === "quarter";
+  const n = q ? 3 : 4;
+  const tr = d.months.map((m) => m.current).filter((x): x is number => x != null).slice(-n);
+  add("falling", q ? "Ликвидность падает 3 квартала подряд" : "Ликвидность падает 3 месяца подряд", 5, tr.length === n && tr.every((v, i) => i === 0 || v < tr[i - 1]));
+  const last3 = d.months.slice(q ? -1 : -3).map((m) => m.netProfit);
+  add("loss", q ? "Убыток за последний квартал" : "Убыток 3 месяца подряд", 5, last3.length === (q ? 1 : 3) && last3.every((x) => x < 0));
   add("runway", "Денег меньше чем на месяц", 5, d.runway != null && d.runway < 1);
   const high = tax?.risks.filter((r) => r.severity === "high").length ?? 0;
   add("tax", "Высокие налоговые риски", Math.min(3, high) * 3, high > 0);
@@ -99,8 +106,8 @@ export function portfolioRow(company: { id: string; name: string; segment?: stri
   const k = (x: string) => d.totals.byKind.find((y) => y.kind === x)?.overdue ?? 0;
   const ind = (x: string) => d.indicators.find((i) => i.key === x)?.value ?? null;
   // результат — за 3 последних закрытых месяца: незавершённый текущий месяц искажает прибыль
-  const closed = d.months.filter((m) => { const [y, mo] = m.month.split("-").map(Number); return m.date === new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); });
-  const last3 = closed.slice(-3);
+  const closed = d.granularity === "quarter" ? d.months : d.months.filter((m) => { const [y, mo] = m.month.split("-").map(Number); return m.date === new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); });
+  const last3 = closed.slice(d.granularity === "quarter" ? -1 : -3);
   const top = d.signals.find((s) => s.level === "risk") ?? d.signals[0] ?? null;
   return {
     companyId: company.id, name: company.name, segment: company.segment ?? "",
@@ -115,6 +122,7 @@ export function portfolioRow(company: { id: string; name: string; segment?: stri
     taxTitles: (tax?.risks ?? []).filter((r) => r.severity === "high").slice(0, 3).map((r) => ({ title: r.title, vars: r.vars })),
     topSignal: top ? { title: top.title, detail: top.detail, vars: top.vars } : null,
     empty: entriesCount === 0,
+    source: d.source ?? "ledger", dataDate: d.asOf,
   };
 }
 

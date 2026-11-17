@@ -6,6 +6,7 @@ import { LOCK_MINUTES, MAX_FAILED } from "@/lib/auth/limits";
 import { RETENTION } from "@/lib/monitor/retention";
 import { storageState } from "@/lib/monitor/storage";
 import { RELEASE, RELEASE_DATE } from "@/lib/version";
+import { adminTwofaRequired, idleMinutes } from "@/lib/auth/policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ export const GET = route(async () => {
       twofaUsers: twofa, twofaAdmins: admins2fa,
       clientIp: process.env.VERCEL ? "X-Real-IP от Vercel" : hops > 0 ? `X-Forwarded-For, доверенных прокси: ${hops}` : "без доверенного прокси (поставьте FL_TRUSTED_PROXIES за nginx/Caddy)",
       auditDays: RETENTION.activityDays, cronSecret: set("CRON_SECRET"),
+      adminTwofaRequired: adminTwofaRequired(), idleMinutes: idleMinutes(),
     },
     integrations: [
       { name: "Курсы НБКР (nbkr.kg)", on: true, note: "раз в сутки, только загрузка курсов" },

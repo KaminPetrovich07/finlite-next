@@ -16,7 +16,8 @@ export const ACTION_LABELS: Record<string, string> = {
   bank_import: "Загрузка банковской выписки", bank_delete: "Удаление строк выписки", esf_import: "Загрузка ЭСФ",
   trade_doc_create: "Документ продажи/закупки", trade_doc_update: "Изменение документа", trade_doc_pay: "Оплата документа", trade_doc_import: "Документы из 1С", trade_print: "Печать документа",
   catalog_save: "Справочник товаров", catalog_merge: "Объединение товаров", catalog_delete: "Удаление товара", cogs: "Списание себестоимости",
-  import_goods_create: "Ввоз товара (импорт)", fx_revalue: "Переоценка валюты", fx_nbkr: "Курсы НБКР",
+  import_goods_create: "Ввоз товара (импорт)", reported_import: "Загрузка отчётности предприятий", reported_delete: "Удаление отчётности предприятия", fx_revalue: "Переоценка валюты", fx_nbkr: "Курсы НБКР",
+  land_save: "Земельный участок", land_delete: "Удаление земельного участка", land_export: "Выгрузка реестра участков",
   asset_create: "Основное средство", asset_dispose: "Выбытие ОС", asset_doc: "Документ по ОС", depreciation: "Амортизация",
   hr_employee: "Сотрудник", hr_post: "Начисление зарплаты",
   attachment_add: "Скан к проводке", attachment_delete: "Удаление скана",
@@ -28,17 +29,18 @@ export const ACTION_LABELS: Record<string, string> = {
   admin_user_update: "Админ: изменение пользователя", admin_reset_link: "Админ: ссылка сброса пароля", admin_pilot: "Админ: пилот", admin_grant_pilot: "Админ: выдан пилот",
   admin_company_owner: "Админ: владелец компании", admin_claim_orphans: "Админ: компании без владельца", admin_assign_owner: "Админ: назначен владелец",
   news_collect: "Сбор новостей", law_load: "Загрузка закона", science_refresh: "Обновление науки", post_create: "Публикация",
-  audit_export: "Админ: выгрузка журнала действий",
+  audit_export: "Админ: выгрузка журнала действий", audit_verify: "Админ: проверка целостности журнала",
+  password_forgot: "Запрос сброса пароля", password_reset: "Пароль сброшен по ссылке", account_delete: "Удаление учётной записи", companies_claimed: "Компании привязаны к учётной записи", segment_grant: "Админ: доступ ведомства к группе", segment_revoke: "Админ: снят доступ ведомства к группе",
   study_start: "Обучение: начато", study_group: "Обучение: группа", specialist_create: "Анкета специалиста",
 };
 
 /** Группы для фильтра: какие действия показывать вместе. */
 export const ACTION_GROUPS: Record<string, string[]> = {
-  "Вход и учётные записи": ["register", "login", "login_failed", "login_backup_code", "password_change", "sessions_revoke", "profile_update", "consent", "account_export"],
-  "Доступ к компаниям": ["company_create", "company_update", "company_delete", "company_import", "company_backup", "access_grant", "access_revoke"],
-  "Изменения учёта": ["entry_update", "entry_delete", "entries_delete", "entries_restore", "bank_import", "bank_delete", "esf_import", "trade_doc_create", "trade_doc_update", "trade_doc_pay", "trade_doc_import", "import_goods_create", "hr_post", "depreciation", "cogs", "fx_revalue", "recurring_run", "attachment_add", "attachment_delete"],
-  "Выгрузки": ["export", "taxreports_export", "form_export", "primary_export", "insolvency_export", "portfolio_export", "counterparties_export", "policy_export", "costing_export", "company_backup", "account_export", "trade_print"],
-  "Действия администратора": ["audit_export", "admin_user_update", "admin_reset_link", "admin_pilot", "admin_grant_pilot", "admin_company_owner", "admin_claim_orphans", "admin_assign_owner"],
+  "Вход и учётные записи": ["register", "login", "login_failed", "login_backup_code", "password_forgot", "password_reset", "account_delete", "password_change", "sessions_revoke", "profile_update", "consent", "account_export"],
+  "Доступ к компаниям": ["segment_grant", "segment_revoke", "company_create", "company_update", "company_delete", "company_import", "company_backup", "access_grant", "access_revoke"],
+  "Изменения учёта": ["reported_import", "reported_delete", "entry_update", "entry_delete", "entries_delete", "entries_restore", "bank_import", "bank_delete", "esf_import", "trade_doc_create", "trade_doc_update", "trade_doc_pay", "trade_doc_import", "import_goods_create", "hr_post", "depreciation", "cogs", "fx_revalue", "recurring_run", "attachment_add", "attachment_delete"],
+  "Выгрузки": ["land_export", "export", "taxreports_export", "form_export", "primary_export", "insolvency_export", "portfolio_export", "counterparties_export", "policy_export", "costing_export", "company_backup", "account_export", "trade_print"],
+  "Действия администратора": ["audit_verify", "audit_export", "segment_grant", "segment_revoke", "admin_user_update", "admin_reset_link", "admin_pilot", "admin_grant_pilot", "admin_company_owner", "admin_claim_orphans", "admin_assign_owner"],
 };
 
 export const actionLabel = (a: string) => ACTION_LABELS[a] ?? a;

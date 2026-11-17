@@ -161,6 +161,11 @@ model ActivityLog {
   companyId String?
   details   Json?
   createdAt DateTime @default(now())
+  /// кто действовал на момент записи (id пользователя) — не стирается при удалении учётной записи
+  actor     String?
+  /// цепочка целостности: SHA-256 предыдущей записи и этой (lib/monitor/chain.ts)
+  prevHash  String?
+  hash      String?  @unique
 
   @@index([createdAt])
   @@index([userId, createdAt])

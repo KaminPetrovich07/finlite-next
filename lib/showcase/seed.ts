@@ -5,6 +5,7 @@ import { createEntry, loadEntries } from "@/lib/ledger/repo";
 import { quietly, recordEntryEvent } from "@/lib/ledger/guard";
 import { createDoc, payDoc } from "@/lib/trade/server";
 import { createImport } from "@/lib/import-goods/server";
+import { setCompanySegment } from "@/lib/access/segments";
 import { putRecord } from "@/lib/records";
 import { FILED, showcasePlan, SHOWCASE, VAT_SETTLE } from "./plan";
 
@@ -67,7 +68,7 @@ export async function createSoe(ownerId: string | null, i: number) {
   if (!p) throw new Error("Нет такого демо-предприятия");
   const company = await prisma.company.create({ data: { name: p.name, defaultRegime: "general", activity: `Госпредприятие (демо): ${p.activity}`, ownerId } });
   try {
-    await putRecord(company.id, "profile", "main", { segment: SOE_SEGMENT });
+    await setCompanySegment(company.id, SOE_SEGMENT);
     await putRecord(company.id, "taxreports", "main", { size: "small", filed: {} });
     await quietly(async () => {
       for (const e of soeEntries(p)) await createEntry(prisma, { companyId: company.id, date: e.date, description: e.description, source: e.source, lines: e.lines });

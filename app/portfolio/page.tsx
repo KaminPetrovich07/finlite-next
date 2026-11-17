@@ -104,7 +104,7 @@ export default function PortfolioPage() {
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-bold text-fl-cream sm:text-4xl">{t("Портфель компаний")}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-fl-cream/60">{t("Все компании на одном экране: кто устойчив, кому нужно внимание и кто в зоне высокого риска — с причинами. Для ведомства, которому подчинены предприятия, и для бухгалтера с десятками клиентов. Считается по данным учёта каждой компании, балл риска складывается из видимых признаков.")}</p>
+          <p className="mt-1 max-w-3xl text-sm text-fl-cream/60">{t("Все компании на одном экране: кто устойчив, кому нужно внимание и кто в зоне высокого риска — с причинами. Для ведомства, которому подчинены предприятия, и для бухгалтера с десятками клиентов. Считается по данным учёта каждой компании, балл риска складывается из видимых признаков.")} {t("Предприятия, которые не ведут учёт в программе, оцениваются по загруженной квартальной отчётности.")}</p>
         </div>
         <div className="flex gap-2">
           <button className={btn} disabled={!live.length || busy !== null} onClick={() => download("pdf")}>{busy === "pdf" ? "…" : t("Обзор для руководства (PDF)")}</button>
@@ -124,6 +124,7 @@ export default function PortfolioPage() {
         <label className="block"><span className="mb-1 block text-xs text-fl-cream/55">{t("Динамика")}</span>
           <select value={months} onChange={(e) => setMonths(Number(e.target.value))} className={field}>{[3, 6, 12].map((n) => <option key={n} value={n}>{t("{n} мес.", { n })}</option>)}</select>
         </label>
+        <a href="/reported" className="rounded-lg border border-fl-line px-4 py-2 text-sm text-fl-cream/85 hover:border-fl-gold/40 hover:text-fl-cream">{t("Загрузить отчётность предприятий")}</a>
         {!hasSoe && (
           <button className="ml-auto rounded-lg border border-fl-gold/50 bg-fl-gold/10 px-4 py-2 text-sm text-fl-cream hover:border-fl-gold disabled:opacity-60" disabled={seeding !== null} onClick={seed} title={t("10 вымышленных госпредприятий с разным финансовым состоянием — для показа экрана")}>
             {seeding ? t("Создаю {n} из 10…", { n: seeding }) : t("Демо-портфель: 10 госпредприятий")}
@@ -199,14 +200,14 @@ export default function PortfolioPage() {
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[980px] text-sm">
                 <thead><tr className="text-left text-xs text-fl-cream/50">
-                  {th("name", t("Компания"))}{th("score", t("Балл риска"))}<th className="py-2 pr-3 font-normal">{t("Ликвидность по месяцам")}</th>
+                  {th("name", t("Компания"))}{th("score", t("Балл риска"))}<th className="py-2 pr-3 font-normal">{t("Динамика ликвидности")}</th>
                   {th("current", t("Текущая"), true)}{th("overdue", t("Не погашено в срок"), true)}{th("profit3", t("Результат 3 мес."), true)}{th("taxHigh", t("Налог. риски"), true)}<th className="py-2 font-normal">{t("Главное")}</th>
                 </tr></thead>
                 <tbody className="divide-y divide-fl-line">
                   {rows.map((x) => (
                     <Fragment key={x.companyId}>
                       <tr className="cursor-pointer hover:bg-fl-surface-2/50" onClick={() => { setOpen(open === x.companyId ? null : x.companyId); setSegEdit(x.segment); }}>
-                        <td className="py-2 pr-3"><div className="font-medium text-fl-cream">{x.name}</div>{x.segment && <div className="text-xs text-fl-cream/45">{t(x.segment)}</div>}</td>
+                        <td className="py-2 pr-3"><div className="font-medium text-fl-cream">{x.name}</div><div className="text-xs text-fl-cream/45">{x.segment ? `${t(x.segment)} · ` : ""}{x.source === "reported" ? <span className="text-fl-info" title={t("Цифры из загруженной отчётности предприятия, а не из журнала проводок")}>{t("отчётность на {date}", { date: x.dataDate.split("-").reverse().join(".") })}</span> : t("учёт в программе")}</div></td>
                         <td className="py-2 pr-3"><div className="flex items-center gap-2"><span className="w-7 text-right font-semibold tabular-nums text-fl-cream">{x.score}</span><span className="h-1.5 w-16 overflow-hidden rounded-full bg-fl-surface-2"><span className="block h-full" style={{ width: `${x.score}%`, background: COLOR[x.band] }} /></span><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${BADGE[x.band]}`}>{label[x.band]}</span></div></td>
                         <td className="py-2 pr-3 text-fl-cream/60"><Spark values={x.trend} band={x.band} /></td>
                         <td className="py-2 pr-3 text-right tabular-nums text-fl-cream">{x.current == null ? "—" : x.current.toLocaleString("ru-RU")}</td>
