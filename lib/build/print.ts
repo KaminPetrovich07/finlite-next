@@ -246,7 +246,16 @@ export function printReport(c: PrintCtx, o: BuildObject, docs: BuildDoc[], to: s
       t: "table", small: true, head: ["Материал", "Ед.", "Норма", "Факт", "Откл., %", "Ещё нужно", "Сумма факт"], widths: [4.6, 1, 1.3, 1.3, 1.3, 1.4, 1.8], align: ["l", "c", "r", "r", "r", "r", "r"],
       rows: a.materials.map((m) => [m.name, m.unit, q(m.planQty), q(m.factQty), pct(m.qtyVariancePct), q(m.needQty), sum(m.factAmount)]),
     },
-    ...(a.warnings.length ? [{ t: "h", text: "4. На что обратить внимание", level: 2 } as DocBlock, { t: "list", items: a.warnings } as DocBlock] : []),
+    ...(a.variances.rows.some((r) => r.factAmount) ? [
+      { t: "h", text: "4. Отклонения от сметы: цена и количество", level: 2 } as DocBlock,
+      ...(a.variances.summary ? [{ t: "p", text: a.variances.summary, small: true } as DocBlock] : []),
+      {
+        t: "table", small: true, head: ["Этап", "Затраты", "Ед.", "Норма", "Факт", "Цена смета", "Цена факт", "По цене", "По количеству", "Вне сметы"],
+        widths: [2.6, 3.2, 0.9, 1.1, 1.1, 1.4, 1.4, 1.5, 1.6, 1.4], align: ["l", "l", "c", "r", "r", "r", "r", "r", "r", "r"],
+        rows: a.variances.rows.filter((r) => r.factAmount).map((r) => [o.stages.find((s) => s.id === r.stageId)?.name ?? "", r.name, r.unit, r.planQty ? q(r.planQty) : "—", q(r.factQty), r.planPrice != null ? sum(r.planPrice) : "—", r.factPrice != null ? sum(r.factPrice) : "—", r.priceVar != null ? sum(r.priceVar) : "—", r.usageVar != null ? sum(r.usageVar) : r.done ? "—" : "в работе", r.outside ? sum(r.outside) : "—"]),
+      } as DocBlock,
+    ] : []),
+    ...(a.warnings.length ? [{ t: "h", text: "5. На что обратить внимание", level: 2 } as DocBlock, { t: "list", items: a.warnings } as DocBlock] : []),
     { t: "sign", items: [{ role: c.directorTitle, name: c.director }, { role: "Главный бухгалтер", name: c.chief }] },
   ];
 }

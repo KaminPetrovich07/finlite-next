@@ -374,6 +374,8 @@ export interface ObjectAnalysis {
   materials: MaterialFact[];
   /** месяц → затраты и сдано */
   months: Array<{ month: string; cost: number; accepted: number }>;
+  /** отклонения от сметы: цена и количество (материалы), ставка и выработка (труд, техника) */
+  variances: VarianceReport;
   warnings: string[];
 }
 
@@ -485,8 +487,90 @@ export function analyze(o: BuildObject, docs: BuildDoc[], stock: Map<string, num
     stages: [...st.values()],
     materials: [...mats.values()].sort((a, b) => b.factAmount - a.factAmount || b.planAmount - a.planAmount),
     months: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([m, v]) => ({ month: m, ...v })),
+    variances: costVariances(o, ds, new Map([...st.values()].map((s) => [s.stageId, s.progress ?? 0]))),
     warnings,
   };
+}
+
+// ── отклонения от сметы ─────────────────────────────────────────────────
+
+export interface VarianceRow {
+  type: CostType;
+  stageId: string;
+  name: string;
+  unit: string;
+  planQty: number; planPrice: number | null; planAmount: number;
+  factQty: number; factPrice: number | null; factAmount: number;
+  /** отклонение по цене (ставке): (цена факт − цена сметы) × количество факт; + перерасход */
+  priceVar: number | null;
+  /** отклонение по количеству (выработке): (количество факт − норма) × цена сметы — только у сданных этапов */
+  usageVar: number | null;
+  /** затраты, которых нет в смете */
+  outside: number;
+  done: boolean;
+}
+export interface VarianceReport {
+  rows: VarianceRow[];
+  price: number;
+  usage: number;
+  outside: number;
+  /** итог по сданным этапам: факт − смета */
+  doneTotal: number;
+  summary: string | null;
+}
+
+/**
+ * Разложение отклонений факта от сметы. Материалы — по каждому материалу на этапе; труд, техника,
+ * субподряд, прочее — по виду затрат на этапе. Цена считается по всему списанному; количество —
+ * только по сданным этапам (у этапа в работе норма ещё не израсходована). Если у плана и факта
+ * разные единицы, разложение невозможно — показывается только общее отклонение сданного этапа.
+ */
+export function costVariances(o: BuildObject, docs: BuildDoc[], progress: Map<string, number>): VarianceReport {
+  const key = (type: CostType, stageId: string, name: string) => (type === "material" ? `m|${stageId}|${itemKey(name)}` : `${type}|${stageId}`);
+  const rows = new Map<string, VarianceRow & { units: Set<string>; planUnits: Set<string> }>();
+  const get = (type: CostType, stageId: string, name: string, unit: string) => {
+    const k = key(type, stageId, name);
+    let r = rows.get(k);
+    if (!r) {
+      r = { type, stageId, name: type === "material" ? name.trim() : COST_LABEL[type], unit, planQty: 0, planPrice: null, planAmount: 0, factQty: 0, factPrice: null, factAmount: 0, priceVar: null, usageVar: null, outside: 0, done: (progress.get(stageId) ?? 0) >= 100, units: new Set(), planUnits: new Set() };
+      rows.set(k, r);
+    }
+    return r;
+  };
+  for (const res of o.resources) {
+    const r = get(res.type, res.stageId, res.name, res.unit);
+    r.planQty = r3(r.planQty + res.qty); r.planAmount = r2(r.planAmount + resSum(res)); r.planUnits.add(res.unit.toLowerCase());
+  }
+  const first = o.stages[0]?.id ?? "";
+  for (const d of docs) {
+    if (d.objectId !== o.id || d.type === "ks2") continue;
+    for (const row of d.rows) {
+      const type: CostType = d.type === "writeoff" ? "material" : row.costType ?? "other";
+      const r = get(type, rowStage(o, row) || first, row.name, row.unit);
+      r.factQty = r3(r.factQty + row.qty); r.factAmount = r2(r.factAmount + rowAmount(row)); r.units.add(row.unit.toLowerCase());
+    }
+  }
+  let price = 0, usage = 0, outside = 0, doneTotal = 0;
+  for (const r of rows.values()) {
+    r.planPrice = r.planQty > 0 ? r2(r.planAmount / r.planQty) : null;
+    r.factPrice = r.factQty > 0 ? r2(r.factAmount / r.factQty) : null;
+    if (r.done) doneTotal = r2(doneTotal + r.factAmount - r.planAmount);
+    if (!r.planAmount) { r.outside = r.factAmount; outside = r2(outside + r.outside); continue; }
+    const sameUnits = r.units.size <= 1 && r.planUnits.size === 1 && (!r.units.size || [...r.units][0] === [...r.planUnits][0]);
+    if (sameUnits && r.planPrice != null && r.factQty > 0) {
+      r.priceVar = r2(r.factAmount - r.planPrice * r.factQty);
+      if (r.done) r.usageVar = r2((r.factQty - r.planQty) * r.planPrice);
+    } else if (r.done) r.usageVar = r2(r.factAmount - r.planAmount); // разные единицы — только общее отклонение
+    price = r2(price + (r.priceVar ?? 0)); usage = r2(usage + (r.usageVar ?? 0));
+  }
+  const list = [...rows.values()].map(({ units: _u, planUnits: _p, ...r }) => r)
+    .filter((r) => r.factAmount || r.planAmount)
+    .sort((a, b) => Math.abs((b.priceVar ?? 0) + (b.usageVar ?? 0) + b.outside) - Math.abs((a.priceVar ?? 0) + (a.usageVar ?? 0) + a.outside));
+  const money = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.round(Math.abs(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+  const summary = list.some((r) => r.factAmount)
+    ? `Отклонение от сметы: из-за цен ${money(price)} сом, из-за количества (по сданным этапам) ${money(usage)} сом, затраты вне сметы ${money(outside)} сом.`
+    : null;
+  return { rows: list, price, usage, outside, doneTotal, summary };
 }
 
 /** КС-3: стоимость работ по этапам — с начала работ, с начала года, за отчётный период (без НДС). */

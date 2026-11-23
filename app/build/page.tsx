@@ -596,6 +596,36 @@ function Analysis({ o, a, stageName, onPrint }: { o: BuildObject; a: ObjectAnaly
         )}
       </section>
 
+      {a.variances.rows.some((r) => r.factAmount) && (
+        <section className={card}>
+          <h3 className="font-display text-lg font-semibold text-fl-cream">Отклонения от сметы: почему перерасход</h3>
+          <p className="mb-3 text-xs text-fl-cream/50">Цена — купили дороже или дешевле сметы (по всему списанному). Количество — израсходовали больше или меньше нормы (только по сданным этапам). «+» — перерасход, «−» — экономия.</p>
+          <div className="mb-3 grid gap-3 sm:grid-cols-3">
+            <Tile title="Из-за цен" value={signed(a.variances.price)} tone={a.variances.price > 0 ? "bad" : a.variances.price < 0 ? "good" : undefined} sub="материалы, ставки труда и техники" />
+            <Tile title="Из-за количества" value={signed(a.variances.usage)} tone={a.variances.usage > 0 ? "bad" : a.variances.usage < 0 ? "good" : undefined} sub="расход сверх нормы на сданных этапах" />
+            <Tile title="Вне сметы" value={signed(a.variances.outside)} tone={a.variances.outside > 0 ? "bad" : undefined} sub="затраты, которых нет в смете" />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] text-sm">
+              <thead><tr className="text-left text-xs text-fl-cream/50"><th className="py-2">Этап</th><th>Затраты</th><th>Ед.</th><th className="text-right">Норма</th><th className="text-right">Факт</th><th className="text-right">Цена смета / факт</th><th className="text-right">По цене</th><th className="text-right">По количеству</th><th className="text-right">Вне сметы</th></tr></thead>
+              <tbody>{a.variances.rows.filter((r) => r.factAmount).map((r) => (
+                <tr key={`${r.stageId}|${r.type}|${r.name}`} className="border-t border-fl-line">
+                  <td className="max-w-[200px] truncate py-1.5 pr-3 text-xs text-fl-cream/60" title={stageName.get(r.stageId)}>{stageName.get(r.stageId)}</td>
+                  <td className="pr-3 text-fl-cream/90">{r.name}</td>
+                  <td className="pr-3 text-fl-cream/60">{r.unit}</td>
+                  <td className="num pr-3 text-right">{r.planQty ? qn(r.planQty) : "—"}</td>
+                  <td className="num pr-3 text-right">{qn(r.factQty)}</td>
+                  <td className="num whitespace-nowrap pr-3 text-right text-fl-cream/70">{r.planPrice != null ? m2(r.planPrice) : "—"} / {r.factPrice != null ? m2(r.factPrice) : "—"}</td>
+                  <VarCell v={r.priceVar} />
+                  <VarCell v={r.usageVar} note={r.done ? undefined : "этап в работе"} />
+                  <VarCell v={r.outside || null} />
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {a.months.length > 0 && (
         <section className={card}>
           <h3 className="mb-2 font-display text-lg font-semibold text-fl-cream">По месяцам</h3>
@@ -723,4 +753,10 @@ function NumInput({ value, onChange, disabled }: { value: number; onChange: (v: 
   const [s, setS] = useState(value ? String(value).replace(".", ",") : "");
   useEffect(() => { if (parseNum(s) !== value) setS(value ? String(value).replace(".", ",") : ""); }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
   return <input inputMode="decimal" value={s} disabled={disabled} onChange={(e) => { setS(e.target.value); onChange(parseNum(e.target.value)); }} className={`${cell} text-right`} />;
+}
+
+const signed = (n: number) => (n ? `${n > 0 ? "+" : "−"}${m0(Math.abs(n))}` : "0");
+function VarCell({ v, note }: { v: number | null; note?: string }) {
+  if (v == null || Math.abs(v) < 0.005) return <td className="num pr-3 text-right text-xs text-fl-cream/40">{note ?? "—"}</td>;
+  return <td className={`num whitespace-nowrap pr-3 text-right ${v > 0 ? "text-fl-red" : "text-fl-green"}`}>{v > 0 ? "▲ " : "▼ "}{signed(v)}</td>;
 }

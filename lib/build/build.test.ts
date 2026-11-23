@@ -188,3 +188,26 @@ test("печатные формы: КС-2, КС-3, акт, договор, ра�
   assert.match(text(printReport(c, o, [w, act], "2026-10-31")), /ОТЧЁТ ПО ОБЪЕКТУ/);
   assert.match(text(printWriteoff(c, o, w)), /87 000,00/);
 });
+
+test("отклонения: материалы — цена и количество, труд — ставка и выработка, вне сметы; этап в работе — только цена", () => {
+  const o = obj();
+  const docs: BuildDoc[] = [
+    wo("1", "2026-10-20", [{ name: "Плита OSB", unit: "лист", qty: 66, price: 1450, stageId: "s1", account: "1620" }, { name: "Саморезы", unit: "кг", qty: 2, price: 300, stageId: "s1", account: "1620" }]),
+    wo("2", "2026-10-21", [{ name: "Плитка", unit: "м2", qty: 4, price: 1100, stageId: "s2", account: "1620" }]),
+    { type: "cost", objectId: "o1", number: "1", date: "2026-10-25", pay: "reclass", reclass: "7120", rows: [{ name: "Бригада", unit: "чел.-дн", qty: 44, price: 2400, costType: "labor", stageId: "s1" }] },
+    { type: "ks2", objectId: "o1", number: "1", date: "2026-10-30", rows: [{ workId: "w1", name: "Обшивка стен", unit: "м2", qty: 32, price: 15625 }] },
+  ];
+  const v = analyze(o, docs).variances;
+  const osb = v.rows.find((r) => r.name === "Плита OSB")!;
+  assert.deepEqual([osb.priceVar, osb.usageVar, osb.done], [-3300, 9000, true]);
+  const lab = v.rows.find((r) => r.type === "labor")!;
+  assert.deepEqual([lab.priceVar, lab.usageVar], [-4400, 10000]);
+  const tile = v.rows.find((r) => r.name === "Плитка")!;
+  assert.deepEqual([tile.priceVar, tile.usageVar, tile.done], [400, null, false]);
+  assert.equal(v.rows.find((r) => r.name === "Саморезы")!.outside, 600);
+  assert.deepEqual([v.price, v.usage, v.outside, v.doneTotal], [-7300, 19000, 600, 11900]);
+  assert.match(v.summary!, /из-за цен −7 300 сом, из-за количества \(по сданным этапам\) \+19 000 сом, затраты вне сметы \+600 сом/);
+  // разные единицы у плана и факта: только общее отклонение сданного этапа
+  const v2 = analyze(o, [{ ...docs[2], rows: [{ ...docs[2].rows[0], unit: "мес", qty: 1, price: 105600 }] }, docs[3]]).variances.rows.find((r) => r.type === "labor")!;
+  assert.deepEqual([v2.priceVar, v2.usageVar], [null, 5600]);
+});
