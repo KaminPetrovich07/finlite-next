@@ -174,6 +174,7 @@ export default function Home() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-lg font-semibold text-fl-cream">{t("Первые шаги")}</h2>
             <div className="flex items-center gap-3">
+              <a href="/start" className="text-xs text-fl-gold hover:underline">{t("Пошаговый мастер")} →</a>
               <span className="text-xs text-fl-cream/55">{t("{a} из {b}", { a: doneSteps, b: steps.length })}</span>
               <button type="button" onClick={() => { setHideSteps(true); try { localStorage.setItem(`finlite:steps-hidden:${companyId}`, "1"); } catch { /* */ } }} className="text-xs text-fl-cream/45 hover:text-fl-cream">{t("скрыть")}</button>
             </div>
