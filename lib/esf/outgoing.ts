@@ -117,7 +117,7 @@ export function populationEarliest(today: string): string {
 
 // ─── продажи из журнала → документы ЭСФ ─────────────────────────────────
 
-const REVENUE = new Set(["6110", "6130"]);
+const REVENUE = new Set(["6110", "6130", "6140"]); // 6140 — выручка по договорам строительства (акты КС-2)
 const CASH = /^11[12]\d$/;
 
 export interface OutLine {
@@ -194,7 +194,7 @@ export function outgoingDocs(entries: LedgerEntry[], from: string, to: string, s
       const qty = l.qty && l.qty > 0 ? round6(l.qty) : 1;
       const base = priceWithoutTax ? l.credit : (gross * l.credit) / (net || 1);
       const price = round6(base / qty);
-      const service = cat ? cat.service : servicesByDefault;
+      const service = cat ? cat.service : servicesByDefault || l.account === "6140";
       const unitCode = cat?.unitCode || okeiCode(l.unit) || "";
       return { name, key, qty, unit: l.unit ?? "", unitCode, price, code: cat?.code || null, service, amounts: lineAmounts(qty, price, vatPct, nspPct, priceWithoutTax) };
     });
