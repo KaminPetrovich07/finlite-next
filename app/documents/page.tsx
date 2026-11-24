@@ -143,6 +143,11 @@ export default function DocumentsPage() {
               {areas.map(([k, n]) => <Chip key={k} on={filter === k} onClick={() => setFilter(k)}>{k} · {n}</Chip>)}
             </div>
           )}
+          {/^КО-[12]$/.test(filter) && (
+            <p className="mb-3 rounded-lg border border-fl-line bg-fl-charcoal px-3 py-2 text-xs text-fl-cream/70">
+              «Скачать все» соберёт ордера подряд по бланку альбома: {filter === "КО-1" ? "по 3 приходных ордера на лист А4, квитанция справа за линией отреза" : "по 2 расходных ордера на лист А4"}. Между ордерами — линия разреза листа.
+            </p>
+          )}
           {visible.length === 0 && <p className="py-6 text-sm text-fl-cream/55">За период нет операций, требующих первичных документов.</p>}
           <ul className="divide-y divide-fl-line">
             {visible.map((r) => (

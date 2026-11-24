@@ -20,10 +20,12 @@ const russianLeft = (blocks: ReturnType<typeof docToKyrgyz>["blocks"]) => {
   const texts: string[] = [];
   for (const b of blocks) {
     if ("text" in b && b.text) texts.push(b.text);
-    if (b.t === "table") { texts.push(...(b.head ?? [])); for (const r of b.rows) if (!r[0]) texts.push(r[1] ?? ""); }
+    if (b.t === "table") { texts.push(...(b.head ?? []), ...(b.heads ?? []).flat().map((c) => c.text)); for (const r of b.rows) if (!r[0]) texts.push(r[1] ?? ""); }
     if (b.t === "sign") texts.push(...b.items.map((x) => x.role));
     if (b.t === "fields") texts.push(...b.items.map(([k]) => k));
     if (b.t === "right") texts.push(...b.lines);
+    if (b.t === "formHead") texts.push(...b.corner);
+    if (b.t === "box") texts.push(...b.heads);
   }
   // русские служебные слова и подписи (названия товаров и организаций — данные пользователя, их не переводим)
   return texts.filter((t) => /(?:^|\s)(и|или|от|на|по|без|всего|итого|сумма|цена|принял|сдал|счёт|счет)(?:\s|$|[.,:(])/i.test(t.replace(/«[^»]*»/g, "")));
@@ -36,14 +38,13 @@ test("накладная и счёт с НДС — целиком на кырг�
   for (const kind of ["waybill", "invoice"] as const) {
     const ky = docToKyrgyz({ title: "x", fileName: "x", blocks: buildEntryDoc(kind, e, 15, ctx(e)) });
     assert.equal(ky.lang, "ky");
-    const title = ky.blocks.find((b) => b.t === "title");
-    assert.ok(title && "text" in title && /№ 15$/.test(title.text) && !/Накладная|Счёт/.test(title.text), `заголовок: ${JSON.stringify(title)}`);
+    const title = ky.blocks.find((b) => b.t === "formTitle");
+    assert.ok(title && title.t === "formTitle" && title.no === "15" && !/Накладная|Счёт/.test(title.text), `заголовок: ${JSON.stringify(title)}`);
     const words = ky.blocks.find((b) => b.t === "p" && b.text.startsWith("Бардыгы"));
     assert.ok(words && "text" in words, "сумма прописью");
     assert.equal((words as { text: string }).text, "Бардыгы төрт миң он сом 00 тыйын, анын ичинде КНС 397,50 сом.");
     assert.deepEqual(russianLeft(ky.blocks), [], "русские слова остались");
-    const date = ky.blocks.find((b) => b.t === "p" && /^2026-ж\. /.test(b.text));
-    assert.ok(date, "дата по-кыргызски");
+    assert.equal(title.date, "15.11.2026", "дата в заголовке");
   }
 });
 
@@ -52,7 +53,9 @@ test("приходный ордер М-4 на кыргызском", () => {
     rows: [{ name: "Чай зелёный", unit: "шт", kind: "goods", qty: 100, price: 80, vat: "12" }] };
   const e: LedgerEntry = { id: "e2", date: doc.date, description: "Поступление № А-7", source: "trade", sourceRef: "purchase:А-7", lines: docLines(doc) };
   const ky = docToKyrgyz({ title: "x", fileName: "x", blocks: buildEntryDoc("m4", e, 3, ctx(e)) });
-  assert.ok(ky.blocks.some((b) => b.t === "title" && b.text === "Кирүү ордери № 3"));
-  assert.ok(ky.blocks.some((b) => b.t === "right" && b.lines.includes("М-4 бирдиктүү формасы")));
+  assert.ok(ky.blocks.some((b) => b.t === "formTitle" && b.text === "Кирүү ордери" && b.no === "3"));
+  assert.ok(ky.blocks.some((b) => b.t === "formHead" && b.corner.includes("№ М-4 форма")));
+  // графы бланка альбома — тоже по-кыргызски
+  assert.ok(ky.blocks.some((b) => b.t === "table" && b.heads?.some((r) => r.some((c) => c.text === "Материалдык баалуулуктар"))));
   assert.deepEqual(russianLeft(ky.blocks), []);
 });

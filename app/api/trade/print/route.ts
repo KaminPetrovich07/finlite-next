@@ -3,6 +3,7 @@ import { z } from "zod";
 import { HttpError, logActivity, requireCompany, route } from "@/lib/auth/server";
 import { loadPrimaryCtx } from "@/lib/primary/context";
 import { buildEntryDoc } from "@/lib/primary/build";
+import { albumLandscape } from "@/lib/primary/album";
 import { DOC_INFO, numberDocs, type DocKind } from "@/lib/primary/detect";
 import { docFormat, sendDoc } from "@/lib/server/send-file";
 import type { DocBlock } from "@/lib/docs/model";
@@ -41,7 +42,7 @@ export const POST = route(async (req: NextRequest) => {
     const blocks = returnBlocks(doc, c, base);
     await logActivity("trade_print", companyId, { kinds: ["return"], format });
     const title = `Накладная на возврат № ${doc.number} — ${e.description}`;
-    const out = { title, fileName: title.slice(0, 120), org: c.companyName, blocks };
+    const out = { title, fileName: title.slice(0, 120), org: c.companyName, blocks, compact: true };
     return sendDoc((await requestLang()) === "ky" ? docToKyrgyz(out) : out, format);
   }
   const seq = numberDocs(c.entries, c.services).get(entryId) ?? [];
@@ -49,12 +50,13 @@ export const POST = route(async (req: NextRequest) => {
   for (const k of kinds.filter((x) => x !== "return") as DocKind[]) {
     // номер реализации печатается как есть; у поступления — внутренний номер приходного ордера
     const no = e.sourceRef?.startsWith("sale:") && Number.isInteger(own) && own > 0 ? own : seq.find((d) => d.kind === k)?.number ?? seq[0]?.number ?? 1;
-    if (blocks.length) blocks.push({ t: "pagebreak" });
-    blocks.push(...buildEntryDoc(k, e, no, c, overrides));
+    // накладная и счёт — бланковой вёрсткой, по нескольку на листе, если помещаются
+    blocks.push({ t: "unit", blocks: buildEntryDoc(k, e, no, c, overrides) });
   }
   await logActivity("trade_print", companyId, { kinds, format });
   const title = `${(kinds.filter((x) => x !== "return") as DocKind[]).map((k) => DOC_INFO[k].title).join(", ")} — ${e.description}`;
-  const out = { title, fileName: title.slice(0, 120), org: c.companyName, blocks };
+  const printed = kinds.filter((x) => x !== "return") as DocKind[];
+  const out = { title, fileName: title.slice(0, 120), org: c.companyName, blocks, landscape: printed.length > 0 && printed.every(albumLandscape), compact: true };
   // на кыргызском, если интерфейс переключён на «КЫ»
   return sendDoc((await requestLang()) === "ky" ? docToKyrgyz(out) : out, format);
 });

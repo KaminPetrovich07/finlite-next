@@ -13,7 +13,7 @@ export function buildCostingDoc(company: string, from: string, to: string, r: Co
 
   if (!only) {
     b.push(
-      { t: "right", lines: ["Неунифицированная форма (ПП № 231, п. 17)"], small: true },
+      { t: "right", lines: ["Не унифицированная форма (ПП № 231, п. 17)"], small: true },
       { t: "p", text: company, bold: true },
       { t: "title", text: "Производственно-калькуляционный отчёт" },
       { t: "p", text: `за период ${period}`, align: "c" },
@@ -44,7 +44,7 @@ export function buildCostingDoc(company: string, from: string, to: string, r: Co
   for (const p of list) {
     if (b.length) b.push({ t: "pagebreak" });
     b.push(
-      { t: "right", lines: ["Неунифицированная форма (альбом форм, ПП № 231, п. 17)"], small: true },
+      { t: "right", lines: ["Не унифицированная форма (альбом форм, ПП № 231, п. 17)"], small: true },
       { t: "p", text: company, bold: true },
       { t: "title", text: "Карточка-калькуляция фактической себестоимости" },
       { t: "p", text: `${p.name} · выпуск ${p.qty} ${p.unit} · период ${period}`, align: "c" },

@@ -24,7 +24,7 @@ export function buildReconciliationAct(org: Org, row: CpRow, card: Counterparty 
   ];
   const whose = close > 0.004 ? `в пользу ${org.name}` : close < -0.004 ? `в пользу ${them}` : "";
   const b: DocBlock[] = [
-    { t: "right", lines: ["Неунифицированная форма"], small: true },
+    { t: "right", lines: ["Не унифицированная форма"], small: true },
     { t: "title", text: "Акт сверки взаимных расчётов" },
     { t: "p", text: `за период с ${dateShort(from)} по ${dateShort(to)}`, align: "c" },
     { t: "p", text: `между ${org.name}${org.inn ? ` (ИНН ${org.inn})` : ""} и ${them}${row.inn ? ` (ИНН ${row.inn})` : ""}${card?.contract ? `, договор ${card.contract}` : ""}`, align: "c" },
@@ -104,7 +104,7 @@ export function buildInv17(org: Org, res: CpResult, cards: Counterparty[], order
     { t: "p", text: "Все подсчёты итогов по строкам, страницам и в целом по акту инвентаризации проверены.", small: true },
     { t: "sign", items: commission },
     { t: "pagebreak" },
-    { t: "right", lines: ["Приложение к форме № ИНВ-17", "Неунифицированная форма"], small: true },
+    { t: "right", lines: ["Приложение к форме № ИНВ-17", "Не унифицированная форма"], small: true },
     { t: "p", text: org.name, bold: true },
     { t: "title", text: "Справка" },
     { t: "p", text: `к акту инвентаризации задолженности по состоянию на ${dateLong(res.asOf)}`, align: "c" },

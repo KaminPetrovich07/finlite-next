@@ -120,7 +120,7 @@ export default function FormsPage() {
         {def && (
           <section id="form-editor" className="min-w-0 scroll-mt-4 space-y-4">
             <div className={card}>
-              <p className="font-mono text-xs text-fl-gold">{def.unified ? `Форма № ${def.code}` : "Неунифицированная форма"} · № {def.n} по альбому</p>
+              <p className="font-mono text-xs text-fl-gold">{def.unified ? `Форма № ${def.code}` : "Не унифицированная форма"} · № {def.n} по альбому</p>
               <h2 className="mt-1 text-xl font-semibold text-fl-cream">{def.title}</h2>
               <p className="mt-1 text-sm text-fl-cream/70">{def.use}</p>
               {def.approvedBy && <p className="mt-1 text-xs text-fl-cream/50">{def.approvedBy}</p>}

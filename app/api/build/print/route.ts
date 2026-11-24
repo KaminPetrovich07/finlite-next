@@ -82,6 +82,8 @@ export const POST = route(async (req: NextRequest) => {
   }
   await logActivity("build_print", companyId, { forms, format });
   const title = `${forms.map((f) => PRINT_FORMS[f].split(" — ")[0]).join(", ")} — ${o.name}${doc ? ` № ${doc.number}` : ""}`;
-  const out: OfficialDoc = { title, fileName: title.slice(0, 120), org: pc.companyName, landscape, blocks };
+  // бланки (КС-2, КС-3, акт, счёт, списание) — бланковой вёрсткой; договор и отчёты — обычным документом
+  const compact = forms.every((f) => ["ks2", "ks3", "act", "invoice", "writeoff"].includes(f));
+  const out: OfficialDoc = { title, fileName: title.slice(0, 120), org: pc.companyName, landscape, blocks, compact };
   return sendDoc(out, format);
 });

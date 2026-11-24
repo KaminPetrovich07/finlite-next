@@ -10,8 +10,9 @@
 //   • отчёт по объекту — смета и факт по этапам и видам затрат.
 // ════════════════════════════════════════════════════════════════════════
 
-import { dateLong, dateShort, sum, sumInWords, type DocBlock, type HeadCell } from "@/lib/docs/model";
+import { dateLong, dateShort, sum, sumInWords, type DocBlock } from "@/lib/docs/model";
 import { itemKey } from "@/lib/ledger/stock";
+import { albumFiller, type Filler } from "@/lib/primary/album";
 import {
   analyze, bdocTotals, COST_LABEL, COST_TYPES, estimateTotals, ks3Rows, r2, rowAmount, workSum,
   type BuildDoc, type BuildObject,
@@ -41,74 +42,60 @@ const customer = (o: BuildObject) => `${o.customer || "________________"}${o.cus
 const contractText = (o: BuildObject) => `№ ${o.contractNo || "____"} от ${o.contractDate ? dateShort(o.contractDate) : "«___» ________ 20__ г."}`;
 const objectText = (o: BuildObject) => `${o.name}${o.address ? `, ${o.address}` : ""}`;
 
-function headerFields(c: PrintCtx, o: BuildObject, withObject = true): DocBlock {
-  return {
-    t: "fields", items: [
-      ["Инвестор", o.investor || customer(o)],
-      ["Заказчик (генподрядчик)", customer(o)],
-      ["Подрядчик (субподрядчик)", contractor(c)],
-      ["Стройка", objectText(o)],
-      ...(withObject ? [["Объект", o.name] as [string, string]] : []),
-      ["Договор подряда (контракт)", contractText(o)],
-    ],
-  };
-}
-const docTable = (act: BuildDoc): DocBlock => ({
-  t: "table", small: true, head: ["Номер документа", "Дата составления", "Отчётный период с", "по"], widths: [2, 2, 2, 2], align: ["c", "c", "c", "c"],
-  rows: [[act.number, dateShort(act.date), act.from ? dateShort(act.from) : "", dateShort(act.to || act.date)]],
-});
 const totalsRows = (net: number, vat: number, cols: number, label = "Итого"): string[][] => {
   const row = (t: string, v: number) => { const r = Array(cols).fill(""); r[1] = t; r[cols - 1] = sum(v); return r; };
   return vat > 0 ? [row(`${label} без НДС`, net), row("НДС 12 %", vat), row("Всего с НДС", r2(net + vat))] : [row(label, net), row("Без НДС", 0).map((x, i) => (i === cols - 1 ? "—" : x))];
 };
 const inWords = (net: number, vat: number) => (vat > 0 ? `${sumInWords(net + vat)}, в том числе НДС ${sum(vat)} сом.` : `${sumInWords(net)}. Без НДС.`);
 
-/** КС-2: акт о приёмке выполненных работ. */
+/** Шапка строительных форм альбома (№ 111, 112): стороны, стройка, объект, договор, номер, дата, период. */
+function buildHead(f: Filler, c: PrintCtx, o: BuildObject, act: BuildDoc) {
+  f.field(/^инвестор/, o.investor || customer(o)).field(/^заказчик/, customer(o)).field(/^подрядчик/, contractor(c))
+    .field(/^стройка/, objectText(o)).field(/^объект/, o.name).field(/^договор подряда/, contractText(o))
+    .field(/^номер документа/, act.number).field(/^дата составления/, dateShort(act.date))
+    .field(/^отчетный период с/, act.from ? dateShort(act.from) : "").field(/^по$/, dateShort(act.to || act.date));
+}
+const fillsOf = (c: PrintCtx) => ({ org: c.companyName, inn: c.inn, director: c.director, directorTitle: c.directorTitle, chief: c.chief });
+
+/** КС-2: акт приёмки выполненных работ — по бланку альбома (№ 111, неунифицированная форма). */
 export function printKs2(c: PrintCtx, o: BuildObject, act: BuildDoc): DocBlock[] {
   const t = bdocTotals(act, o);
   const pos = new Map(o.works.map((w, i) => [w.id, String(i + 1)]));
-  const heads: HeadCell[][] = [
-    [{ text: "Номер", colSpan: 2 }, { text: "Наименование работ", rowSpan: 2 }, { text: "Номер единичной расценки", rowSpan: 2 }, { text: "Единица измерения", rowSpan: 2 }, { text: "Выполнено работ", colSpan: 3 }],
-    [{ text: "по порядку" }, { text: "позиции по смете" }, { text: "количество" }, { text: "цена за единицу, сом" }, { text: "стоимость, сом" }],
-    ["1", "2", "3", "4", "5", "6", "7", "8"].map((x) => ({ text: x })),
-  ];
+  const f = albumFiller("nf-build-act");
+  buildHead(f, c, o, act);
+  f.field(/^сметная \(договорная\) стоимость/, `${sum(estimateTotals(o).works)}${o.vat ? " без НДС" : ""}`);
+  act.rows.forEach((r, i) => f.rawRow("t", [String(i + 1), r.name, (r.workId && pos.get(r.workId)) || "", r.code ?? "", r.unit, q(r.qty), sum(r.price), sum(rowAmount(r))]));
+  f.field(/^сдал$/, `${c.directorTitle} ${c.director}`.trim()).field(/^подрядчик \(субподрядчик\)$/, `${c.directorTitle} ${c.director}`.trim());
   return [
-    { t: "right", lines: ["Форма КС-2"], small: true },
-    headerFields(c, o),
-    docTable(act),
-    { t: "title", text: "АКТ О ПРИЁМКЕ ВЫПОЛНЕННЫХ РАБОТ" },
-    { t: "p", text: `Сметная (договорная) стоимость в соответствии с договором подряда (субподряда): ${sum(estimateTotals(o).works)} сом${o.vat ? " без НДС" : ""}`, small: true },
-    {
-      t: "table", heads, small: true, total: true, widths: [0.8, 1, 6, 1.6, 1.1, 1.3, 1.6, 1.8], align: ["c", "c", "l", "c", "c", "r", "r", "r"],
-      rows: [
-        ...act.rows.map((r, i) => [String(i + 1), (r.workId && pos.get(r.workId)) || "", r.name, r.code ?? "", r.unit, q(r.qty), sum(r.price), sum(rowAmount(r))]),
-        ...totalsRows(t.net, t.vat, 8).map((r) => { const x = [...r]; x[2] = x[1]; x[1] = ""; return x; }),
-      ],
-    },
+    ...f.blocks(fillsOf(c)).map((b) => (b.t === "table" && b.rows.length ? withTotals(b, t.net, t.vat) : b)),
     { t: "p", text: `Всего по акту: ${inWords(t.net, t.vat)}` },
-    { t: "sign", items: [{ role: `Сдал: подрядчик, ${c.directorTitle.toLowerCase()}`, name: c.director }, { role: "Принял: заказчик", name: "" }] },
-    { t: "p", text: "М. П.                                                                                                   М. П.", small: true },
   ];
 }
 
-/** КС-3: справка о стоимости выполненных работ и затрат. */
+/** Итоговые строки бланка («Итого», «Всего по акту») — с НДС, если он есть. */
+function withTotals(b: Extract<DocBlock, { t: "table" }>, net: number, vat: number): DocBlock {
+  const line = (label: string, v: number) => b.rows[0].map((_, i) => (i === 0 ? label : i === b.rows[0].length - 1 ? sum(v) : ""));
+  const rows = b.rows.flatMap((r) => {
+    if (r[0] === "Итого") return vat ? [line("Итого без НДС", net), line("НДС 12 %", vat)] : [line("Итого", net)];
+    if (r[0] === "Всего по акту") return [line(vat ? "Всего по акту с НДС" : "Всего по акту", r2(net + vat))];
+    return [r];
+  });
+  return { ...b, rows };
+}
+
+/** КС-3: справка о стоимости выполненных работ и затрат — по бланку альбома (№ 112). */
 export function printKs3(c: PrintCtx, o: BuildObject, act: BuildDoc, docs: BuildDoc[]): DocBlock[] {
   const rows = ks3Rows(o, docs, act);
   const tot = (k: "fromStart" | "fromYear" | "period") => r2(rows.reduce((s, r) => s + r[k], 0));
   const vat = (n: number) => (o.vat ? r2(n * 0.12) : 0);
-  const heads: HeadCell[][] = [
-    [{ text: "Номер по порядку", rowSpan: 2 }, { text: "Наименование пусковых комплексов, этапов, объектов, видов выполненных работ, оборудования, затрат", rowSpan: 2 }, { text: "Код", rowSpan: 2 }, { text: "Стоимость выполненных работ и затрат, сом", colSpan: 3 }],
-    [{ text: "с начала проведения работ" }, { text: "с начала года" }, { text: "в том числе за отчётный период" }],
-    ["1", "2", "3", "4", "5", "6"].map((x) => ({ text: x })),
-  ];
+  const f = albumFiller("nf-build-cost");
+  buildHead(f, c, o, act);
+  // строки «Всего…» и «в том числе:» уже в бланке; этапы — следом, затем итог и НДС
   const line = (n: string, name: string, a: number, b: number, p: number) => [n, name, "", sum(a), sum(b), sum(p)];
-  return [
-    { t: "right", lines: ["Форма КС-3"], small: true },
-    headerFields(c, o, false),
-    docTable(act),
-    { t: "title", text: "СПРАВКА О СТОИМОСТИ ВЫПОЛНЕННЫХ РАБОТ И ЗАТРАТ" },
-    {
-      t: "table", heads, small: true, total: true, widths: [0.9, 7, 0.9, 2, 2, 2], align: ["c", "l", "c", "r", "r", "r"],
+  const blocks = f.blocks(fillsOf(c)).map((b) => {
+    if (b.t !== "table" || !b.rows.some((r) => /^Всего работ и затрат/.test(r[1] ?? ""))) return b;
+    return {
+      ...b,
       rows: [
         line("", "Всего работ и затрат, включаемых в стоимость работ", tot("fromStart"), tot("fromYear"), tot("period")),
         ["", "в том числе:", "", "", "", ""],
@@ -116,10 +103,9 @@ export function printKs3(c: PrintCtx, o: BuildObject, act: BuildDoc, docs: Build
         line("", "Итого", tot("fromStart"), tot("fromYear"), tot("period")),
         ...(o.vat ? [line("", "Сумма НДС 12 %", vat(tot("fromStart")), vat(tot("fromYear")), vat(tot("period"))), line("", "Всего с учётом НДС", r2(tot("fromStart") * 1.12), r2(tot("fromYear") * 1.12), r2(tot("period") * 1.12))] : [["", "Без НДС", "", "—", "—", "—"]]),
       ],
-    },
-    { t: "p", text: `За отчётный период: ${inWords(tot("period"), vat(tot("period")))}` },
-    { t: "sign", items: [{ role: "Заказчик (генподрядчик)", name: "" }, { role: `Подрядчик (субподрядчик), ${c.directorTitle.toLowerCase()}`, name: c.director }] },
-  ];
+    } as DocBlock;
+  });
+  return [...blocks, { t: "p", text: `За отчётный период: ${inWords(tot("period"), vat(tot("period")))}` }];
 }
 
 /** Материалы, списанные на объект за период акта (для строки акта и отчёта). */

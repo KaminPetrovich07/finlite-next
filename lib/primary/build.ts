@@ -14,6 +14,7 @@ import { unitWithCode } from "@/lib/okei";
 import type { PolicyInput } from "@/lib/policy/types";
 import { DEP_METHOD } from "@/lib/policy/types";
 import { dateLong, dateShort, sum, sumInWords, type DocBlock } from "@/lib/docs/model";
+import { ALBUM_REGISTER, albumDoc, albumRegister } from "./album";
 import {
   corrAccount, counterpartyOf, DOC_INFO, docAmount, FA_RE, numberDocs, REGISTER_INFO, STOCK_RE,
   type DocKind, type RegisterKind,
@@ -73,6 +74,9 @@ const formHead = (lines: string[]): DocBlock => ({ t: "right", lines, small: tru
 // ── отдельные документы ────────────────────────────────────────────────────
 
 export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: PrimaryCtx, o: Overrides = {}): DocBlock[] {
+  // формы альбома — по бланку альбома (lib/primary/album.ts); прежняя упрощённая раскладка — ниже, для форм организации
+  const album = albumDoc(kind, e, number, c, o);
+  if (album) return album;
   const amount = docAmount(e, kind);
   const retail = kind === "ko1" && /^61\d\d$/.test(corrAccount(e, "ko1"));
   const party = o.party || counterpartyOf(e) || (retail ? "Розничные покупатели (наличная выручка)" : "");
@@ -161,7 +165,7 @@ export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: 
     }
     case "os1": {
       const line = e.lines.find((l) => l.debit > 0 && FA_RE.test(l.account))!;
-      const life = usefulLife(line.account, c.policy);
+      const life = usefulLifeOf(line.account, c.policy);
       return [
         formHead(["Унифицированная форма ОС-1"]),
         orgLine(c),
@@ -227,9 +231,9 @@ export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: 
         ? sold.map((l, i) => { const r = itemRow(l, o, sold.length === 1); return [String(i + 1), r.name, r.unit, r.qty, r.price, sum(l.credit)]; })
         : [["1", o.item || basis, unitWithCode(o.unit), o.qty ?? "", "", sum(amount)]];
       return [
-        orgLine(c),
-        { t: "title", text: title },
-        { t: "p", text: `от ${dateLong(e.date)}`, align: "c" },
+        // шапка как у бланков альбома: субъект на строке, справа гриф и клетка ОКПО; номер и дата — в заголовке
+        { t: "formHead", corner: kind === "invoice" ? [] : ["Не унифицированная форма"], org: `${c.companyName}${c.inn ? `, ИНН ${c.inn}` : ""}`, dept: "", okpo: "" },
+        { t: "formTitle", text: title.replace(/ № .*$/, ""), no, date: dateShort(e.date) },
         { t: "fields", items: [[kind === "act" ? "Исполнитель" : "Поставщик", `${c.companyName}${c.inn ? `, ИНН ${c.inn}` : ""}`], [kind === "act" ? "Заказчик" : "Покупатель", party], ["Основание", o.attachment || "договор №____ от «___» ____ 20__ г."]] },
         { t: "table", head: ["№", "Наименование", "Ед. изм. (код ОКЕИ)", "Количество", vat ? "Цена без НДС" : "Цена", vat ? "Сумма без НДС, сом" : "Сумма, сом"], widths: [0.6, 6, 1.2, 1.5, 1.8, 2.2], align: ["c", "l", "c", "r", "r", "r"], total: true,
           rows: [...goods, ...(vat
@@ -250,7 +254,7 @@ export function buildEntryDoc(kind: DocKind, e: LedgerEntry, number: number, c: 
   }
 }
 
-function usefulLife(account: string, p: PolicyInput | null): number | null {
+export function usefulLifeOf(account: string, p: PolicyInput | null): number | null {
   if (!p) return null;
   if (account === "2110") return null;
   if (account === "2130" || account === "2120") return p.lifeBuildings;
@@ -287,6 +291,22 @@ export function buildRegister(kind: RegisterKind, c: PrimaryCtx, p: Period, serv
     { t: "p", text: `за период с ${dateShort(p.from)} по ${dateShort(p.to)}`, align: "c" },
   ];
   const cashTest = (a: string) => a === "1110";
+
+  // по бланкам альбома: КО-3, ИНВ-15, ИНВ-3, ИНВ-1, журналы продаж и закупок, М-2
+  // журналы продаж и закупок по бланку альбома — для ИП (рекомендованные регистры ИП); у юрлиц — сводные регистры ниже
+  const isIp = c.policy?.legalForm === "ИП" || /^ИП\b/i.test(c.companyName);
+  if (ALBUM_REGISTER[kind] && (isIp || (kind !== "sales" && kind !== "purchases"))) {
+    let lastKo1 = 0, lastKo2 = 0;
+    for (const e of c.entries) if (e.date <= p.to) for (const d of nums.get(e.id) ?? []) { if (d.kind === "ko1") lastKo1 = Math.max(lastKo1, d.number); if (d.kind === "ko2") lastKo2 = Math.max(lastKo2, d.number); }
+    const stockTest = (a: string) => STOCK_RE.test(a) || a === "1630" || a === "1640" || a === "1650";
+    const faCodes = Array.from(new Set(c.entries.flatMap((e) => e.lines.map((l) => l.account)).filter((a) => FA_RE.test(a)))).sort();
+    const album = albumRegister(kind, c, p, {
+      inPeriod, nums, cashBook: balanceOn(c.entries, cashTest, p.to, true), lastKo1, lastKo2,
+      stock: kind === "inv3" ? stockByItem(c.entries, p.to, stockTest) : [],
+      fa: kind === "inv1" ? faCodes.map((code) => ({ account: code, name: accountName(code), amount: balanceOn(c.entries, (a) => a === code, p.to, true) })).filter((b) => Math.abs(b.amount) > 0.004) : [],
+    });
+    if (album) return album;
+  }
 
   switch (kind) {
     case "ko3": {

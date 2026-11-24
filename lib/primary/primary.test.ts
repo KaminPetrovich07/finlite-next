@@ -56,7 +56,7 @@ test("демо: каждый документ и регистр собирает
   for (const r of list) {
     for (const d of r.docs) {
       const blocks = buildEntryDoc(d.kind, byId.get(r.entryId)!, d.number, c);
-      assert.ok(blocks.length > 2);
+      assert.ok(blocks.length > 2 || blocks[0]?.t === "cashOrder", d.kind);
       assert.equal(d.amount, docAmount(byId.get(r.entryId)!, d.kind));
     }
   }
@@ -101,8 +101,55 @@ test("документы берут номенклатуру, количеств
   const ctx = { companyName: "ОсОО «Т»", inn: "", people: { director: "", directorTitle: "Директор", chief: "", cashier: "", storekeeper: "" }, policy: null, entries: [e] };
   const txt = JSON.stringify(buildEntryDoc("m4", e, 1, ctx));
   assert.match(txt, /ЛДСП 16 мм/);
-  assert.match(txt, /"лист \(625\)","40","40","3 200,00"/);
+  // М-4 по бланку альбома: наименование, номенклатурный №, код и наименование единицы, по документу, принято, цена, сумма
+  assert.match(txt, /"ЛДСП 16 мм","","625","л\.","40","40","3 200,00","128 000,00"/);
   assert.match(txt, /ОсОО «ТехноМебель»/);
   const inv = JSON.stringify(buildRegister("inv3", ctx, { from: "2026-07-01", to: "2026-07-31" }));
-  assert.match(inv, /"ЛДСП 16 мм","1620","лист \(625\)","40","128 000,00"/);
+  assert.match(inv, /"1","1620","ЛДСП 16 мм","","625","л\.","3 200,00"/);
+  assert.match(inv, /"40","128 000,00"\]/);
+});
+
+test("документы из журнала — по бланкам альбома: графы, номера граф, реквизиты, ориентация", async () => {
+  const { buildEntryDoc, buildRegister } = await import("./build");
+  const { albumLandscape, albumRegisterLandscape } = await import("./album");
+  const e = { id: "k", date: "2026-07-08", description: "Розничная выручка", source: "manual" as const, lines: [
+    { account: "1110", debit: 380000, credit: 0 }, { account: "6110", debit: 0, credit: 380000 },
+  ] };
+  const ctx = { companyName: "ОсОО «Т»", inn: "123", people: { director: "Асанов", directorTitle: "Директор", chief: "Бекова", cashier: "Кадырова", storekeeper: "" }, policy: null, entries: [e] };
+  // кассовый ордер — компактный бланк альбома: квитанция сбоку, несколько ордеров на листе
+  const ko1 = buildEntryDoc("ko1", e, 7, ctx);
+  assert.equal(ko1.length, 1);
+  assert.equal(ko1[0].t, "cashOrder");
+  if (ko1[0].t === "cashOrder") {
+    assert.deepEqual([ko1[0].order.kind, ko1[0].order.number, ko1[0].order.debit, ko1[0].order.credit, ko1[0].order.amount], ["ko1", "7", "1110", "6110", "380 000,00"]);
+    assert.deepEqual([ko1[0].order.chief, ko1[0].order.cashier, ko1[0].order.date], ["Бекова", "Кадырова", "08.07.2026"]);
+    assert.match(ko1[0].order.words, /^Триста восемьдесят тысяч сомов/);
+  }
+  const { renderOfficialPdf } = await import("@/lib/docs/render-pdf");
+  const { renderOfficialDocx } = await import("@/lib/docs/render-docx");
+  const three = { title: "ПКО", fileName: "ПКО", compact: true, blocks: [ko1[0], ko1[0], ko1[0]] };
+  assert.ok((await renderOfficialPdf(three)).length > 1000);
+  assert.ok((await renderOfficialDocx(three)).length > 1000);
+  assert.equal(albumLandscape("m4"), true);
+  assert.equal(albumLandscape("ko1"), false);
+  assert.equal(albumRegisterLandscape("ko3"), true);
+  const ko3 = JSON.stringify(buildRegister("ko3", ctx, { from: "2026-07-01", to: "2026-07-31" }));
+  assert.match(ko3, /"08\.07\.2026","1","380 000,00","Розничная выручка","","","",""/);
+  assert.match(ko3, /за период с 01\.07\.2026 по 31\.07\.2026/);
+});
+
+test("бланковая вёрстка: шапка как в альбоме, накладные по три на листе", async () => {
+  const c = ctx();
+  const nums = numberDocs(c.entries);
+  const list = c.entries.filter((x) => (nums.get(x.id) ?? []).some((d) => d.kind === "waybill")).slice(0, 3);
+  assert.equal(list.length, 3);
+  const parts = list.map((e) => buildEntryDoc("waybill", e, nums.get(e.id)!.find((d) => d.kind === "waybill")!.number, c));
+  assert.equal(parts[0][0].t, "formHead");
+  assert.ok(parts[0].some((b) => b.t === "formTitle" && b.no === String(nums.get(list[0].id)!.find((d) => d.kind === "waybill")!.number)));
+  const pdf = await renderOfficialPdf({ title: "t", fileName: "t", compact: true, blocks: parts.map((p) => ({ t: "unit", blocks: p })) });
+  assert.equal((pdf.toString("latin1").match(/\/Type \/Page\b/g) ?? []).length, 1, "три накладные — один лист");
+  assert.ok((await renderOfficialDocx({ title: "t", fileName: "t", compact: true, blocks: parts.map((p) => ({ t: "unit", blocks: p })) })).length > 3000);
+  // в бланке альбома номер документа и дата — в клетках
+  const m11 = c.entries.find((x) => (nums.get(x.id) ?? []).some((d) => d.kind === "os1"))!;
+  assert.ok(buildEntryDoc("os1", m11, 1, c).some((b) => b.t === "box" && b.heads.includes("Дата составления")));
 });

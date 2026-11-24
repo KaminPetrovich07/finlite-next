@@ -4,6 +4,7 @@ import { HttpError, logActivity, requireCompany, route } from "@/lib/auth/server
 import { docFormat, sendDoc } from "@/lib/server/send-file";
 import { loadPrimaryCtx } from "@/lib/primary/context";
 import { buildEntryDoc, buildRegister } from "@/lib/primary/build";
+import { albumLandscape, albumRegisterLandscape } from "@/lib/primary/album";
 import { DOC_INFO, numberDocs, REGISTER_INFO, type DocKind, type RegisterKind } from "@/lib/primary/detect";
 import type { DocBlock } from "@/lib/docs/model";
 import { requestLang } from "@/lib/i18n/server";
@@ -52,12 +53,20 @@ export const POST = route(async (req: NextRequest) => {
       names.push(`${DOC_INFO[it.kind as DocKind].title} № ${n.number}`);
     }
     if (!part) throw new HttpError(400, `Неизвестный документ: ${it.kind}`);
-    if (blocks.length) blocks.push({ t: "pagebreak" });
-    blocks.push(...part);
+    // документы идут подряд по нескольку на листе (кассовые ордера — своим бланком, остальные — неразрывными
+    // блоками с линией разреза); документ, который сам занимает несколько страниц, и регистры — с новой страницы
+    const cash = part.length === 1 && part[0].t === "cashOrder";
+    const packable = !cash && !(it.kind in REGISTER_INFO) && !part.some((b) => b.t === "pagebreak");
+    const last = blocks[blocks.length - 1];
+    if (last && !((cash && last.t === "cashOrder") || (packable && last.t === "unit"))) blocks.push({ t: "pagebreak" });
+    blocks.push(...(packable ? [{ t: "unit", blocks: part } as DocBlock] : part));
   }
   await logActivity("primary_export", c.demo ? null : companyId, { format, count: items.length });
   const fileName = items.length === 1 ? `${names[0]} — ${c.companyName}` : `Первичные документы — ${c.companyName} — ${from}…${to}`;
-  const doc = { title: fileName, fileName, org: c.companyName, blocks };
+  // формы альбома в альбомной ориентации (М-4, М-11, ОС-1, Т-49, ИНВ-3 …) — если все документы файла такие
+  const landscape = items.every((it) => (it.kind in REGISTER_INFO ? albumRegisterLandscape(it.kind as RegisterKind) : albumLandscape(it.kind as DocKind)));
+  const compact = true; // бланковая вёрстка: узкие поля, мелкий кегль, как в альбоме
+  const doc = { title: fileName, fileName, org: c.companyName, blocks, landscape, compact };
   // товарные документы печатаются на кыргызском, если интерфейс переключён на «КЫ»; остальные формы — пока по-русски
   const kyReady = items.every((it) => ["waybill", "invoice", "act", "m4"].includes(it.kind));
   return sendDoc(kyReady && (await requestLang()) === "ky" ? docToKyrgyz(doc) : doc, format);

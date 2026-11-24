@@ -172,11 +172,12 @@ test("печатные формы: КС-2, КС-3, акт, договор, ра�
   const w = wo("1", "2026-10-20", [{ name: "Плита OSB", unit: "лист", qty: 60, price: 1450, stageId: "s1", account: "1620" }]);
   const text = (b: unknown[]) => JSON.stringify(b);
   const ks2 = text(printKs2(c, o, act));
-  assert.match(ks2, /АКТ О ПРИЁМКЕ ВЫПОЛНЕННЫХ РАБОТ/);
+  assert.match(ks2, /Акт приёмки выполненных работ/);
+  assert.match(ks2, /Не унифицированная форма/);
   assert.match(ks2, /560 000,00/);
   assert.match(ks2, /627 200,00/); // с НДС 12 %
   assert.match(ks2, /Шестьсот двадцать семь тысяч двести сомов/);
-  assert.match(text(printKs3(c, o, act, [w, act])), /СПРАВКА О СТОИМОСТИ/);
+  assert.match(text(printKs3(c, o, act, [w, act])), /Справка о стоимости выполненных работ и затрат/);
   const a = text(printAct(c, o, act, [w, act]));
   assert.match(a, /договора подряда № 1 от 18\.10\.2026/);
   assert.match(a, /материалы Подрядчика на сумму 87 000,00/);

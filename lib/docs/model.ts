@@ -60,7 +60,45 @@ export type DocBlock =
   /** dashed «линия отреза» between a document and its tear-off slip */
   | { t: "cut"; text?: string }
   | { t: "spacer" }
-  | { t: "pagebreak" };
+  | { t: "pagebreak" }
+  /** приходный (с квитанцией сбоку, за линией отреза) или расходный кассовый ордер по бланку альбома — компактно, несколько на листе */
+  | { t: "cashOrder"; order: CashOrder }
+  /** шапка бланка альбома: слева субъект и подразделение на строках с подписями, справа — гриф формы и коды */
+  | { t: "formHead"; corner: string[]; org?: string; dept?: string; okpo?: string; gkud?: string; codes?: Array<[string, string]> }
+  /** заголовок бланка: «Приходный ордер № 5», под ним подзаголовок */
+  | { t: "formTitle"; text: string; no?: string; date?: string; sub?: string; boxed?: boolean }
+  /** реквизиты в клетках (Номер документа | Дата составления | Отчётный период …), справа */
+  | { t: "box"; heads: string[]; values: string[] }
+  /** один документ, который не разрывается между листами — так документы идут по нескольку на листе */
+  | { t: "unit"; blocks: DocBlock[] }
+  /** колонки блоков рядом (как на лицевой стороне АО-1) */
+  | { t: "cols"; cols: DocBlock[][]; widths?: number[] }
+  /** блоки в рамке (титульная и оборотная стороны доверенности М-2) */
+  | { t: "frame"; blocks: DocBlock[]; caption?: string };
+
+/** Данные кассового ордера КО-1 / КО-2. */
+export interface CashOrder {
+  kind: "ko1" | "ko2";
+  org: string;
+  dept?: string;
+  okpo?: string;
+  number: string;
+  date: string;
+  /** КО-1: Дт 1110, Кт корр. счёт; КО-2: Дт корр. счёт, Кт 1110 */
+  debit: string;
+  credit: string;
+  amount: string;
+  words: string;
+  party: string;
+  basis: string;
+  including?: string;
+  attachment?: string;
+  chief: string;
+  cashier: string;
+  director?: string;
+  directorTitle?: string;
+  idDoc?: string;
+}
 
 export interface OfficialDoc {
   title: string;
@@ -72,6 +110,8 @@ export interface OfficialDoc {
   blocks: DocBlock[];
   /** язык подписей под строками подписи и нумерации страниц (по умолчанию русский) */
   lang?: "ru" | "ky";
+  /** бланковая вёрстка: узкие поля, мелкий кегль, без колонтитула с организацией — документы по нескольку на листе */
+  compact?: boolean;
 }
 
 /** «12 345,67» — money in documents (always two decimals). */
